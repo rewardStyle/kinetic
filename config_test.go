@@ -12,7 +12,7 @@ func TestBadConfig(t *testing.T) {
 	Convey("Given an incorrectly formatted config file", t, func() {
 		Convey("Panic should occur when attempting to load the config", func() {
 			moveConfig(t)
-			makeBadConfig(t, "kinetic.conf")
+			makeBadConfig(t, "/etc/kinetic.conf")
 			defer func() {
 				restoreConfig(t)
 				So(recover(), ShouldNotResemble, nil)
@@ -39,14 +39,14 @@ func TestMissingConfig(t *testing.T) {
 }
 
 func moveConfig(t *testing.T) {
-	err := exec.Command("mv", "kinetic.conf", "kinetic_missing.conf").Run()
+	err := exec.Command("mv", "/etc/kinetic.conf", "/etc/kinetic_missing.conf").Run()
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
 }
 
 func restoreConfig(t *testing.T) {
-	err := exec.Command("mv", "kinetic_missing.conf", "kinetic.conf").Run()
+	err := exec.Command("mv", "/etc/kinetic_missing.conf", "/etc/kinetic.conf").Run()
 	if err != nil {
 		t.Fatalf(err.Error())
 	}

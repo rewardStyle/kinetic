@@ -59,7 +59,7 @@ func (l *Listener) Init(stream, shard string) (*Listener, error) {
 	// Relay incoming interrupt signals to this channel
 	signal.Notify(l.interrupts, os.Interrupt)
 
-	// Start feeder consumer and let listen processes them
+	// Start feeder consumer
 	go l.consume()
 
 	return l, err

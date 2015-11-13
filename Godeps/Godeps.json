@@ -1,0 +1,29 @@
+{
+	"ImportPath": "github.com/rewardStyle/kinetic",
+	"GoVersion": "go1.5",
+	"Deps": [
+		{
+			"ImportPath": "code.google.com/p/gcfg",
+			"Rev": "c2d3050044d05357eaf6c3547249ba57c5e235cb"
+		},
+		{
+			"ImportPath": "github.com/jtolds/gls",
+			"Rev": "f1ac7f4f24f50328e6bc838ca4437d1612a0243c"
+		},
+		{
+			"ImportPath": "github.com/sendgridlabs/go-kinesis",
+			"Comment": "1.0.1-14-g21dfd44",
+			"Rev": "21dfd445a8ef22c22bd994d6c8c4a93d009c8488"
+		},
+		{
+			"ImportPath": "github.com/smartystreets/assertions",
+			"Comment": "1.5.0-397-gac6b6f6",
+			"Rev": "ac6b6f68ca3d6ac00a360d0fad0c844859ad131b"
+		},
+		{
+			"ImportPath": "github.com/smartystreets/goconvey/convey",
+			"Comment": "1.5.0-412-gbf05a3a",
+			"Rev": "bf05a3a16dad006e63e899124a2c6125028f6b31"
+		}
+	]
+}

@@ -2,10 +2,11 @@ package kinetic
 
 import (
 	"errors"
-	. "github.com/smartystreets/goconvey/convey"
 	"syscall"
 	"testing"
 	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestProducerStop(t *testing.T) {

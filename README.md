@@ -27,8 +27,8 @@ Kinetic can be used to interface with kinesis like so:
 
 
 ```go
-listener, _ := new(Listener).Init("kinesis.us-east-1.amazonaws.com/stream", 0)
-producer, _ := new(Producer).Init("kinesis.us-east-1.amazonaws.com/stream", 0)
+listener, _ := new(Listener).Init("your-stream", 0)
+producer, _ := new(Producer).Init("your-stream", 0)
 
 producer.Send(new(KinesisMessage).Init([]byte(`{"foo":"bar"}`), "test"))
 

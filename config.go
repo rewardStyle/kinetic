@@ -29,9 +29,9 @@ type Config struct {
 func GetConfig() *Config {
 	con := new(Config)
 
-	file, err := ioutil.ReadFile("kinetic.conf")
+	file, err := ioutil.ReadFile("/etc/kinetic.conf")
 	if err != nil {
-		println("Missing config: kinetic.conf")
+		println("Missing config: /etc/kinetic.conf")
 
 		// Panic because logging isn't yet configured
 		panic(err)
