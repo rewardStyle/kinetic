@@ -34,7 +34,7 @@ type Producer struct {
 
 	// We need to ensure that the sent messages were successfully processed
 	// before removing them from this local queue
-	messages chan *KinesisMessage
+	messages chan *Message
 
 	interrupts chan os.Signal
 }
@@ -61,7 +61,7 @@ func (p *Producer) Init(stream, shard string) (*Producer, error) {
 		}
 	}
 
-	p.messages = make(chan *KinesisMessage)
+	p.messages = make(chan *Message)
 	p.errors = make(chan error)
 	p.interrupts = make(chan os.Signal, 1)
 
@@ -152,7 +152,7 @@ stop:
 	p.setProducing(false)
 }
 
-func (p *Producer) Messages() <-chan *KinesisMessage {
+func (p *Producer) Messages() <-chan *Message {
 	return p.messages
 }
 
@@ -161,7 +161,7 @@ func (p *Producer) Errors() <-chan error {
 }
 
 // Send a message to the queue for POSTing
-func (p *Producer) Send(msg *KinesisMessage) {
+func (p *Producer) Send(msg *Message) {
 	p.wg.Add(1)
 	go func() {
 		p.messages <- msg
@@ -190,7 +190,7 @@ func (p *Producer) SendRecords(args *kinesis.RequestArgs) {
 			if resp.ErrorCode != "" || resp.ErrorMessage != "" {
 				p.msgCount--
 				p.errors <- errors.New(resp.ErrorMessage)
-				p.Send(new(KinesisMessage).Init(args.Records[idx].Data, args.Records[idx].PartitionKey))
+				p.Send(new(Message).Init(args.Records[idx].Data, args.Records[idx].PartitionKey))
 
 				if conf.Debug.Verbose {
 					log.Println("Messages in failed PutRecords put back on the queue: " + string(args.Records[idx].Data))
