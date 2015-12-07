@@ -10,7 +10,7 @@ Before using kinetic, you should make sure you have a created a Kinesis stream a
 
 
 ## Testing
-Tests are written using [goconvey](http://goconvey.co/). They can be run either via the comamnd line:
+Tests are written using [goconvey](http://goconvey.co/) and [kinesalite](https://github.com/mhart/kinesalite). Make sure you have kinesalite running locally before attempting to run the tests. They can be run either via the comamnd line:
 
 ```sh
 $ go test -v -cover -race
