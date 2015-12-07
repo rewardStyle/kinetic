@@ -10,11 +10,15 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 )
 
+const testEndpoint = "http://127.0.0.1:4567"
+
 func TestListenerStop(t *testing.T) {
 	listener, err := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
+
+	listener.SetTestEndpoint(testEndpoint)
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -37,6 +41,8 @@ func TestListenerError(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 
+	listener.SetTestEndpoint(testEndpoint)
+
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
 			wg.Done()
@@ -48,7 +54,7 @@ func TestListenerError(t *testing.T) {
 			// Let the error propagate
 			<-time.After(1 * time.Second)
 
-			So(listener.errCount, ShouldEqual, 1)
+			So(listener.errCount, ShouldNotEqual, 0)
 			So(listener.IsListening(), ShouldEqual, true)
 		})
 	})
@@ -61,6 +67,8 @@ func TestListenerMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
+
+	listener.SetTestEndpoint(testEndpoint)
 
 	go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
 		wg.Done()
@@ -89,6 +97,9 @@ func TestRetrieveMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
+
+	listener.SetTestEndpoint(testEndpoint)
+	producer.SetTestEndpoint(testEndpoint)
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {

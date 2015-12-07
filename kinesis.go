@@ -2,6 +2,7 @@ package kinetic
 
 import (
 	"sync"
+	"time"
 
 	kinesis "github.com/sendgridlabs/go-kinesis"
 )
@@ -103,4 +104,30 @@ func (k *Kinesis) checkActive() (bool, error) {
 		return true, nil
 	}
 	return false, nil
+}
+
+func (k *Kinesis) createStream(name string, partitions int) error {
+	err := k.client.CreateStream(name, partitions)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (k *Kinesis) SetTestEndpoint(endpoint string) {
+	// Re-initialize kinesis client for testing
+	k = &Kinesis{
+		stream:            k.stream,
+		shard:             k.shard,
+		shardIteratorType: k.shardIteratorType,
+		client:            kinesis.NewWithEndpoint(kinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY"), conf.AWS.Region, endpoint),
+	}
+
+	k.createStream(k.stream, 1)
+
+	// Wait for stream to create
+	<-time.After(1 * time.Second)
+
+	k.initShardIterator()
 }
