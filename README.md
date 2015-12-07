@@ -27,10 +27,12 @@ Kinetic can be used to interface with kinesis like so:
 
 
 ```go
-listener, _ := new(Listener).Init("your-stream", 0)
-producer, _ := new(Producer).Init("your-stream", 0)
+import "github.com/rewardStyle/kinetic"
 
-producer.Send(new(KinesisMessage).Init([]byte(`{"foo":"bar"}`), "test"))
+listener, _ := new(kinetic.Listener).Init("your-stream", 0)
+producer, _ := new(kinetic.Producer).Init("your-stream", 0)
+
+producer.Send(new(kinetic.Message).Init([]byte(`{"foo":"bar"}`), "test"))
 
 // Using Retrieve
 msg, err := listener.Retrieve()

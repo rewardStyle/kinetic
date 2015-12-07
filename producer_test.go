@@ -76,7 +76,7 @@ func TestProducerMessage(t *testing.T) {
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
-			producer.Send(new(KinesisMessage).Init(c.message, "test"))
+			producer.Send(new(Message).Init(c.message, "test"))
 
 			Convey("It should be passed on the queue without error", func() {
 				msg, err := listener.Retrieve()

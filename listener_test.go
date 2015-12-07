@@ -76,7 +76,7 @@ func TestListenerMessage(t *testing.T) {
 
 	for _, c := range cases {
 		Convey("Given a running listener", t, func() {
-			listener.messages <- new(KinesisMessage).Init(c.message, "test")
+			listener.messages <- new(Message).Init(c.message, "test")
 			Convey("It should handle messages successfully", func() {
 				So(listener.IsListening(), ShouldEqual, true)
 				So(listener.Errors(), ShouldNotResemble, nil)
@@ -103,7 +103,7 @@ func TestRetrieveMessage(t *testing.T) {
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
-			producer.Send(new(KinesisMessage).Init(c.message, "test"))
+			producer.Send(new(Message).Init(c.message, "test"))
 
 			Convey("It should be passed on the queue without error", func() {
 				msg, err := listener.Retrieve()

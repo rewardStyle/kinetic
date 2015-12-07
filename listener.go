@@ -26,7 +26,7 @@ type Listener struct {
 	listening bool
 
 	errors     chan error
-	messages   chan *KinesisMessage
+	messages   chan *Message
 	interrupts chan os.Signal
 }
 
@@ -52,7 +52,7 @@ func (l *Listener) Init(stream, shard string) (*Listener, error) {
 		}
 	}
 
-	l.messages = make(chan *KinesisMessage)
+	l.messages = make(chan *Message)
 	l.errors = make(chan error)
 	l.interrupts = make(chan os.Signal, 1)
 
@@ -109,7 +109,7 @@ stop:
 	l.setListening(false)
 }
 
-func (l *Listener) addMessage(msg *KinesisMessage) {
+func (l *Listener) addMessage(msg *Message) {
 	l.messages <- msg
 }
 
@@ -128,7 +128,7 @@ func (l *Listener) consume() {
 
 		if response != nil {
 			for _, record := range response.Records {
-				l.addMessage(&KinesisMessage{&record})
+				l.addMessage(&Message{&record})
 			}
 
 			l.setShardIterator(response.NextShardIterator)
@@ -140,7 +140,7 @@ func (l *Listener) consume() {
 	}
 }
 
-func (l *Listener) Retrieve() (*KinesisMessage, error) {
+func (l *Listener) Retrieve() (*Message, error) {
 	select {
 	case msg := <-l.Messages():
 		return msg, nil
@@ -188,11 +188,11 @@ func (l *Listener) Errors() <-chan error {
 	return l.errors
 }
 
-func (l *Listener) Messages() <-chan *KinesisMessage {
+func (l *Listener) Messages() <-chan *Message {
 	return l.messages
 }
 
-func (l *Listener) handleMsg(msg *KinesisMessage, fn msgFn) {
+func (l *Listener) handleMsg(msg *Message, fn msgFn) {
 	if conf.Debug.Verbose {
 		log.Printf("Received message: %s with key: %s", msg.Value(), msg.Key())
 		log.Printf("Messages received: %d", l.msgCount)
