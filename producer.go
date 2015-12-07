@@ -175,12 +175,12 @@ func (p *Producer) Send(msg *KinesisMessage) {
 func (p *Producer) SendRecords(args *kinesis.RequestArgs) {
 	putResp, err := p.client.PutRecords(args)
 	if err != nil && conf.Debug.Verbose {
-		log.Println(err)
+		p.errors <- err
 	}
 
 	// Because we do not know which of the records was successful or failed
 	// we need to put them all back on the queue
-	if putResp.FailedRecordCount > 0 {
+	if putResp != nil && putResp.FailedRecordCount > 0 {
 		if conf.Debug.Verbose {
 			log.Println("Failed records: " + strconv.Itoa(putResp.FailedRecordCount))
 		}

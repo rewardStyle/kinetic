@@ -15,6 +15,8 @@ func TestProducerStop(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 
+	producer.SetTestEndpoint(testEndpoint)
+
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
 
@@ -41,6 +43,8 @@ func TestProducerError(t *testing.T) {
 		t.Fatalf(err.Error())
 	}
 
+	producer.SetTestEndpoint(testEndpoint)
+
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
 
@@ -66,6 +70,9 @@ func TestProducerMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
+
+	listener.SetTestEndpoint(testEndpoint)
+	producer.SetTestEndpoint(testEndpoint)
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
