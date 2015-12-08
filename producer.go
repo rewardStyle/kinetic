@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	kinesis "github.com/sendgridlabs/go-kinesis"
+	gokinesis "github.com/sendgridlabs/go-kinesis"
 )
 
 var (
@@ -22,7 +22,7 @@ var (
 // to POST the records using the PutRecords method. If the messages were
 // not sent successfully they are placed back on the queue to retry
 type Producer struct {
-	*Kinesis
+	*kinesis
 
 	wg          sync.WaitGroup
 	msgCount    int
@@ -46,21 +46,6 @@ func (p *Producer) Init(stream, shard string) (*Producer, error) {
 		return nil, NullStreamError
 	}
 
-	p.Kinesis, err = new(Kinesis).Init(stream, shard, KShardIteratorTypes[conf.Kinesis.ShardIteratorType])
-	if err != nil {
-		return nil, err
-	}
-
-	// Is the stream ready?
-	active, err := p.checkActive()
-	if err != nil || active != true {
-		if err != nil {
-			return nil, err
-		} else {
-			return nil, NotActiveError
-		}
-	}
-
 	p.messages = make(chan *Message)
 	p.errors = make(chan error)
 	p.interrupts = make(chan os.Signal, 1)
@@ -68,10 +53,31 @@ func (p *Producer) Init(stream, shard string) (*Producer, error) {
 	// Relay incoming interrupt signals to this channel
 	signal.Notify(p.interrupts, os.Interrupt)
 
+	p.kinesis, err = new(kinesis).init(stream, shard, shardIterTypes[conf.Kinesis.ShardIteratorType])
+	if err != nil {
+		return p, err
+	}
+
+	// Is the stream ready?
+	active, err := p.checkActive()
+	if err != nil || active != true {
+		if err != nil {
+			return p, err
+		} else {
+			return p, NotActiveError
+		}
+	}
+
 	// go start feeder consumer and let listen processes them
 	go p.produce()
 
 	return p, err
+}
+
+func (p *Producer) newEndpoint(endpoint string) {
+	// Re-initialize kinesis client for testing
+	p.kinesis.client = p.kinesis.newClient(endpoint)
+	p.initShardIterator()
 }
 
 // Each shard can support up to 1,000 records per second for writes, up to a maximum total
@@ -172,7 +178,7 @@ func (p *Producer) Send(msg *Message) {
 // If our payload is larger than allowed Kinesis will write as much as
 // possible and fail the rest. We can then put them back on the queue
 // to re-send
-func (p *Producer) SendRecords(args *kinesis.RequestArgs) {
+func (p *Producer) SendRecords(args *gokinesis.RequestArgs) {
 	putResp, err := p.client.PutRecords(args)
 	if err != nil && conf.Debug.Verbose {
 		p.errors <- err

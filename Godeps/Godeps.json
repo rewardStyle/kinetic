@@ -1,11 +1,7 @@
 {
 	"ImportPath": "github.com/rewardStyle/kinetic",
-	"GoVersion": "go1.5",
+	"GoVersion": "go1.5.1",
 	"Deps": [
-		{
-			"ImportPath": "code.google.com/p/gcfg",
-			"Rev": "c2d3050044d05357eaf6c3547249ba57c5e235cb"
-		},
 		{
 			"ImportPath": "github.com/jtolds/gls",
 			"Rev": "f1ac7f4f24f50328e6bc838ca4437d1612a0243c"
@@ -24,6 +20,10 @@
 			"ImportPath": "github.com/smartystreets/goconvey/convey",
 			"Comment": "1.5.0-412-gbf05a3a",
 			"Rev": "bf05a3a16dad006e63e899124a2c6125028f6b31"
+		},
+		{
+			"ImportPath": "gopkg.in/gcfg.v1",
+			"Rev": "a3bc0742e3bbfd16123e6cee742cadec9a3301d2"
 		}
 	]
 }

@@ -16,14 +16,16 @@ var (
 )
 
 type Listener struct {
-	*Kinesis
+	*kinesis
 
-	wg          sync.WaitGroup
-	msgCount    int
-	errCount    int
+	wg       sync.WaitGroup
+	msgCount int
+	errCount int
+
+	listening   bool
 	listeningMu sync.Mutex
-
-	listening bool
+	consuming   bool
+	consumingMu sync.Mutex
 
 	errors     chan error
 	messages   chan *Message
@@ -37,21 +39,6 @@ func (l *Listener) Init(stream, shard string) (*Listener, error) {
 		return nil, NullStreamError
 	}
 
-	l.Kinesis, err = new(Kinesis).Init(stream, shard, KShardIteratorTypes[conf.Kinesis.ShardIteratorType])
-	if err != nil {
-		return nil, err
-	}
-
-	// Is the stream ready?
-	active, err := l.checkActive()
-	if err != nil || active != true {
-		if err != nil {
-			return nil, err
-		} else {
-			return nil, NotActiveError
-		}
-	}
-
 	l.messages = make(chan *Message)
 	l.errors = make(chan error)
 	l.interrupts = make(chan os.Signal, 1)
@@ -59,10 +46,31 @@ func (l *Listener) Init(stream, shard string) (*Listener, error) {
 	// Relay incoming interrupt signals to this channel
 	signal.Notify(l.interrupts, os.Interrupt)
 
+	l.kinesis, err = new(kinesis).init(stream, shard, shardIterTypes[conf.Kinesis.ShardIteratorType])
+	if err != nil {
+		return l, err
+	}
+
+	// Is the stream ready?
+	active, err := l.checkActive()
+	if err != nil || active != true {
+		if err != nil {
+			return l, err
+		} else {
+			return l, NotActiveError
+		}
+	}
+
 	// Start feeder consumer
 	go l.consume()
 
 	return l, err
+}
+
+func (l *Listener) newEndpoint(endpoint string) {
+	// Re-initialize kinesis client for testing
+	l.kinesis.client = l.kinesis.newClient(endpoint)
+	l.initShardIterator()
 }
 
 func (l *Listener) setListening(listening bool) {
@@ -77,6 +85,18 @@ func (l *Listener) IsListening() bool {
 	return l.listening
 }
 
+func (l *Listener) setConsuming(consuming bool) {
+	l.consumingMu.Lock()
+	l.consuming = consuming
+	l.consumingMu.Unlock()
+}
+
+func (l *Listener) IsConsuming() bool {
+	l.consumingMu.Lock()
+	defer l.consumingMu.Unlock()
+	return l.consuming
+}
+
 func (l *Listener) shouldConsume() bool {
 	select {
 	case <-l.interrupts:
@@ -87,7 +107,6 @@ func (l *Listener) shouldConsume() bool {
 
 }
 
-// Call GetRecords continuously
 func (l *Listener) Listen(fn msgFn) {
 	l.setListening(true)
 stop:
@@ -114,6 +133,8 @@ func (l *Listener) addMessage(msg *Message) {
 }
 
 func (l *Listener) consume() {
+	l.setConsuming(true)
+
 	counter := 0
 	timer := time.Now()
 
@@ -135,6 +156,7 @@ func (l *Listener) consume() {
 		}
 
 		if !l.shouldConsume() {
+			l.setConsuming(false)
 			break
 		}
 	}
@@ -235,5 +257,4 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 		// will be reset on next pass
 		<-time.After(1 * time.Second)
 	}
-
 }

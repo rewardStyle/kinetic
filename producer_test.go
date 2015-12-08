@@ -10,12 +10,8 @@ import (
 )
 
 func TestProducerStop(t *testing.T) {
-	producer, err := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	producer.SetTestEndpoint(testEndpoint)
+	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	producer.newEndpoint(testEndpoint)
 
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
@@ -38,12 +34,8 @@ func TestProducerStop(t *testing.T) {
 }
 
 func TestProducerError(t *testing.T) {
-	producer, err := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	producer.SetTestEndpoint(testEndpoint)
+	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	producer.newEndpoint(testEndpoint)
 
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
@@ -61,24 +53,24 @@ func TestProducerError(t *testing.T) {
 }
 
 func TestProducerMessage(t *testing.T) {
-	listener, err := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
+	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
 
-	producer, err := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	listener.SetTestEndpoint(testEndpoint)
-	producer.SetTestEndpoint(testEndpoint)
+	listener.newEndpoint(testEndpoint)
+	producer.newEndpoint(testEndpoint)
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
 			producer.Send(new(Message).Init(c.message, "test"))
+			if !producer.IsProducing() {
+				go producer.produce()
+			}
 
 			Convey("It should be passed on the queue without error", func() {
+				if !listener.IsConsuming() {
+					go listener.consume()
+				}
+
 				msg, err := listener.Retrieve()
 				if err != nil {
 					t.Fatalf(err.Error())

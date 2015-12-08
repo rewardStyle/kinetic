@@ -8,11 +8,14 @@ import (
 	"gopkg.in/gcfg.v1"
 )
 
-var defaultConfig string = `
+var (
+	configPath = "kinetic.conf"
+
+	defaultConfig = `
 [kinesis]
 stream              = stream-name
 shard               = 0
-sharditeratortype   = 1
+sharditeratortype   = 3
 
 [aws]
 accesskey           = accesskey
@@ -22,8 +25,9 @@ region              = us-east-1
 [debug]
 verbose             = true
 `
+)
 
-type Config struct {
+type config struct {
 	Kinesis struct {
 		Host              string
 		Port              string
@@ -43,10 +47,10 @@ type Config struct {
 	}
 }
 
-func GetConfig() *Config {
-	con := new(Config)
+func getConfig() *config {
+	con := new(config)
 
-	file, err := ioutil.ReadFile("/etc/kinetic.conf")
+	file, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		switch err.(type) {
 		case *os.PathError:
@@ -54,7 +58,7 @@ func GetConfig() *Config {
 			file = []byte(defaultConfig)
 			break
 		default:
-			log.Println("Missing config: /etc/kinetic.conf. Loading default configuration.")
+			log.Println("Missing config: " + configPath + ". Loading default configuration.")
 			file = []byte(defaultConfig)
 			break
 		}

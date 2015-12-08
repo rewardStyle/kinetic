@@ -1,16 +1,16 @@
 package kinetic
 
 import (
-	kinesis "github.com/sendgridlabs/go-kinesis"
+	gokinesis "github.com/sendgridlabs/go-kinesis"
 )
 
 type Message struct {
-	*kinesis.GetRecordsRecords
+	*gokinesis.GetRecordsRecords
 }
 
 func (k *Message) Init(msg []byte, key string) *Message {
 	return &Message{
-		&kinesis.GetRecordsRecords{
+		&gokinesis.GetRecordsRecords{
 			Data:         msg,
 			PartitionKey: key,
 		},

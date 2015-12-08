@@ -316,7 +316,7 @@ func GenerateMockSource(w io.Writer, pkg string, interfaces []reflect.Type) erro
 	ast.SortImports(fset, astFile)
 
 	// Pretty-print the AST, using the same options that gofmt does by default.
-	cfg := &printer.Config{
+	cfg := &printer.config{
 		Mode:     printer.UseSpaces | printer.TabIndent,
 		Tabwidth: 8,
 	}

@@ -13,12 +13,8 @@ import (
 const testEndpoint = "http://127.0.0.1:4567"
 
 func TestListenerStop(t *testing.T) {
-	listener, err := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	listener.SetTestEndpoint(testEndpoint)
+	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	listener.newEndpoint(testEndpoint)
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -27,6 +23,10 @@ func TestListenerStop(t *testing.T) {
 
 		Convey("It should stop listening if sent an interrupt signal", func() {
 			listener.interrupts <- syscall.SIGINT
+
+			// Let it finish stopping
+			<-time.After(1 * time.Second)
+
 			So(listener.IsListening(), ShouldEqual, false)
 		})
 	})
@@ -34,14 +34,9 @@ func TestListenerStop(t *testing.T) {
 	listener.Close()
 }
 
-// This test has a race condition due to running Listen in a goroutine
 func TestListenerError(t *testing.T) {
-	listener, err := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	listener.SetTestEndpoint(testEndpoint)
+	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	listener.newEndpoint(testEndpoint)
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -63,12 +58,8 @@ func TestListenerError(t *testing.T) {
 }
 
 func TestListenerMessage(t *testing.T) {
-	listener, err := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	listener.SetTestEndpoint(testEndpoint)
+	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	listener.newEndpoint(testEndpoint)
 
 	go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
 		wg.Done()
@@ -77,6 +68,7 @@ func TestListenerMessage(t *testing.T) {
 	for _, c := range cases {
 		Convey("Given a running listener", t, func() {
 			listener.messages <- new(Message).Init(c.message, "test")
+
 			Convey("It should handle messages successfully", func() {
 				So(listener.IsListening(), ShouldEqual, true)
 				So(listener.Errors(), ShouldNotResemble, nil)
@@ -88,24 +80,24 @@ func TestListenerMessage(t *testing.T) {
 }
 
 func TestRetrieveMessage(t *testing.T) {
-	listener, err := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
+	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
 
-	producer, err := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
-
-	listener.SetTestEndpoint(testEndpoint)
-	producer.SetTestEndpoint(testEndpoint)
+	listener.newEndpoint(testEndpoint)
+	producer.newEndpoint(testEndpoint)
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
 			producer.Send(new(Message).Init(c.message, "test"))
+			if !producer.IsProducing() {
+				go producer.produce()
+			}
 
 			Convey("It should be passed on the queue without error", func() {
+				if !listener.IsConsuming() {
+					go listener.consume()
+				}
+
 				msg, err := listener.Retrieve()
 				if err != nil {
 					t.Fatalf(err.Error())
