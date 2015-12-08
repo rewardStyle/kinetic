@@ -2,9 +2,26 @@ package kinetic
 
 import (
 	"io/ioutil"
+	"log"
+	"os"
 
 	"code.google.com/p/gcfg"
 )
+
+var defaultConfig string = `
+[kinesis]
+stream              = stream-name
+shard               = 0
+sharditeratortype   = 1
+
+[aws]
+accesskey           = accesskey
+secretkey           = secretkey
+region              = us-east-1
+
+[debug]
+verbose             = true
+`
 
 type Config struct {
 	Kinesis struct {
@@ -31,15 +48,25 @@ func GetConfig() *Config {
 
 	file, err := ioutil.ReadFile("/etc/kinetic.conf")
 	if err != nil {
-		println("Missing config: /etc/kinetic.conf")
-
-		// Panic because logging isn't yet configured
-		panic(err)
+		switch err.(type) {
+		case *os.PathError:
+			log.Println("Failed to parse config. Loading default configuration.")
+			file = []byte(defaultConfig)
+			break
+		default:
+			log.Println("Missing config: /etc/kinetic.conf. Loading default configuration.")
+			file = []byte(defaultConfig)
+			break
+		}
 	}
 
 	err = gcfg.ReadStringInto(con, string(file))
 	if err != nil {
-		panic(err)
+		log.Println("Failed to parse config. Loading default configuration.")
+		err = gcfg.ReadStringInto(con, string(defaultConfig))
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	return con
