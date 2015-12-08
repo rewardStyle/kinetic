@@ -10,15 +10,21 @@ import (
 
 func TestBadConfig(t *testing.T) {
 	Convey("Given an incorrectly formatted config file", t, func() {
-		Convey("Panic should occur when attempting to load the config", func() {
-			moveConfig(t)
-			makeBadConfig(t, "/etc/kinetic.conf")
+		Convey("The default configuration should be loaded", func() {
 			defer func() {
 				restoreConfig(t)
-				So(recover(), ShouldNotResemble, nil)
+				t.Fatalf("Something went wrong")
 			}()
 
-			GetConfig()
+			moveConfig(t)
+			makeBadConfig(t, "/etc/kinetic.conf")
+
+			config := GetConfig()
+
+			So(config.Kinesis.Stream, ShouldResemble, "stream-name")
+			So(config.AWS.AccessKey, ShouldResemble, "accesskey")
+			So(config.AWS.SecretKey, ShouldResemble, "secretkey")
+			restoreConfig(t)
 		})
 	})
 }
@@ -27,13 +33,18 @@ func TestMissingConfig(t *testing.T) {
 	Convey("Given a missing config file", t, func() {
 		moveConfig(t)
 
-		Convey("Panic should occur when attempting to load the config", func() {
+		Convey("The default configuration should be loaded", func() {
 			defer func() {
 				restoreConfig(t)
-				So(recover(), ShouldNotResemble, nil)
+				t.Fatalf("Something went wrong")
 			}()
 
-			GetConfig()
+			config := GetConfig()
+
+			So(config.Kinesis.Stream, ShouldResemble, "stream-name")
+			So(config.AWS.AccessKey, ShouldResemble, "accesskey")
+			So(config.AWS.SecretKey, ShouldResemble, "secretkey")
+			restoreConfig(t)
 		})
 	})
 }
