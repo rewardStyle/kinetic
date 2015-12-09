@@ -1,0 +1,23 @@
+machine:
+  environment:
+    GOPATH: "$HOME/.go_workspace"
+    IMPORT_PATH: "github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
+  services:
+    - docker
+
+dependencies:
+  pre:
+    - go get github.com/tools/godep
+    # Kinesis
+    - docker run -d -p 4567:4567 vsouza/kinesis-local -p 4567
+  override:
+    - mkdir -p "$GOPATH/src/$IMPORT_PATH"
+    - rsync -azvrC --delete ./ "$GOPATH/src/$IMPORT_PATH/"
+    - rsync -azvrC --delete $HOME/$CIRCLE_PROJECT_REPONAME "$GOPATH/src/$IMPORT_PATH/"
+
+test:
+  pre:
+    - go vet ./...
+
+  override:
+    - godep go test -v

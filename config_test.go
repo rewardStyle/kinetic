@@ -10,16 +10,12 @@ import (
 
 func TestBadConfig(t *testing.T) {
 	Convey("Given an incorrectly formatted config file", t, func() {
+		moveConfig(t)
+
 		Convey("The default configuration should be loaded", func() {
-			defer func() {
-				restoreConfig(t)
-				t.Fatalf("Something went wrong")
-			}()
+			makeBadConfig(t, configPath)
 
-			moveConfig(t)
-			makeBadConfig(t, "/etc/kinetic.conf")
-
-			config := GetConfig()
+			config := getConfig()
 
 			So(config.Kinesis.Stream, ShouldResemble, "stream-name")
 			So(config.AWS.AccessKey, ShouldResemble, "accesskey")
@@ -34,12 +30,7 @@ func TestMissingConfig(t *testing.T) {
 		moveConfig(t)
 
 		Convey("The default configuration should be loaded", func() {
-			defer func() {
-				restoreConfig(t)
-				t.Fatalf("Something went wrong")
-			}()
-
-			config := GetConfig()
+			config := getConfig()
 
 			So(config.Kinesis.Stream, ShouldResemble, "stream-name")
 			So(config.AWS.AccessKey, ShouldResemble, "accesskey")
@@ -50,17 +41,11 @@ func TestMissingConfig(t *testing.T) {
 }
 
 func moveConfig(t *testing.T) {
-	err := exec.Command("mv", "/etc/kinetic.conf", "/etc/kinetic_missing.conf").Run()
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
+	exec.Command("mv", configPath, configPath+".missing").Run()
 }
 
 func restoreConfig(t *testing.T) {
-	err := exec.Command("mv", "/etc/kinetic_missing.conf", "/etc/kinetic.conf").Run()
-	if err != nil {
-		t.Fatalf(err.Error())
-	}
+	exec.Command("mv", configPath+".missing", configPath).Run()
 }
 
 func makeBadConfig(t *testing.T, path string) {

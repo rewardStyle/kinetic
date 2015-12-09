@@ -4,71 +4,71 @@ import (
 	"sync"
 	"time"
 
-	kinesis "github.com/sendgridlabs/go-kinesis"
+	gokinesis "github.com/sendgridlabs/go-kinesis"
 )
 
 const (
-	AtSequenceNumber = iota
-	AfterSequenceNumber
-	TrimHorizon
-	Latest
+	atSequenceNumber = iota
+	afterSequenceNumber
+	trimHorizon
+	latest
 
-	StatusCreating = iota
-	StatusDeleting
-	StatusActive
-	StaticUpdating
+	statusCreating = iota
+	statusDeleting
+	statusActive
+	staticUpdating
 )
 
 var (
-	conf = GetConfig()
+	conf = getConfig()
 
-	KShardIteratorTypes ShardIteratorTypes = map[int]string{
-		AtSequenceNumber:    "AT_SEQUENCE_NUMBER",
-		AfterSequenceNumber: "AFTER_SEQUENCE_NUMBER",
-		TrimHorizon:         "TRIM_HORIZON",
-		Latest:              "LATEST",
+	shardIterTypes shardIteratorTypes = map[int]string{
+		atSequenceNumber:    "AT_SEQUENCE_NUMBER",
+		afterSequenceNumber: "AFTER_SEQUENCE_NUMBER",
+		trimHorizon:         "TRIM_HORIZON",
+		latest:              "LATEST",
 	}
 
-	KStreamStatusTypes StreamStatusTypes = map[int]string{
-		StatusCreating: "CREATING",
-		StatusDeleting: "DELETING",
-		StatusActive:   "ACTIVE",
-		StaticUpdating: "UPDATING",
+	streamStatuses streamStatusTypes = map[int]string{
+		statusCreating: "CREATING",
+		statusDeleting: "DELETING",
+		statusActive:   "ACTIVE",
+		staticUpdating: "UPDATING",
 	}
 )
 
 type msgFn func([]byte, *sync.WaitGroup)
-type ShardIteratorTypes map[int]string
-type StreamStatusTypes map[int]string
+type shardIteratorTypes map[int]string
+type streamStatusTypes map[int]string
 
-type Kinesis struct {
+type kinesis struct {
 	stream            string
 	shard             string
 	shardIteratorType string
 	shardIterator     string
 	sequenceNumber    string
 
-	client kinesis.KinesisClient
+	client gokinesis.KinesisClient
 }
 
-func (k *Kinesis) Init(stream, shard, shardIteratorType string) (*Kinesis, error) {
-	k = &Kinesis{
+func (k *kinesis) init(stream, shard, shardIteratorType string) (*kinesis, error) {
+	k = &kinesis{
 		stream:            stream,
 		shard:             shard,
 		shardIteratorType: shardIteratorType,
-		client:            kinesis.New(kinesis.NewAuth(conf.AWS.AccessKey, conf.AWS.SecretKey), conf.AWS.Region),
+		client:            gokinesis.New(gokinesis.NewAuth(conf.AWS.AccessKey, conf.AWS.SecretKey), conf.AWS.Region),
 	}
 
 	err := k.initShardIterator()
 	if err != nil {
-		return nil, err
+		return k, err
 	}
 
 	return k, nil
 }
 
-func (k *Kinesis) args() *kinesis.RequestArgs {
-	args := kinesis.NewArgs()
+func (k *kinesis) args() *gokinesis.RequestArgs {
+	args := gokinesis.NewArgs()
 	args.Add("StreamName", k.stream)
 	args.Add("ShardId", k.shard)
 	args.Add("ShardIteratorType", k.shardIteratorType)
@@ -76,7 +76,7 @@ func (k *Kinesis) args() *kinesis.RequestArgs {
 	return args
 }
 
-func (k *Kinesis) initShardIterator() error {
+func (k *kinesis) initShardIterator() error {
 	resp, err := k.client.GetShardIterator(k.args())
 	if err != nil {
 		return err
@@ -86,7 +86,7 @@ func (k *Kinesis) initShardIterator() error {
 	return nil
 }
 
-func (k *Kinesis) setShardIterator(shardIter string) {
+func (k *kinesis) setShardIterator(shardIter string) {
 	if shardIter == "" || len(shardIter) == 0 {
 		return
 	}
@@ -94,40 +94,24 @@ func (k *Kinesis) setShardIterator(shardIter string) {
 	k.shardIterator = shardIter
 }
 
-func (k *Kinesis) checkActive() (bool, error) {
+func (k *kinesis) checkActive() (bool, error) {
 	status, err := k.client.DescribeStream(k.args())
 	if err != nil {
 		return false, err
 	}
 
-	if KStreamStatusTypes[StatusActive] == status.StreamDescription.StreamStatus {
+	if streamStatuses[statusActive] == status.StreamDescription.StreamStatus {
 		return true, nil
 	}
 	return false, nil
 }
 
-func (k *Kinesis) createStream(name string, partitions int) error {
-	err := k.client.CreateStream(name, partitions)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (k *Kinesis) SetTestEndpoint(endpoint string) {
-	// Re-initialize kinesis client for testing
-	k = &Kinesis{
-		stream:            k.stream,
-		shard:             k.shard,
-		shardIteratorType: k.shardIteratorType,
-		client:            kinesis.NewWithEndpoint(kinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY"), conf.AWS.Region, endpoint),
-	}
-
-	k.createStream(k.stream, 1)
+func (k *kinesis) newClient(endpoint string) gokinesis.KinesisClient {
+	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY"), conf.AWS.Region, endpoint)
+	client.CreateStream(k.stream, 1)
 
 	// Wait for stream to create
 	<-time.After(1 * time.Second)
 
-	k.initShardIterator()
+	return client
 }

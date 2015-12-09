@@ -67,7 +67,7 @@ type BatchingKinesisClient interface {
 }
 
 // Config is a collection of config values for a Producer
-type Config struct {
+type config struct {
 	// AddBlocksWhenBufferFull controls the behavior of Add when the buffer is full. If true, Add
 	// will block. If false, Add will return an error. This enables integrating applications to
 	// decide how they want to handle a full buffer e.g. so they can discard records if there’s
@@ -109,7 +109,7 @@ type Config struct {
 // DefaultConfig is provided for convenience; if you have no specific preferences on how you’d
 // like to configure your Producer you can pass this into New. The default value of Logger is
 // the same as the standard logger in "log" : `log.New(os.Stderr, "", log.LstdFlags)`.
-var DefaultConfig = Config{
+var DefaultConfig = config{
 	AddBlocksWhenBufferFull: false,
 	BufferSize:              10000,
 	FlushInterval:           1 * time.Second,
@@ -134,7 +134,7 @@ var (
 func New(
 	client BatchingKinesisClient,
 	streamName string,
-	config Config,
+	config config,
 ) (Producer, error) {
 	if config.BatchSize < 1 || config.BatchSize > MaxKinesisBatchSize {
 		return nil, errors.New("BatchSize must be between 1 and 500 inclusive")
@@ -165,7 +165,7 @@ func New(
 type batchProducer struct {
 	client            BatchingKinesisClient
 	streamName        string
-	config            Config
+	config            config
 	logger            *log.Logger
 	running           bool
 	runningMu         sync.RWMutex

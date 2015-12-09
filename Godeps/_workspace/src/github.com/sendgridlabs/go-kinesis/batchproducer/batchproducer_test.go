@@ -21,7 +21,7 @@ var (
 
 func TestNewBatchProducerWithGoodValues(t *testing.T) {
 	t.Parallel()
-	config := Config{
+	config := config{
 		BufferSize:    10,
 		FlushInterval: 0,
 		BatchSize:     10,
@@ -37,7 +37,7 @@ func TestNewBatchProducerWithGoodValues(t *testing.T) {
 
 func TestNewBatchProducerWithBadBatchSize(t *testing.T) {
 	t.Parallel()
-	config := Config{
+	config := config{
 		BufferSize:    10000,
 		FlushInterval: 0,
 		BatchSize:     1000,
@@ -56,7 +56,7 @@ func TestNewBatchProducerWithBadBatchSize(t *testing.T) {
 
 func TestNewBatchProducerWithBadValues(t *testing.T) {
 	t.Parallel()
-	config := Config{
+	config := config{
 		BufferSize:    10,
 		FlushInterval: 0,
 		BatchSize:     500,
@@ -117,7 +117,7 @@ func TestStop(t *testing.T) {
 
 func TestStartWhenStarted(t *testing.T) {
 	t.Parallel()
-	config := Config{
+	config := config{
 		BufferSize:    100,
 		FlushInterval: 0,
 		BatchSize:     10,
@@ -138,7 +138,7 @@ func TestStartWhenStarted(t *testing.T) {
 
 func TestStopWhenStopped(t *testing.T) {
 	t.Parallel()
-	config := Config{
+	config := config{
 		BufferSize:    100,
 		FlushInterval: 0,
 		BatchSize:     10,
@@ -156,7 +156,7 @@ func TestStopWhenStopped(t *testing.T) {
 
 func TestSuccessiveStartsAndStops(t *testing.T) {
 	t.Parallel()
-	config := Config{
+	config := config{
 		BufferSize:    100,
 		FlushInterval: 0,
 		BatchSize:     10,
@@ -181,7 +181,7 @@ func TestSuccessiveStartsAndStops(t *testing.T) {
 
 func TestAddRecordWhenStarted(t *testing.T) {
 	t.Parallel()
-	config := Config{
+	config := config{
 		BufferSize:    100,
 		FlushInterval: 0,
 		BatchSize:     10,
@@ -202,7 +202,7 @@ func TestAddRecordWhenStarted(t *testing.T) {
 
 func TestAddRecordWhenStopped(t *testing.T) {
 	t.Parallel()
-	config := Config{
+	config := config{
 		BufferSize:    100,
 		FlushInterval: 0,
 		BatchSize:     10,
@@ -824,7 +824,7 @@ func (s *mockBatchingClient) PutRecords(args *kinesis.RequestArgs) (resp *kinesi
 }
 
 func newProducer(client *mockBatchingClient, bufferSize int, flushInterval time.Duration, batchSize int) *batchProducer {
-	config := Config{
+	config := config{
 		BufferSize: bufferSize,
 		// Set FlushInterval to an interval that will be acceptable to New; we’ll override it below
 		// after calling New.
