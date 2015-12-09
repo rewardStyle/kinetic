@@ -14,7 +14,7 @@ const testEndpoint = "http://127.0.0.1:4567"
 
 func TestListenerStop(t *testing.T) {
 	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	listener.newEndpoint(testEndpoint)
+	listener.NewEndpoint(testEndpoint)
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -36,7 +36,7 @@ func TestListenerStop(t *testing.T) {
 
 func TestListenerError(t *testing.T) {
 	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	listener.newEndpoint(testEndpoint)
+	listener.NewEndpoint(testEndpoint)
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -59,7 +59,7 @@ func TestListenerError(t *testing.T) {
 
 func TestListenerMessage(t *testing.T) {
 	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	listener.newEndpoint(testEndpoint)
+	listener.NewEndpoint(testEndpoint)
 
 	go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
 		wg.Done()
@@ -83,21 +83,14 @@ func TestRetrieveMessage(t *testing.T) {
 	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
 	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
 
-	listener.newEndpoint(testEndpoint)
-	producer.newEndpoint(testEndpoint)
+	listener.NewEndpoint(testEndpoint)
+	producer.NewEndpoint(testEndpoint)
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
 			producer.Send(new(Message).Init(c.message, "test"))
-			if !producer.IsProducing() {
-				go producer.produce()
-			}
 
 			Convey("It should be passed on the queue without error", func() {
-				if !listener.IsConsuming() {
-					go listener.consume()
-				}
-
 				msg, err := listener.Retrieve()
 				if err != nil {
 					t.Fatalf(err.Error())

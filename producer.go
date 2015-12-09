@@ -74,10 +74,14 @@ func (p *Producer) Init(stream, shard string) (*Producer, error) {
 	return p, err
 }
 
-func (p *Producer) newEndpoint(endpoint string) {
+func (p *Producer) NewEndpoint(endpoint string) {
 	// Re-initialize kinesis client for testing
 	p.kinesis.client = p.kinesis.newClient(endpoint)
 	p.initShardIterator()
+
+	if !p.IsProducing() {
+		go p.produce()
+	}
 }
 
 // Each shard can support up to 1,000 records per second for writes, up to a maximum total

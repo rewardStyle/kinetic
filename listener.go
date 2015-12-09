@@ -67,10 +67,14 @@ func (l *Listener) Init(stream, shard string) (*Listener, error) {
 	return l, err
 }
 
-func (l *Listener) newEndpoint(endpoint string) {
+func (l *Listener) NewEndpoint(endpoint string) {
 	// Re-initialize kinesis client for testing
 	l.kinesis.client = l.kinesis.newClient(endpoint)
 	l.initShardIterator()
+
+	if !l.IsConsuming() {
+		go l.consume()
+	}
 }
 
 func (l *Listener) setListening(listening bool) {
