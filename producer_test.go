@@ -10,8 +10,8 @@ import (
 )
 
 func TestProducerStop(t *testing.T) {
-	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	producer.NewEndpoint(testEndpoint)
+	producer, _ := new(Producer).Init()
+	producer.NewEndpoint(testEndpoint, "stream-name")
 
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
@@ -34,8 +34,8 @@ func TestProducerStop(t *testing.T) {
 }
 
 func TestProducerError(t *testing.T) {
-	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	producer.NewEndpoint(testEndpoint)
+	producer, _ := new(Producer).Init()
+	producer.NewEndpoint(testEndpoint, "stream-name")
 
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
@@ -53,11 +53,11 @@ func TestProducerError(t *testing.T) {
 }
 
 func TestProducerMessage(t *testing.T) {
-	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	listener, _ := new(Listener).InitWithConf("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1")
+	producer, _ := new(Producer).InitWithConf("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1")
 
-	listener.NewEndpoint(testEndpoint)
-	producer.NewEndpoint(testEndpoint)
+	listener.NewEndpoint(testEndpoint, "your-stream")
+	producer.NewEndpoint(testEndpoint, "your-stream")
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {

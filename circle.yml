@@ -8,8 +8,7 @@ machine:
 dependencies:
   pre:
     - go get github.com/tools/godep
-    # Kinesis
-    - docker run -d -p 4567:4567 vsouza/kinesis-local -p 4567
+    - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
     - mkdir -p "$GOPATH/src/$IMPORT_PATH"
     - rsync -azvrC --delete ./ "$GOPATH/src/$IMPORT_PATH/"

@@ -32,7 +32,7 @@ type Listener struct {
 	interrupts chan os.Signal
 }
 
-func (l *Listener) Init(stream, shard string) (*Listener, error) {
+func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string) (*Listener, error) {
 	var err error
 
 	if stream == "" {
@@ -46,7 +46,7 @@ func (l *Listener) Init(stream, shard string) (*Listener, error) {
 	// Relay incoming interrupt signals to this channel
 	signal.Notify(l.interrupts, os.Interrupt)
 
-	l.kinesis, err = new(kinesis).init(stream, shard, shardIterTypes[conf.Kinesis.ShardIteratorType])
+	l.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region)
 	if err != nil {
 		return l, err
 	}
@@ -67,9 +67,17 @@ func (l *Listener) Init(stream, shard string) (*Listener, error) {
 	return l, err
 }
 
-func (l *Listener) NewEndpoint(endpoint string) {
-	// Re-initialize kinesis client for testing
-	l.kinesis.client = l.kinesis.newClient(endpoint)
+func (l *Listener) Init() (*Listener, error) {
+	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, shardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
+}
+
+func (l *Listener) InitWithConf(stream, shard, shardIterType, accessKey, secretKey, region string) (*Listener, error) {
+	return l.init(stream, shard, shardIterType, accessKey, secretKey, region)
+}
+
+// Re-initialize kinesis client with new endpoint. Used for testing with kinesalite
+func (l *Listener) NewEndpoint(endpoint, stream string) {
+	l.kinesis.client = l.kinesis.newClient(endpoint, stream)
 	l.initShardIterator()
 
 	if !l.IsConsuming() {
