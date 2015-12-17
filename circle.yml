@@ -19,4 +19,4 @@ test:
     - go vet ./...
 
   override:
-    - godep go test -v
+    - godep go test -v -race -cover
