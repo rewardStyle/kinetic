@@ -51,12 +51,12 @@ type kinesis struct {
 	client gokinesis.KinesisClient
 }
 
-func (k *kinesis) init(stream, shard, shardIteratorType string) (*kinesis, error) {
+func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
 	k = &kinesis{
 		stream:            stream,
 		shard:             shard,
 		shardIteratorType: shardIteratorType,
-		client:            gokinesis.New(gokinesis.NewAuth(conf.AWS.AccessKey, conf.AWS.SecretKey), conf.AWS.Region),
+		client:            gokinesis.New(gokinesis.NewAuth(accessKey, secretKey), region),
 	}
 
 	err := k.initShardIterator()
@@ -106,9 +106,9 @@ func (k *kinesis) checkActive() (bool, error) {
 	return false, nil
 }
 
-func (k *kinesis) newClient(endpoint string) gokinesis.KinesisClient {
+func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
 	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY"), conf.AWS.Region, endpoint)
-	client.CreateStream(k.stream, 1)
+	client.CreateStream(stream, 1)
 
 	// Wait for stream to create
 	<-time.After(1 * time.Second)

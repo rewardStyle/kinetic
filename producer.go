@@ -39,7 +39,7 @@ type Producer struct {
 	interrupts chan os.Signal
 }
 
-func (p *Producer) Init(stream, shard string) (*Producer, error) {
+func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string) (*Producer, error) {
 	var err error
 
 	if stream == "" {
@@ -53,7 +53,7 @@ func (p *Producer) Init(stream, shard string) (*Producer, error) {
 	// Relay incoming interrupt signals to this channel
 	signal.Notify(p.interrupts, os.Interrupt)
 
-	p.kinesis, err = new(kinesis).init(stream, shard, shardIterTypes[conf.Kinesis.ShardIteratorType])
+	p.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region)
 	if err != nil {
 		return p, err
 	}
@@ -74,9 +74,19 @@ func (p *Producer) Init(stream, shard string) (*Producer, error) {
 	return p, err
 }
 
-func (p *Producer) NewEndpoint(endpoint string) {
+func (p *Producer) Init() (*Producer, error) {
+	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, shardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
+}
+
+// Initialize with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
+func (p *Producer) InitWithConf(stream, shard, shardIterType, accessKey, secretKey, region string) (*Producer, error) {
+	return p.init(stream, shard, shardIterType, accessKey, secretKey, region)
+}
+
+// Re-initialize kinesis client with new endpoint. Used for testing with kinesalite
+func (p *Producer) NewEndpoint(endpoint, stream string) {
 	// Re-initialize kinesis client for testing
-	p.kinesis.client = p.kinesis.newClient(endpoint)
+	p.kinesis.client = p.kinesis.newClient(endpoint, stream)
 	p.initShardIterator()
 
 	if !p.IsProducing() {

@@ -13,7 +13,7 @@ func TestBadConfig(t *testing.T) {
 		moveConfig(t)
 
 		Convey("The default configuration should be loaded", func() {
-			makeBadConfig(t, configPath)
+			makeBadConfig(t, "kinetic.conf")
 
 			config := getConfig()
 

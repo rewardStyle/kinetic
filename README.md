@@ -1,7 +1,8 @@
-Master Branch: [![Circle CI](https://circleci.com/gh/rewardStyle/kinetic/tree/master.svg?style=svg&circle-token=8c8b6e0cca0f0fde6ec41b4e02329c406f74a446)](https://circleci.com/gh/rewardStyle/kinetic/tree/master)
+[![GoDoc](https://godoc.org/github.com/rewardStyle/kinetic?status.svg)](https://godoc.org/github.com/rewardStyle/kinetic)
+[![Circle CI](https://circleci.com/gh/rewardStyle/kinetic/tree/master.svg?style=svg&circle-token=8c8b6e0cca0f0fde6ec41b4e02329c406f74a446)](https://circleci.com/gh/rewardStyle/kinetic/tree/master)
 
 # kinetic
-Kinetic is a high-performance AWS Kinesis Client for Go
+Kinetic is an MIT-licensed high-performance AWS Kinesis Client for Go
 
 Kinetic wraps [sendgridlabs go-kinesis library](https://github.com/sendgridlabs/go-kinesis) to provide maximum throughput for AWS Kinesis producers and consumers.
 An instance of a Kinetic listener/producer is meant to be used for each shard, so please use it accordingly. If you use more than one instance per-shard then you will
@@ -31,8 +32,11 @@ Kinetic can be used to interface with kinesis like so:
 ```go
 import "github.com/rewardStyle/kinetic"
 
-listener, _ := new(kinetic.Listener).Init("your-stream", 0)
-producer, _ := new(kinetic.Producer).Init("your-stream", 0)
+// Use configuration in /etc/kinetic.conf
+listener, _ := new(kinetic.Listener).Init()
+
+// Use custom configuration
+producer, _ := new(kinetic.Producer).InitWithConf("your-stream", "0", "shard-type", "accesskey", "secretkey", "region")
 
 producer.Send(new(kinetic.Message).Init([]byte(`{"foo":"bar"}`), "test"))
 
@@ -56,4 +60,4 @@ listener.Close()
 producer.Close()
 ```
 
-For more examples take a look at the tests.
+For more examples take a look at the tests. API documentation can be found [here](https://godoc.org/github.com/rewardStyle/kinetic).

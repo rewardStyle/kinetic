@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	configPath = "kinetic.conf"
+	configPath = "/etc/kinetic.conf"
 
 	defaultConfig = `
 [kinesis]
@@ -29,8 +29,6 @@ verbose             = true
 
 type config struct {
 	Kinesis struct {
-		Host              string
-		Port              string
 		Stream            string
 		Shard             string
 		ShardIteratorType int

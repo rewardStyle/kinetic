@@ -13,8 +13,8 @@ import (
 const testEndpoint = "http://127.0.0.1:4567"
 
 func TestListenerStop(t *testing.T) {
-	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	listener.NewEndpoint(testEndpoint)
+	listener, _ := new(Listener).Init()
+	listener.NewEndpoint(testEndpoint, "stream-name")
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -35,8 +35,8 @@ func TestListenerStop(t *testing.T) {
 }
 
 func TestListenerError(t *testing.T) {
-	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	listener.NewEndpoint(testEndpoint)
+	listener, _ := new(Listener).Init()
+	listener.NewEndpoint(testEndpoint, "stream-name")
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -58,8 +58,8 @@ func TestListenerError(t *testing.T) {
 }
 
 func TestListenerMessage(t *testing.T) {
-	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	listener.NewEndpoint(testEndpoint)
+	listener, _ := new(Listener).Init()
+	listener.NewEndpoint(testEndpoint, "stream-name")
 
 	go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
 		wg.Done()
@@ -80,11 +80,11 @@ func TestListenerMessage(t *testing.T) {
 }
 
 func TestRetrieveMessage(t *testing.T) {
-	listener, _ := new(Listener).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
-	producer, _ := new(Producer).Init(conf.Kinesis.Stream, conf.Kinesis.Shard)
+	listener, _ := new(Listener).InitWithConf("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1")
+	producer, _ := new(Producer).InitWithConf("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1")
 
-	listener.NewEndpoint(testEndpoint)
-	producer.NewEndpoint(testEndpoint)
+	listener.NewEndpoint(testEndpoint, "your-stream")
+	producer.NewEndpoint(testEndpoint, "your-stream")
 
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
