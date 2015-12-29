@@ -68,7 +68,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 }
 
 func (l *Listener) Init() (*Listener, error) {
-	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, shardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
+	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
 }
 
 func (l *Listener) InitWithConf(stream, shard, shardIterType, accessKey, secretKey, region string) (*Listener, error) {

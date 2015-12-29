@@ -22,7 +22,7 @@ const (
 var (
 	conf = getConfig()
 
-	shardIterTypes shardIteratorTypes = map[int]string{
+	ShardIterTypes shardIteratorTypes = map[int]string{
 		atSequenceNumber:    "AT_SEQUENCE_NUMBER",
 		afterSequenceNumber: "AFTER_SEQUENCE_NUMBER",
 		trimHorizon:         "TRIM_HORIZON",
