@@ -75,7 +75,7 @@ func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, regi
 }
 
 func (p *Producer) Init() (*Producer, error) {
-	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, shardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
+	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
 }
 
 // Initialize with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
