@@ -26,6 +26,7 @@ type Listener struct {
 	listeningMu sync.Mutex
 	consuming   bool
 	consumingMu sync.Mutex
+	messageMu   sync.Mutex
 
 	errors     chan error
 	messages   chan *Message
@@ -141,6 +142,8 @@ stop:
 }
 
 func (l *Listener) addMessage(msg *Message) {
+	l.messageMu.Lock()
+	defer l.messageMu.Unlock()
 	l.messages <- msg
 }
 
@@ -223,6 +226,8 @@ func (l *Listener) Errors() <-chan error {
 }
 
 func (l *Listener) Messages() <-chan *Message {
+	l.messageMu.Lock()
+	defer l.messageMu.Unlock()
 	return l.messages
 }
 
