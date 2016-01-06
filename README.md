@@ -43,7 +43,7 @@ producer.Send(new(kinetic.Message).Init([]byte(`{"foo":"bar"}`), "test"))
 // Using Retrieve
 msg, err := listener.Retrieve()
 if err != nil {
-    t.Fatalf(err.Error())
+    println(err)
 }
 
 println(string(msg))
@@ -58,6 +58,18 @@ producer.Send(new(KinesisMessage).Init([]byte(`{"foo":"bar"}`), "test"))
 
 listener.Close()
 producer.Close()
+
+// Or with Kinesis Firehose
+firehose, err := new(kinetic.Producer).Firehose()
+if err != nil {
+    println(err)
+}
+
+// Will add a newline character to each message
+firehose.Send(new(KinesisMessage).Init([]byte(`{"foo":"bar"}`), "test"))
+
+firehose.Close()
+
 ```
 
 For more examples take a look at the tests. API documentation can be found [here](https://godoc.org/github.com/rewardStyle/kinetic).

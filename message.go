@@ -1,7 +1,7 @@
 package kinetic
 
 import (
-	gokinesis "github.com/sendgridlabs/go-kinesis"
+	gokinesis "github.com/rewardStyle/go-kinesis"
 )
 
 type Message struct {
@@ -15,6 +15,10 @@ func (k *Message) Init(msg []byte, key string) *Message {
 			PartitionKey: key,
 		},
 	}
+}
+
+func (k *Message) SetValue(value []byte) {
+	k.GetRecordsRecords.Data = value
 }
 
 func (k *Message) Value() []byte {

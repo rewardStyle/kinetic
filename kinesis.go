@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	gokinesis "github.com/sendgridlabs/go-kinesis"
+	gokinesis "github.com/rewardStyle/go-kinesis"
 )
 
 const (
@@ -17,6 +17,9 @@ const (
 	statusDeleting
 	statusActive
 	staticUpdating
+
+	kinesisWritesPerSec int = 1000
+	kinesisReadsPerSec  int = 5
 )
 
 var (

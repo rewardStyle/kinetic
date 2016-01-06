@@ -68,10 +68,12 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	return l, err
 }
 
+// Initialize a listener with the params specified in the configuration file
 func (l *Listener) Init() (*Listener, error) {
 	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
 }
 
+// Initialize a listener with the supplied params
 func (l *Listener) InitWithConf(stream, shard, shardIterType, accessKey, secretKey, region string) (*Listener, error) {
 	return l.init(stream, shard, shardIterType, accessKey, secretKey, region)
 }
@@ -92,6 +94,7 @@ func (l *Listener) setListening(listening bool) {
 	l.listeningMu.Unlock()
 }
 
+// Identifies whether or not messages and errors are being handled after consumption
 func (l *Listener) IsListening() bool {
 	l.listeningMu.Lock()
 	defer l.listeningMu.Unlock()
@@ -104,6 +107,7 @@ func (l *Listener) setConsuming(consuming bool) {
 	l.consumingMu.Unlock()
 }
 
+// Identifies whether or not the kinesis stream is being polled
 func (l *Listener) IsConsuming() bool {
 	l.consumingMu.Lock()
 	defer l.consumingMu.Unlock()
@@ -120,6 +124,7 @@ func (l *Listener) shouldConsume() bool {
 
 }
 
+// Handle the consumed messages, errors and interrupts
 func (l *Listener) Listen(fn msgFn) {
 	l.setListening(true)
 stop:
@@ -143,10 +148,11 @@ stop:
 
 func (l *Listener) addMessage(msg *Message) {
 	l.messageMu.Lock()
-	defer l.messageMu.Unlock()
 	l.messages <- msg
+	l.messageMu.Unlock()
 }
 
+// Continually poll the Kinesis queue
 func (l *Listener) consume() {
 	l.setConsuming(true)
 
@@ -177,6 +183,7 @@ func (l *Listener) consume() {
 	}
 }
 
+// Retrive a message from the stream and return the value
 func (l *Listener) Retrieve() (*Message, error) {
 	select {
 	case msg := <-l.Messages():
@@ -189,6 +196,7 @@ func (l *Listener) Retrieve() (*Message, error) {
 	}
 }
 
+// Retrieve a message from the queue and apply the supplied function to the message
 func (l *Listener) RetrieveFn(fn msgFn) {
 	select {
 	case err := <-l.Errors():
@@ -202,6 +210,7 @@ func (l *Listener) RetrieveFn(fn msgFn) {
 	}
 }
 
+// Stops consuming and listening and waits for all tasks to finish
 func (l *Listener) Close() error {
 	if conf.Debug.Verbose {
 		log.Println("Waiting for all tasks to finish...")
@@ -269,7 +278,7 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 
 	// If we have attempted five times and it has been less than one second
 	// since we started reading then we need to wait for the second to finish
-	if *counter >= 5 && !(time.Now().After(timer.Add(1 * time.Second))) {
+	if *counter >= kinesisReadsPerSec && !(time.Now().After(timer.Add(1 * time.Second))) {
 		// Wait for the remainder of the second - timer and counter
 		// will be reset on next pass
 		<-time.After(1 * time.Second)
