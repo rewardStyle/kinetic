@@ -7,9 +7,9 @@
 			"Rev": "f1ac7f4f24f50328e6bc838ca4437d1612a0243c"
 		},
 		{
-			"ImportPath": "github.com/sendgridlabs/go-kinesis",
-			"Comment": "1.0.1-14-g21dfd44",
-			"Rev": "21dfd445a8ef22c22bd994d6c8c4a93d009c8488"
+			"ImportPath": "github.com/rewardStyle/go-kinesis",
+			"Comment": "1.0.1-21-g7e55cce",
+			"Rev": "7e55ccefa23a47dd786058b7fbfb62f5c5ac34a5"
 		},
 		{
 			"ImportPath": "github.com/smartystreets/assertions",

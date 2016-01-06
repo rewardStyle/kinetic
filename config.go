@@ -17,6 +17,9 @@ stream              = stream-name
 shard               = 0
 sharditeratortype   = 3
 
+[firehose]
+stream              = firehose-stream-name
+
 [aws]
 accesskey           = accesskey
 secretkey           = secretkey
@@ -32,6 +35,10 @@ type config struct {
 		Stream            string
 		Shard             string
 		ShardIteratorType int
+	}
+
+	Firehose struct {
+		Stream string
 	}
 
 	AWS struct {
