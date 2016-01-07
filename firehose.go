@@ -12,7 +12,7 @@ import (
 
 const (
 	firehoseWritesPerSec      int    = 2000
-	truncatedRecordTerminator string = `\n`
+	truncatedRecordTerminator string = ``
 )
 
 func (k *kinesis) firehoseArgs() *gokinesis.RequestArgs {
