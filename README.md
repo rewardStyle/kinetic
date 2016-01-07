@@ -65,7 +65,6 @@ if err != nil {
     println(err)
 }
 
-// Will add a newline character to each message
 firehose.Send(new(KinesisMessage).Init([]byte(`{"foo":"bar"}`), "test"))
 
 firehose.Close()
