@@ -128,7 +128,6 @@ func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, reg
 func (p *Producer) NewEndpoint(endpoint, stream string) {
 	// Re-initialize kinesis client for testing
 	p.kinesis.client = p.kinesis.newClient(endpoint, stream)
-	p.initShardIterator()
 
 	if !p.IsProducing() {
 		go p.produce()
