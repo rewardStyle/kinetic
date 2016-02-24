@@ -73,7 +73,7 @@ func (p *Producer) Firehose() (*Producer, error) {
 }
 
 // Initialize a producer for Kinesis Firehose with the specified params
-func (p *Producer) FirehoseWithConf(stream, accessKey, secretKey, region string) (*Producer, error) {
+func (p *Producer) FirehoseC(stream, accessKey, secretKey, region string) (*Producer, error) {
 	if stream == "" {
 		return nil, NullStreamError
 	}

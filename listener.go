@@ -74,7 +74,7 @@ func (l *Listener) Init() (*Listener, error) {
 }
 
 // Initialize a listener with the supplied params
-func (l *Listener) InitWithConf(stream, shard, shardIterType, accessKey, secretKey, region string) (*Listener, error) {
+func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string) (*Listener, error) {
 	return l.init(stream, shard, shardIterType, accessKey, secretKey, region)
 }
 
