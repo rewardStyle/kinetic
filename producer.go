@@ -120,7 +120,7 @@ func (p *Producer) Init() (*Producer, error) {
 }
 
 // Initialize a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
-func (p *Producer) InitWithConf(stream, shard, shardIterType, accessKey, secretKey, region string) (*Producer, error) {
+func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string) (*Producer, error) {
 	return p.init(stream, shard, shardIterType, accessKey, secretKey, region)
 }
 
