@@ -187,11 +187,14 @@ func (l *Listener) consume() {
 			l.errors <- err
 		}
 
-		if response != nil && len(response.Records) > 0 {
-			for _, record := range response.Records {
-				l.addMessage(&Message{&record})
-			}
+		if response != nil {
 			l.setShardIterator(response.NextShardIterator)
+
+			if len(response.Records) > 0 {
+				for _, record := range response.Records {
+					l.addMessage(&Message{&record})
+				}
+			}
 		}
 
 		if !l.shouldConsume() {
