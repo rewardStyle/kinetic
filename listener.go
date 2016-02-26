@@ -18,9 +18,10 @@ var (
 type Listener struct {
 	*kinesis
 
-	wg       sync.WaitGroup
-	msgCount int
-	errCount int
+	wg        sync.WaitGroup
+	msgCount  int
+	errCount  int
+	msgBuffer int
 
 	listening   bool
 	listeningMu sync.Mutex
@@ -40,7 +41,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 		return nil, NullStreamError
 	}
 
-	l.messages = make(chan *Message)
+	l.messages = make(chan *Message, ListenerBuffer)
 	l.errors = make(chan error)
 	l.interrupts = make(chan os.Signal, 1)
 
@@ -148,11 +149,29 @@ stop:
 
 func (l *Listener) addMessage(msg *Message) {
 	l.messageMu.Lock()
+
+	l.msgBuffer++
+
+	// Allow reads to catch up to prevent deadlock
+	if l.msgBuffer >= ListenerBuffer {
+		if conf.Debug.Verbose {
+			log.Println("Throttling addMessage...")
+		}
+
+		l.msgBuffer--
+		l.messageMu.Unlock()
+
+		<-time.After(1 * time.Second)
+
+		l.addMessage(msg)
+		return
+	}
+
 	l.messages <- msg
 	l.messageMu.Unlock()
 }
 
-// Continually poll the Kinesis queue
+// Continually poll the Kinesis stream
 func (l *Listener) consume() {
 	l.setConsuming(true)
 
@@ -168,11 +187,10 @@ func (l *Listener) consume() {
 			l.errors <- err
 		}
 
-		if response != nil {
+		if response != nil && len(response.Records) > 0 {
 			for _, record := range response.Records {
 				l.addMessage(&Message{&record})
 			}
-
 			l.setShardIterator(response.NextShardIterator)
 		}
 
@@ -213,7 +231,7 @@ func (l *Listener) RetrieveFn(fn msgFn) {
 // Stops consuming and listening and waits for all tasks to finish
 func (l *Listener) Close() error {
 	if conf.Debug.Verbose {
-		log.Println("Waiting for all tasks to finish...")
+		log.Println("Listener is waiting for all tasks to finish...")
 	}
 
 	// Stop consuming
@@ -224,7 +242,7 @@ func (l *Listener) Close() error {
 	l.wg.Wait()
 
 	if conf.Debug.Verbose {
-		log.Println("Done.")
+		log.Println("Listener is shutting down.")
 	}
 
 	return nil
@@ -237,6 +255,7 @@ func (l *Listener) Errors() <-chan error {
 func (l *Listener) Messages() <-chan *Message {
 	l.messageMu.Lock()
 	defer l.messageMu.Unlock()
+	l.msgBuffer--
 	return l.messages
 }
 
@@ -251,7 +270,7 @@ func (l *Listener) handleMsg(msg *Message, fn msgFn) {
 
 func (l *Listener) handleInterrupt(signal os.Signal) {
 	if conf.Debug.Verbose {
-		log.Println("Received interrupt signal")
+		log.Println("Listener received interrupt signal")
 	}
 
 	l.Close()
