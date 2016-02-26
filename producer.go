@@ -19,6 +19,9 @@ const (
 
 	kinesisType = iota
 	firehoseType
+
+	ListenerBuffer = 1000
+	ProducerBuffer = 1000
 )
 
 var (
@@ -106,7 +109,7 @@ func (p *Producer) activate() (*Producer, error) {
 }
 
 func (p *Producer) initChannels() {
-	p.messages = make(chan *Message)
+	p.messages = make(chan *Message, ProducerBuffer)
 	p.errors = make(chan error)
 	p.interrupts = make(chan os.Signal, 1)
 
@@ -297,6 +300,10 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 
 // Stops queuing and producing and waits for all tasks to finish
 func (p *Producer) Close() error {
+	if conf.Debug.Verbose {
+		log.Println("Producer is waiting for all tasks to finish...")
+	}
+
 	p.wg.Wait()
 
 	// Stop producing
@@ -304,12 +311,16 @@ func (p *Producer) Close() error {
 		p.interrupts <- syscall.SIGINT
 	}()
 
+	if conf.Debug.Verbose {
+		log.Println("Producer is shutting down.")
+	}
+
 	return nil
 }
 
 func (p *Producer) handleInterrupt(signal os.Signal) {
 	if conf.Debug.Verbose {
-		log.Println("Received interrupt signal")
+		log.Println("Producer received interrupt signal")
 	}
 
 	p.Close()
