@@ -5,12 +5,12 @@ import (
 )
 
 type Message struct {
-	*gokinesis.GetRecordsRecords
+	gokinesis.GetRecordsRecords
 }
 
 func (k *Message) Init(msg []byte, key string) *Message {
 	return &Message{
-		&gokinesis.GetRecordsRecords{
+		gokinesis.GetRecordsRecords{
 			Data:         msg,
 			PartitionKey: key,
 		},
