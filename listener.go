@@ -192,7 +192,7 @@ func (l *Listener) consume() {
 
 			if len(response.Records) > 0 {
 				for _, record := range response.Records {
-					l.addMessage(&Message{&record})
+					l.addMessage(&Message{record})
 				}
 			}
 		}
