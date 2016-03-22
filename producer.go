@@ -208,10 +208,6 @@ stop:
 
 		select {
 		case msg := <-p.Messages():
-			defer func() {
-				<-p.sem
-			}()
-
 			p.msgCount++
 
 			if conf.Debug.Verbose {
@@ -240,6 +236,9 @@ stop:
 					p.wg.Done()
 				}()
 			}
+
+			<-p.sem
+
 			break
 		case sig := <-p.interrupts:
 			go p.handleInterrupt(sig)
