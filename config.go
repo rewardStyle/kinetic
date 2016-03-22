@@ -27,6 +27,10 @@ region              = us-east-1
 
 [debug]
 verbose             = true
+
+[concurrency]
+listener            = 100
+producer            = 100
 `
 )
 
@@ -49,6 +53,11 @@ type config struct {
 
 	Debug struct {
 		Verbose bool
+	}
+
+	Concurrency struct {
+		Listener int
+		Producer int
 	}
 }
 

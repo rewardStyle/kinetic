@@ -19,9 +19,6 @@ const (
 
 	kinesisType = iota
 	firehoseType
-
-	ListenerBuffer = 1000
-	ProducerBuffer = 1000
 )
 
 var (
@@ -36,6 +33,10 @@ type Producer struct {
 	*kinesis
 
 	producerType int
+
+	concurrency   int
+	concurrencyMu sync.Mutex
+	sem           chan bool
 
 	wg          sync.WaitGroup
 	msgCount    int
@@ -52,13 +53,14 @@ type Producer struct {
 	interrupts chan os.Signal
 }
 
-func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string) (*Producer, error) {
+func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
 	var err error
 
 	if stream == "" {
 		return nil, NullStreamError
 	}
 
+	p.setConcurrency(concurrency)
 	p.setProducerType(kinesisType)
 
 	p.initChannels()
@@ -69,6 +71,28 @@ func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	}
 
 	return p.activate()
+}
+
+func (p *Producer) initChannels() {
+	p.sem = make(chan bool, p.getConcurrency())
+	p.messages = make(chan *Message, p.getConcurrency())
+	p.errors = make(chan error)
+	p.interrupts = make(chan os.Signal, 1)
+
+	// Relay incoming interrupt signals to this channel
+	signal.Notify(p.interrupts, os.Interrupt)
+}
+
+func (p *Producer) setConcurrency(concurrency int) {
+	p.concurrencyMu.Lock()
+	p.concurrency = concurrency
+	p.concurrencyMu.Unlock()
+}
+
+func (p *Producer) getConcurrency() int {
+	p.concurrencyMu.Lock()
+	defer p.concurrencyMu.Unlock()
+	return p.concurrency
 }
 
 func (p *Producer) setProducerType(producerType int) {
@@ -108,23 +132,14 @@ func (p *Producer) activate() (*Producer, error) {
 	return p, err
 }
 
-func (p *Producer) initChannels() {
-	p.messages = make(chan *Message, ProducerBuffer)
-	p.errors = make(chan error)
-	p.interrupts = make(chan os.Signal, 1)
-
-	// Relay incoming interrupt signals to this channel
-	signal.Notify(p.interrupts, os.Interrupt)
-}
-
 // Initialize a producer with the params specified in the configuration file
 func (p *Producer) Init() (*Producer, error) {
-	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
+	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Producer)
 }
 
 // Initialize a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
-func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string) (*Producer, error) {
-	return p.init(stream, shard, shardIterType, accessKey, secretKey, region)
+func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
+	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
 }
 
 // Re-initialize kinesis client with new endpoint. Used for testing with kinesalite
@@ -156,7 +171,7 @@ func (p *Producer) kinesisFlush(counter *int, timer *time.Time) bool {
 	if *counter >= kinesisWritesPerSec && !(time.Now().After(timer.Add(1 * time.Second))) {
 		// Wait for the remainder of the second - timer and counter
 		// will be reset on next pass
-		<-time.After(1 * time.Second)
+		<-time.After(1*time.Second - time.Since(*timer))
 	}
 
 	return true
@@ -189,8 +204,14 @@ func (p *Producer) produce() {
 
 stop:
 	for {
+		p.sem <- true
+
 		select {
 		case msg := <-p.Messages():
+			defer func() {
+				<-p.sem
+			}()
+
 			p.msgCount++
 
 			if conf.Debug.Verbose {
@@ -323,6 +344,10 @@ func (p *Producer) handleInterrupt(signal os.Signal) {
 		log.Println("Producer received interrupt signal")
 	}
 
+	defer func() {
+		<-p.sem
+	}()
+
 	p.Close()
 }
 
@@ -330,6 +355,10 @@ func (p *Producer) handleError(err error) {
 	if err != nil && conf.Debug.Verbose {
 		log.Println("Received error: ", err.Error())
 	}
+
+	defer func() {
+		<-p.sem
+	}()
 
 	p.wg.Done()
 }

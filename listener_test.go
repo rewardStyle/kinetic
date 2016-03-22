@@ -82,8 +82,8 @@ func TestListenerMessage(t *testing.T) {
 }
 
 func TestRetrieveMessage(t *testing.T) {
-	listener, _ := new(Listener).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1")
-	producer, _ := new(Producer).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1")
+	listener, _ := new(Listener).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1", 10)
+	producer, _ := new(Producer).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1", 10)
 
 	listener.NewEndpoint(testEndpoint, "your-stream")
 	producer.NewEndpoint(testEndpoint, "your-stream")

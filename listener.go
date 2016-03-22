@@ -18,6 +18,10 @@ var (
 type Listener struct {
 	*kinesis
 
+	concurrency   int
+	concurrencyMu sync.Mutex
+	sem           chan bool
+
 	wg        sync.WaitGroup
 	msgCount  int
 	errCount  int
@@ -34,14 +38,17 @@ type Listener struct {
 	interrupts chan os.Signal
 }
 
-func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string) (*Listener, error) {
+func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
 	var err error
 
 	if stream == "" {
 		return nil, NullStreamError
 	}
 
-	l.messages = make(chan *Message, ListenerBuffer)
+	l.setConcurrency(concurrency)
+
+	l.sem = make(chan bool, l.getConcurrency())
+	l.messages = make(chan *Message, l.getConcurrency())
 	l.errors = make(chan error)
 	l.interrupts = make(chan os.Signal, 1)
 
@@ -71,12 +78,12 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 
 // Initialize a listener with the params specified in the configuration file
 func (l *Listener) Init() (*Listener, error) {
-	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region)
+	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Listener)
 }
 
 // Initialize a listener with the supplied params
-func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string) (*Listener, error) {
-	return l.init(stream, shard, shardIterType, accessKey, secretKey, region)
+func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
+	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
 }
 
 // Re-initialize kinesis client with new endpoint. Used for testing with kinesalite
@@ -87,6 +94,18 @@ func (l *Listener) NewEndpoint(endpoint, stream string) {
 	if !l.IsConsuming() {
 		go l.consume()
 	}
+}
+
+func (l *Listener) setConcurrency(concurrency int) {
+	l.concurrencyMu.Lock()
+	l.concurrency = concurrency
+	l.concurrencyMu.Unlock()
+}
+
+func (l *Listener) getConcurrency() int {
+	l.concurrencyMu.Lock()
+	defer l.concurrencyMu.Unlock()
+	return l.concurrency
 }
 
 func (l *Listener) setListening(listening bool) {
@@ -130,6 +149,7 @@ func (l *Listener) Listen(fn msgFn) {
 	l.setListening(true)
 stop:
 	for {
+		l.sem <- true
 		select {
 		case err := <-l.Errors():
 			l.errCount++
@@ -153,15 +173,11 @@ func (l *Listener) addMessage(msg *Message) {
 	l.msgBuffer++
 
 	// Allow reads to catch up to prevent deadlock
-	if l.msgBuffer >= ListenerBuffer {
-		if conf.Debug.Verbose {
-			log.Println("Throttling addMessage...")
-		}
-
+	if l.msgBuffer >= l.getConcurrency() {
 		l.msgBuffer--
 		l.messageMu.Unlock()
 
-		<-time.After(1 * time.Second)
+		<-time.After(1 * time.Millisecond)
 
 		l.addMessage(msg)
 		return
@@ -268,6 +284,10 @@ func (l *Listener) handleMsg(msg *Message, fn msgFn) {
 		log.Printf("Messages received: %d", l.msgCount)
 	}
 
+	defer func() {
+		<-l.sem
+	}()
+
 	fn(msg.Value(), &l.wg)
 }
 
@@ -276,6 +296,10 @@ func (l *Listener) handleInterrupt(signal os.Signal) {
 		log.Println("Listener received interrupt signal")
 	}
 
+	defer func() {
+		<-l.sem
+	}()
+
 	l.Close()
 }
 
@@ -283,6 +307,10 @@ func (l *Listener) handleError(err error) {
 	if err != nil && conf.Debug.Verbose {
 		log.Println("Received error: ", err.Error())
 	}
+
+	defer func() {
+		<-l.sem
+	}()
 
 	l.wg.Done()
 }
@@ -301,8 +329,7 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 	// If we have attempted five times and it has been less than one second
 	// since we started reading then we need to wait for the second to finish
 	if *counter >= kinesisReadsPerSec && !(time.Now().After(timer.Add(1 * time.Second))) {
-		// Wait for the remainder of the second - timer and counter
-		// will be reset on next pass
-		<-time.After(1 * time.Second)
+		// Wait for the remainder of the second - timer and counter will be reset on next pass
+		<-time.After(1*time.Second - time.Since(*timer))
 	}
 }
