@@ -36,7 +36,7 @@ import "github.com/rewardStyle/kinetic"
 listener, _ := new(kinetic.Listener).Init()
 
 // Use custom configuration
-producer, _ := new(kinetic.Producer).InitC("your-stream", "0", "shard-type", "accesskey", "secretkey", "region")
+producer, _ := new(kinetic.Producer).InitC("your-stream", "0", "shard-type", "accesskey", "secretkey", "region", 10)
 
 producer.Send(new(kinetic.Message).Init([]byte(`{"foo":"bar"}`), "test"))
 
