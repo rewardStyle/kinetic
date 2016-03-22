@@ -201,6 +201,9 @@ func (l *Listener) consume() {
 		response, err := l.client.GetRecords(l.args())
 		if err != nil {
 			l.errors <- err
+
+			// Refresh the shard iterator
+			l.initShardIterator()
 		}
 
 		if response != nil {
