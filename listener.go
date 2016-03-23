@@ -23,8 +23,6 @@ type Listener struct {
 	sem           chan bool
 
 	wg        sync.WaitGroup
-	msgCount  int
-	errCount  int
 	msgBuffer int
 
 	listening   bool
@@ -149,14 +147,15 @@ func (l *Listener) Listen(fn msgFn) {
 	l.setListening(true)
 stop:
 	for {
-		l.sem <- true
+		getLockWithTimeout(l.sem)
+
 		select {
 		case err := <-l.Errors():
-			l.errCount++
+			l.incErrCount()
 			l.wg.Add(1)
 			go l.handleError(err)
 		case msg := <-l.Messages():
-			l.msgCount++
+			l.incMsgCount()
 			l.wg.Add(1)
 			go l.handleMsg(msg, fn)
 		case sig := <-l.interrupts:
@@ -283,8 +282,10 @@ func (l *Listener) Messages() <-chan *Message {
 
 func (l *Listener) handleMsg(msg *Message, fn msgFn) {
 	if conf.Debug.Verbose {
-		log.Printf("Received message: %s with key: %s", msg.Value(), msg.Key())
-		log.Printf("Messages received: %d", l.msgCount)
+		// log.Printf("Received message: %s with key: %s", msg.Value(), msg.Key())
+		if l.getMsgCount()%100 == 0 {
+			log.Printf("Messages received: %d", l.getMsgCount())
+		}
 	}
 
 	defer func() {
