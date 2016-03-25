@@ -47,7 +47,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 
 	l.sem = make(chan bool, l.getConcurrency())
 	l.messages = make(chan *Message, l.getConcurrency())
-	l.errors = make(chan error)
+	l.errors = make(chan error, l.getConcurrency())
 	l.interrupts = make(chan os.Signal, 1)
 
 	// Relay incoming interrupt signals to this channel
@@ -147,7 +147,7 @@ func (l *Listener) Listen(fn msgFn) {
 	l.setListening(true)
 stop:
 	for {
-		getLockWithTimeout(l.sem)
+		getLock(l.sem)
 
 		select {
 		case err := <-l.Errors():
@@ -282,7 +282,6 @@ func (l *Listener) Messages() <-chan *Message {
 
 func (l *Listener) handleMsg(msg *Message, fn msgFn) {
 	if conf.Debug.Verbose {
-		// log.Printf("Received message: %s with key: %s", msg.Value(), msg.Key())
 		if l.getMsgCount()%100 == 0 {
 			log.Printf("Messages received: %d", l.getMsgCount())
 		}

@@ -75,7 +75,7 @@ func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, regi
 func (p *Producer) initChannels() {
 	p.sem = make(chan bool, p.getConcurrency())
 	p.messages = make(chan *Message, p.getConcurrency())
-	p.errors = make(chan error)
+	p.errors = make(chan error, p.getConcurrency())
 	p.interrupts = make(chan os.Signal, 1)
 
 	// Relay incoming interrupt signals to this channel
@@ -203,7 +203,7 @@ func (p *Producer) produce() {
 
 stop:
 	for {
-		getLockWithTimeout(p.sem)
+		getLock(p.sem)
 
 		select {
 		case msg := <-p.Messages():

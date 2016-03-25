@@ -163,19 +163,6 @@ func (k *kinesis) getErrCount() int {
 	return k.errCount
 }
 
-func getLockWithTimeout(sem chan bool) {
-	timeout := make(chan bool)
-	go func() {
-		time.Sleep(Timeout * time.Second)
-		timeout <- true
-	}()
-
-	for {
-		select {
-		case sem <- true:
-			return
-		case <-timeout:
-			return
-		}
-	}
+func getLock(sem chan bool) {
+	sem <- true
 }
