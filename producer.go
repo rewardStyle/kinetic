@@ -38,9 +38,8 @@ type Producer struct {
 	concurrencyMu sync.Mutex
 	sem           chan bool
 
-	wg          sync.WaitGroup
-	msgCount    int
-	errCount    int
+	wg sync.WaitGroup
+
 	producing   bool
 	producingMu sync.Mutex
 	typeMu      sync.Mutex
@@ -204,14 +203,14 @@ func (p *Producer) produce() {
 
 stop:
 	for {
-		p.sem <- true
+		getLockWithTimeout(p.sem)
 
 		select {
 		case msg := <-p.Messages():
-			p.msgCount++
+			p.incMsgCount()
 
-			if conf.Debug.Verbose {
-				log.Println("Received message to send. Total messages received: " + strconv.Itoa(p.msgCount))
+			if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
+				log.Println("Received message to send. Total messages received: " + strconv.Itoa(p.getMsgCount()))
 			}
 
 			kargs := p.args()
@@ -244,7 +243,7 @@ stop:
 			go p.handleInterrupt(sig)
 			break stop
 		case err := <-p.Errors():
-			p.errCount++
+			p.incErrCount()
 			p.wg.Add(1)
 			go p.handleError(err)
 		}
@@ -288,10 +287,6 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 		p.errors <- err
 	}
 
-	if conf.Debug.Verbose {
-		log.Println("Attempting to send messages")
-	}
-
 	// Because we do not know which of the records was successful or failed
 	// we need to put them all back on the queue
 	if putResp != nil && putResp.FailedRecordCount > 0 {
@@ -302,7 +297,7 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 		for idx, resp := range putResp.Records {
 			// Put failed records back on the queue
 			if resp.ErrorCode != "" || resp.ErrorMessage != "" {
-				p.msgCount--
+				p.decMsgCount()
 				p.errors <- errors.New(resp.ErrorMessage)
 				p.Send(new(Message).Init(args.Records[idx].Data, args.Records[idx].PartitionKey))
 
@@ -313,8 +308,8 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 		}
 	}
 
-	if conf.Debug.Verbose {
-		log.Println("Messages sent so far: " + strconv.Itoa(p.msgCount))
+	if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
+		log.Println("Messages sent so far: " + strconv.Itoa(p.getMsgCount()))
 	}
 }
 

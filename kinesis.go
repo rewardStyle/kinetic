@@ -20,6 +20,8 @@ const (
 
 	kinesisWritesPerSec int = 1000
 	kinesisReadsPerSec  int = 5
+
+	Timeout = 60
 )
 
 var (
@@ -52,6 +54,12 @@ type kinesis struct {
 	sequenceNumber    string
 
 	client gokinesis.KinesisClient
+
+	msgCount   int
+	msgCountMu sync.Mutex
+
+	errCount   int
+	errCountMu sync.Mutex
 }
 
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
@@ -117,4 +125,57 @@ func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
 	<-time.After(1 * time.Second)
 
 	return client
+}
+
+func (k *kinesis) decMsgCount() {
+	k.msgCountMu.Lock()
+	k.msgCount--
+	k.msgCountMu.Unlock()
+}
+
+func (k *kinesis) incMsgCount() {
+	k.msgCountMu.Lock()
+	k.msgCount++
+	k.msgCountMu.Unlock()
+}
+
+func (k *kinesis) getMsgCount() int {
+	k.msgCountMu.Lock()
+	defer k.msgCountMu.Unlock()
+	return k.msgCount
+}
+
+func (k *kinesis) decErrCount() {
+	k.errCountMu.Lock()
+	k.errCount--
+	k.errCountMu.Unlock()
+}
+
+func (k *kinesis) incErrCount() {
+	k.errCountMu.Lock()
+	k.errCount++
+	k.errCountMu.Unlock()
+}
+
+func (k *kinesis) getErrCount() int {
+	k.errCountMu.Lock()
+	defer k.errCountMu.Unlock()
+	return k.errCount
+}
+
+func getLockWithTimeout(sem chan bool) {
+	timeout := make(chan bool)
+	go func() {
+		time.Sleep(Timeout * time.Second)
+		timeout <- true
+	}()
+
+	for {
+		select {
+		case sem <- true:
+			return
+		case <-timeout:
+			return
+		}
+	}
 }

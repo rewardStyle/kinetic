@@ -103,7 +103,7 @@ func (p *Producer) sendFirehoseRecords(args *gokinesis.RequestArgs) {
 		p.errors <- err
 	}
 
-	if conf.Debug.Verbose {
+	if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
 		log.Println("Attempting to send firehose messages")
 	}
 
@@ -117,7 +117,7 @@ func (p *Producer) sendFirehoseRecords(args *gokinesis.RequestArgs) {
 		for idx, resp := range putResp.RequestResponses {
 			// Put failed records back on the queue
 			if resp.ErrorCode != "" || resp.ErrorMessage != "" {
-				p.msgCount--
+				p.decMsgCount()
 				p.errors <- errors.New(resp.ErrorMessage)
 				p.Send(new(Message).Init(args.Records[idx].Data, args.Records[idx].PartitionKey))
 
@@ -128,7 +128,7 @@ func (p *Producer) sendFirehoseRecords(args *gokinesis.RequestArgs) {
 		}
 	}
 
-	if conf.Debug.Verbose {
-		log.Println("Messages sent so far: " + strconv.Itoa(p.msgCount))
+	if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
+		log.Println("Messages sent so far: " + strconv.Itoa(p.getMsgCount()))
 	}
 }
