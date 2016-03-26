@@ -74,11 +74,10 @@ func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, regi
 
 func (p *Producer) initChannels() {
 	p.sem = make(chan bool, p.getConcurrency())
-	p.messages = make(chan *Message, p.getConcurrency())
 	p.errors = make(chan error, p.getConcurrency())
-	p.interrupts = make(chan os.Signal, 1)
+	p.messages = make(chan *Message, p.msgBufSize())
 
-	// Relay incoming interrupt signals to this channel
+	p.interrupts = make(chan os.Signal, 1)
 	signal.Notify(p.interrupts, os.Interrupt)
 }
 
@@ -92,6 +91,12 @@ func (p *Producer) getConcurrency() int {
 	p.concurrencyMu.Lock()
 	defer p.concurrencyMu.Unlock()
 	return p.concurrency
+}
+
+func (p *Producer) msgBufSize() int {
+	p.concurrencyMu.Lock()
+	defer p.concurrencyMu.Unlock()
+	return p.concurrency * 1000
 }
 
 func (p *Producer) setProducerType(producerType int) {

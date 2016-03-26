@@ -52,6 +52,7 @@ type kinesis struct {
 	shardIteratorType string
 	shardIterator     string
 	sequenceNumber    string
+	sequenceNumberMu  sync.Mutex
 
 	client gokinesis.KinesisClient
 
@@ -84,6 +85,11 @@ func (k *kinesis) args() *gokinesis.RequestArgs {
 	args.Add("ShardId", k.shard)
 	args.Add("ShardIteratorType", k.shardIteratorType)
 	args.Add("ShardIterator", k.shardIterator)
+
+	if k.sequenceNumber != "" {
+		args.Add("StartingSequenceNumber", k.sequenceNumber)
+	}
+
 	return args
 }
 
@@ -94,7 +100,18 @@ func (k *kinesis) initShardIterator() error {
 	}
 
 	k.setShardIterator(resp.ShardIterator)
+
 	return nil
+}
+
+func (k *kinesis) setSequenceNumber(sequenceNum string) {
+	if sequenceNum == "" || len(sequenceNum) == 0 {
+		return
+	}
+
+	k.sequenceNumberMu.Lock()
+	k.sequenceNumber = sequenceNum
+	k.sequenceNumberMu.Unlock()
 }
 
 func (k *kinesis) setShardIterator(shardIter string) {

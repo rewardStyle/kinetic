@@ -46,11 +46,10 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	l.setConcurrency(concurrency)
 
 	l.sem = make(chan bool, l.getConcurrency())
-	l.messages = make(chan *Message, l.getConcurrency())
 	l.errors = make(chan error, l.getConcurrency())
-	l.interrupts = make(chan os.Signal, 1)
+	l.messages = make(chan *Message, l.msgBufSize())
 
-	// Relay incoming interrupt signals to this channel
+	l.interrupts = make(chan os.Signal, 1)
 	signal.Notify(l.interrupts, os.Interrupt)
 
 	l.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region)
@@ -104,6 +103,12 @@ func (l *Listener) getConcurrency() int {
 	l.concurrencyMu.Lock()
 	defer l.concurrencyMu.Unlock()
 	return l.concurrency
+}
+
+func (l *Listener) msgBufSize() int {
+	l.concurrencyMu.Lock()
+	defer l.concurrencyMu.Unlock()
+	return l.concurrency * 1000
 }
 
 func (l *Listener) setListening(listening bool) {
@@ -172,7 +177,7 @@ func (l *Listener) addMessage(msg *Message) {
 	l.msgBuffer++
 
 	// Allow reads to catch up to prevent deadlock
-	if l.msgBuffer >= l.getConcurrency() {
+	if l.msgBuffer >= l.msgBufSize() {
 		l.msgBuffer--
 		l.messageMu.Unlock()
 
@@ -199,7 +204,9 @@ func (l *Listener) consume() {
 		// args() will give us the shard iterator and type as well as the shard id
 		response, err := l.client.GetRecords(l.args())
 		if err != nil {
-			l.errors <- err
+			go func() {
+				l.errors <- err
+			}()
 
 			// Refresh the shard iterator
 			l.initShardIterator()
@@ -211,6 +218,7 @@ func (l *Listener) consume() {
 			if len(response.Records) > 0 {
 				for _, record := range response.Records {
 					l.addMessage(&Message{record})
+					l.setSequenceNumber(record.SequenceNumber)
 				}
 			}
 		}
@@ -275,8 +283,13 @@ func (l *Listener) Errors() <-chan error {
 
 func (l *Listener) Messages() <-chan *Message {
 	l.messageMu.Lock()
+
 	defer l.messageMu.Unlock()
-	l.msgBuffer--
+
+	if l.msgBuffer > 0 {
+		l.msgBuffer--
+	}
+
 	return l.messages
 }
 
