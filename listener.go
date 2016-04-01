@@ -172,6 +172,7 @@ stop:
 }
 
 func (l *Listener) addMessage(msg *Message) {
+retry:
 	l.messageMu.Lock()
 
 	l.msgBuffer++
@@ -183,8 +184,7 @@ func (l *Listener) addMessage(msg *Message) {
 
 		<-time.After(1 * time.Millisecond)
 
-		l.addMessage(msg)
-		return
+		goto retry
 	}
 
 	l.messages <- msg
