@@ -3,6 +3,7 @@ package kinetic
 import (
 	"errors"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"sync"
@@ -17,6 +18,10 @@ var (
 
 type Listener struct {
 	*kinesis
+
+	accessKey string
+	secretKey string
+	region    string
 
 	concurrency   int
 	concurrencyMu sync.Mutex
@@ -44,6 +49,10 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	}
 
 	l.setConcurrency(concurrency)
+
+	l.accessKey = accessKey
+	l.secretKey = secretKey
+	l.region = region
 
 	l.sem = make(chan bool, l.getConcurrency())
 	l.errors = make(chan error, l.getConcurrency())
@@ -208,8 +217,34 @@ func (l *Listener) consume() {
 				l.errors <- err
 			}()
 
+			// We receive net.OpError if kinesis terminates the socket.
+			// It will contain a message resembling:
+			//
+			// Received error:  Post https://kinesis.us-east-1.amazonaws.com:
+			// read tcp 172.16.0.38:37680->54.239.28.39:443: read: connection reset by peer
+			//
+			// If this happens we need to refresh the kinesis client to
+			// reestablish the connection
+			if _, ok := err.(*net.OpError); ok {
+				log.Println("Received net.OpError. Recreating kinesis client and connection.")
+				l.refreshClient(l.accessKey, l.secretKey, l.region)
+			}
+
+		refresh_iterator:
+
 			// Refresh the shard iterator
-			l.initShardIterator()
+			err := l.initShardIterator()
+			if err != nil {
+				log.Println("Failed to refresh iterator: " + err.Error())
+
+				// If we received an error we should wait and attempt to
+				// refresh the shard iterator again
+				<-time.After(1 * time.Second)
+
+				log.Println("Retrying after waiting one second.")
+
+				goto refresh_iterator
+			}
 		}
 
 		if response != nil {

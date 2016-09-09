@@ -1,6 +1,7 @@
 package kinetic
 
 import (
+	"errors"
 	"sync"
 	"time"
 
@@ -83,11 +84,13 @@ func (k *kinesis) args() *gokinesis.RequestArgs {
 	args := gokinesis.NewArgs()
 	args.Add("StreamName", k.stream)
 	args.Add("ShardId", k.shard)
-	args.Add("ShardIteratorType", k.shardIteratorType)
 	args.Add("ShardIterator", k.shardIterator)
 
 	if k.sequenceNumber != "" {
 		args.Add("StartingSequenceNumber", k.sequenceNumber)
+		args.Add("ShardIteratorType", ShardIterTypes[atSequenceNumber])
+	} else {
+		args.Add("ShardIteratorType", k.shardIteratorType)
 	}
 
 	return args
@@ -99,9 +102,7 @@ func (k *kinesis) initShardIterator() error {
 		return err
 	}
 
-	k.setShardIterator(resp.ShardIterator)
-
-	return nil
+	return k.setShardIterator(resp.ShardIterator)
 }
 
 func (k *kinesis) setSequenceNumber(sequenceNum string) {
@@ -114,12 +115,14 @@ func (k *kinesis) setSequenceNumber(sequenceNum string) {
 	k.sequenceNumberMu.Unlock()
 }
 
-func (k *kinesis) setShardIterator(shardIter string) {
+func (k *kinesis) setShardIterator(shardIter string) error {
 	if shardIter == "" || len(shardIter) == 0 {
-		return
+		return errors.New("Attempted to set shard iterator with empty value!")
 	}
 
 	k.shardIterator = shardIter
+
+	return nil
 }
 
 func (k *kinesis) checkActive() (bool, error) {
@@ -142,6 +145,10 @@ func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
 	<-time.After(1 * time.Second)
 
 	return client
+}
+
+func (k *kinesis) refreshClient(accessKey, secretKey, region string) {
+	k.client = gokinesis.New(gokinesis.NewAuth(accessKey, secretKey), region)
 }
 
 func (k *kinesis) decMsgCount() {
