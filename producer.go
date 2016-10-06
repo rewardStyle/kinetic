@@ -307,14 +307,27 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 				p.Send(new(Message).Init(args.Records[idx].Data, args.Records[idx].PartitionKey))
 
 				if conf.Debug.Verbose {
-					log.Println("Messages in failed PutRecords put back on the queue: " + string(args.Records[idx].Data))
+					log.Println("Message in failed PutRecords put back on the queue: " + string(args.Records[idx].Data))
 				}
 			}
 		}
+	} else if putResp == nil {
+		// Retry posting these records as they most likely were not posted successfully
+		p.retryRecords(args.Records)
 	}
 
 	if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
 		log.Println("Messages sent so far: " + strconv.Itoa(p.getMsgCount()))
+	}
+}
+
+func (p *Producer) retryRecords(records []gokinesis.Record) {
+	for _, record := range records {
+		p.Send(new(Message).Init(record.Data, record.PartitionKey))
+
+		if conf.Debug.Verbose {
+			log.Println("Message in nil send response put back on the queue: " + string(record.Data))
+		}
 	}
 }
 
