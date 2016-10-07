@@ -126,6 +126,8 @@ func (p *Producer) sendFirehoseRecords(args *gokinesis.RequestArgs) {
 				}
 			}
 		}
+	} else if putResp == nil {
+		p.retryRecords(args.Records)
 	}
 
 	if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
