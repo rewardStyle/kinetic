@@ -43,7 +43,9 @@ type Listener struct {
 
 func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
 	var err error
-
+	if concurrency < 1 {
+		return nil, BadConcurrencyError
+	}
 	if stream == "" {
 		return nil, NullStreamError
 	}
