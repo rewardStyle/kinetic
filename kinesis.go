@@ -67,14 +67,14 @@ type kinesis struct {
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
 
 	auth, err := authenticate(accessKey, secretKey)
-	if err != nil {
-		return nil, err
-	}
 	k = &kinesis{
 		stream:            stream,
 		shard:             shard,
 		shardIteratorType: shardIteratorType,
 		client:            gokinesis.New(auth, region),
+	}
+	if err != nil {
+		return k, err
 	}
 
 	err = k.initShardIterator()
