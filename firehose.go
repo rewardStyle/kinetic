@@ -62,10 +62,13 @@ func (p *Producer) firehoseFlush(counter *int, timer *time.Time) bool {
 func (p *Producer) Firehose() (*Producer, error) {
 	p.setConcurrency(conf.Concurrency.Producer)
 	p.initChannels()
-
+	auth, err := authenticate(conf.AWS.AccessKey, conf.AWS.SecretKey)
+	if err != nil {
+		return nil, err
+	}
 	p.kinesis = &kinesis{
 		stream: conf.Firehose.Stream,
-		client: gokinesis.NewWithEndpoint(gokinesis.NewAuth(conf.AWS.AccessKey, conf.AWS.SecretKey), conf.AWS.Region, fmt.Sprintf(firehoseURL, conf.AWS.Region)),
+		client: gokinesis.NewWithEndpoint(auth, conf.AWS.Region, fmt.Sprintf(firehoseURL, conf.AWS.Region)),
 	}
 
 	p.producerType = firehoseType
@@ -81,10 +84,13 @@ func (p *Producer) FirehoseC(stream, accessKey, secretKey, region string, concur
 
 	p.setConcurrency(concurrency)
 	p.initChannels()
-
+	auth, err := authenticate(conf.AWS.AccessKey, conf.AWS.SecretKey)
+	if err != nil {
+		return nil, err
+	}
 	p.kinesis = &kinesis{
 		stream: stream,
-		client: gokinesis.NewWithEndpoint(gokinesis.NewAuth(accessKey, secretKey), region, fmt.Sprintf(firehoseURL, region)),
+		client: gokinesis.NewWithEndpoint(auth, region, fmt.Sprintf(firehoseURL, region)),
 	}
 
 	p.producerType = firehoseType
