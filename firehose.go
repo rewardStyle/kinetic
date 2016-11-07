@@ -84,7 +84,7 @@ func (p *Producer) FirehoseC(stream, accessKey, secretKey, region string, concur
 
 	p.setConcurrency(concurrency)
 	p.initChannels()
-	auth, err := authenticate(conf.AWS.AccessKey, conf.AWS.SecretKey)
+	auth, err := authenticate(accessKey, secretKey)
 	p.kinesis = &kinesis{
 		stream: stream,
 		client: gokinesis.NewWithEndpoint(auth, region, fmt.Sprintf(firehoseURL, region)),
