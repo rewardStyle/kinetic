@@ -24,6 +24,7 @@ const (
 var (
 	ThroughputExceededError = errors.New("Configured AWS Kinesis throughput has been exceeded!")
 	KinesisFailureError     = errors.New("AWS Kinesis internal failure.")
+	BadConcurrencyError     = errors.New("Concurrency must be greater than zero.")
 )
 
 // Producer keeps a queue of messages on a channel and continually attempts
@@ -54,7 +55,9 @@ type Producer struct {
 
 func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
 	var err error
-
+	if concurrency < 1 {
+		return nil, BadConcurrencyError
+	}
 	if stream == "" {
 		return nil, NullStreamError
 	}
