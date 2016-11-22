@@ -8,6 +8,7 @@ machine:
 dependencies:
   pre:
     - go get github.com/tools/godep
+    - go get -u github.com/golang/lint/golint
     - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
     - mkdir -p "$GOPATH/src/$IMPORT_PATH"
@@ -17,6 +18,7 @@ dependencies:
 test:
   pre:
     - go vet ./...
+    - golint -set_exist_status
 
   override:
     - godep go test -v -race -cover
