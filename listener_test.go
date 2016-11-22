@@ -49,7 +49,7 @@ func TestListenerError(t *testing.T) {
 			// Let the error propagate
 			<-time.After(1 * time.Second)
 
-			So(listener.errCount, ShouldNotEqual, 0)
+			So(listener.getErrCount(), ShouldNotEqual, 0)
 			So(listener.IsListening(), ShouldEqual, true)
 		})
 	})
