@@ -12,10 +12,10 @@ import (
 )
 
 var (
-	// NullStreamError represents an error where the stream was not specified
-	NullStreamError = errors.New("A stream must be specified!")
-	// NotActiveError represents an error where the stream is not ready for processing
-	NotActiveError = errors.New("The Stream is not yet active!")
+	// ErrNullStream represents an error where the stream was not specified
+	ErrNullStream = errors.New("A stream must be specified!")
+	// ErrNotActive represents an error where the stream is not ready for processing
+	ErrNotActive = errors.New("The Stream is not yet active!")
 )
 
 // Listener represents a kinesis listener
@@ -47,10 +47,10 @@ type Listener struct {
 func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
 	var err error
 	if concurrency < 1 {
-		return nil, BadConcurrencyError
+		return nil, ErrBadConcurrency
 	}
 	if stream == "" {
-		return nil, NullStreamError
+		return nil, ErrNullStream
 	}
 
 	l.setConcurrency(concurrency)
@@ -77,7 +77,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 		if err != nil {
 			return l, err
 		}
-		return l, NotActiveError
+		return l, ErrNotActive
 	}
 
 	// Start feeder consumer

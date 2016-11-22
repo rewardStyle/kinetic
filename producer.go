@@ -22,12 +22,12 @@ const (
 )
 
 var (
-	// ThroughputExceededError represents an error when the Kinesis throughput has been exceeded
-	ThroughputExceededError = errors.New("Configured AWS Kinesis throughput has been exceeded")
-	// KinesisFailureError represents a generic internal AWS Kinesis error
-	KinesisFailureError = errors.New("AWS Kinesis internal failure")
-	// BadConcurrencyError represents an error when the provided concurrency value is invalid
-	BadConcurrencyError = errors.New("Concurrency must be greater than zero")
+	// ErrThroughputExceeded represents an error when the Kinesis throughput has been exceeded
+	ErrThroughputExceeded = errors.New("Configured AWS Kinesis throughput has been exceeded")
+	// ErrKinesisFailure represents a generic internal AWS Kinesis error
+	ErrKinesisFailure = errors.New("AWS Kinesis internal failure")
+	// ErrBadConcurrency represents an error when the provided concurrency value is invalid
+	ErrBadConcurrency = errors.New("Concurrency must be greater than zero")
 )
 
 // Producer keeps a queue of messages on a channel and continually attempts
@@ -59,10 +59,10 @@ type Producer struct {
 func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
 	var err error
 	if concurrency < 1 {
-		return nil, BadConcurrencyError
+		return nil, ErrBadConcurrency
 	}
 	if stream == "" {
-		return nil, NullStreamError
+		return nil, ErrNullStream
 	}
 
 	p.setConcurrency(concurrency)
@@ -132,7 +132,7 @@ func (p *Producer) activate() (*Producer, error) {
 		if err != nil {
 			return p, err
 		}
-		return p, NotActiveError
+		return p, ErrNotActive
 	}
 
 	// go start feeder consumer and let listen processes them
