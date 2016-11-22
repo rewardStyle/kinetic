@@ -3,6 +3,7 @@ package kinetic
 import (
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	gokinesis "github.com/rewardStyle/go-kinesis"
@@ -57,11 +58,8 @@ type kinesis struct {
 
 	client gokinesis.KinesisClient
 
-	msgCount   int
-	msgCountMu sync.Mutex
-
-	errCount   int
-	errCountMu sync.Mutex
+	msgCount int64
+	errCount int64
 }
 
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
@@ -157,39 +155,27 @@ func (k *kinesis) refreshClient(accessKey, secretKey, region string) {
 }
 
 func (k *kinesis) decMsgCount() {
-	k.msgCountMu.Lock()
-	k.msgCount--
-	k.msgCountMu.Unlock()
+	atomic.AddInt64(&k.msgCount, -1)
 }
 
 func (k *kinesis) incMsgCount() {
-	k.msgCountMu.Lock()
-	k.msgCount++
-	k.msgCountMu.Unlock()
+	atomic.AddInt64(&k.msgCount, 1)
 }
 
-func (k *kinesis) getMsgCount() int {
-	k.msgCountMu.Lock()
-	defer k.msgCountMu.Unlock()
-	return k.msgCount
+func (k *kinesis) getMsgCount() int64 {
+	return atomic.LoadInt64(&k.msgCount)
 }
 
 func (k *kinesis) decErrCount() {
-	k.errCountMu.Lock()
-	k.errCount--
-	k.errCountMu.Unlock()
+	atomic.AddInt64(&k.errCount, -1)
 }
 
 func (k *kinesis) incErrCount() {
-	k.errCountMu.Lock()
-	k.errCount++
-	k.errCountMu.Unlock()
+	atomic.AddInt64(&k.errCount, 1)
 }
 
-func (k *kinesis) getErrCount() int {
-	k.errCountMu.Lock()
-	defer k.errCountMu.Unlock()
-	return k.errCount
+func (k *kinesis) getErrCount() int64 {
+	return atomic.LoadInt64(&k.errCount)
 }
 
 func getLock(sem chan bool) {

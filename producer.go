@@ -218,7 +218,7 @@ stop:
 			p.incMsgCount()
 
 			if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
-				log.Println("Received message to send. Total messages received: " + strconv.Itoa(p.getMsgCount()))
+				log.Println("Received message to send. Total messages received: " + strconv.FormatInt(p.getMsgCount(), 10))
 			}
 
 			kargs := p.args()
@@ -320,7 +320,7 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 	}
 
 	if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
-		log.Println("Messages sent so far: " + strconv.Itoa(p.getMsgCount()))
+		log.Println("Messages sent so far: " + strconv.FormatInt(p.getMsgCount(), 10))
 	}
 }
 

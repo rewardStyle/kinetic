@@ -143,6 +143,6 @@ func (p *Producer) sendFirehoseRecords(args *gokinesis.RequestArgs) {
 	}
 
 	if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
-		log.Println("Messages sent so far: " + strconv.Itoa(p.getMsgCount()))
+		log.Println("Messages sent so far: " + strconv.FormatInt(p.getMsgCount(), 10))
 	}
 }
