@@ -18,7 +18,7 @@ dependencies:
 test:
   pre:
     - go vet ./...
-    - golint -set_exist_status
+    - golint -set_exit_status
 
   override:
     - godep go test -v -race -cover
