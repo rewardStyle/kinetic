@@ -64,6 +64,9 @@ func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, regi
 		return nil, NullStreamError
 	}
 	p.errorLogger = errorLogger
+	if p.errorLogger != nil {
+		p.errorLogger.StartLogging()
+	}
 
 	p.setConcurrency(concurrency)
 	p.setProducerType(kinesisType)
@@ -351,6 +354,10 @@ func (p *Producer) Close() error {
 	go func() {
 		p.interrupts <- syscall.SIGINT
 	}()
+
+	if p.errorLogger != nil {
+		p.errorLogger.StopLogging()
+	}
 
 	if conf.Debug.Verbose {
 		log.Println("Producer is shutting down.")

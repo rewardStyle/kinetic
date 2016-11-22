@@ -19,6 +19,9 @@ type ErrorLogger struct {
 	timer       time.Time
 	pod         chan struct{}
 	wg          sync.WaitGroup
+	isRunningMu sync.Mutex
+	isRunning   bool
+	runRequests int
 }
 
 func (e *ErrorLogger) init(maxEntries int, maxDuration time.Duration) (*ErrorLogger, error) {
@@ -35,6 +38,14 @@ func (e *ErrorLogger) Init(maxEntries int, maxDuration time.Duration) (*ErrorLog
 }
 
 func (e *ErrorLogger) StartLogging() {
+	e.isRunningMu.Lock()
+	defer e.isRunningMu.Unlock()
+	e.runRequests++
+	if e.isRunning {
+		return
+	}
+	e.isRunning = true
+
 	e.wg.Add(1)
 	e.timer = time.Now()
 	go func() {
@@ -59,8 +70,17 @@ func (e *ErrorLogger) StartLogging() {
 }
 
 func (e *ErrorLogger) StopLogging() {
-	e.pod <- struct{}{}
-	e.wg.Wait()
+	e.isRunningMu.Lock()
+	defer e.isRunningMu.Unlock()
+	if !e.isRunning {
+		return
+	}
+	e.runRequests--
+	if e.runRequests == 0 {
+		e.pod <- struct{}{}
+		e.wg.Wait()
+		e.isRunning = false
+	}
 }
 
 func (e *ErrorLogger) AddError(err error) {

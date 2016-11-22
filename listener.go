@@ -58,6 +58,9 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	l.secretKey = secretKey
 	l.region = region
 	l.errorLogger = errorLogger
+	if l.errorLogger != nil {
+		l.errorLogger.StartLogging()
+	}
 
 	l.sem = make(chan bool, l.getConcurrency())
 	l.errors = make(chan error, l.getConcurrency())
@@ -308,6 +311,10 @@ func (l *Listener) Close() error {
 	go func() {
 		l.interrupts <- syscall.SIGINT
 	}()
+
+	if l.errorLogger != nil {
+		l.errorLogger.StopLogging()
+	}
 
 	l.wg.Wait()
 
