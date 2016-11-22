@@ -43,7 +43,7 @@ func TestProducerError(t *testing.T) {
 		Convey("It should handle errors successfully", func() {
 			producer.errors <- errors.New("All your base are belong to us!")
 			// Let the error propagate
-			<-time.After(1 * time.Second)
+			<-time.After(3 * time.Second)
 			So(producer.getErrCount(), ShouldEqual, 1)
 			So(producer.IsProducing(), ShouldEqual, true)
 		})
