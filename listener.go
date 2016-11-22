@@ -39,9 +39,11 @@ type Listener struct {
 	errors     chan error
 	messages   chan *Message
 	interrupts chan os.Signal
+
+	errorLogger *ErrorLogger
 }
 
-func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
+func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, errorLogger *ErrorLogger) (*Listener, error) {
 	var err error
 	if concurrency < 1 {
 		return nil, BadConcurrencyError
@@ -55,6 +57,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	l.accessKey = accessKey
 	l.secretKey = secretKey
 	l.region = region
+	l.errorLogger = errorLogger
 
 	l.sem = make(chan bool, l.getConcurrency())
 	l.errors = make(chan error, l.getConcurrency())
@@ -86,12 +89,12 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 
 // Initialize a listener with the params specified in the configuration file
 func (l *Listener) Init() (*Listener, error) {
-	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Listener)
+	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Listener, globalErrorLogger)
 }
 
 // Initialize a listener with the supplied params
-func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
-	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
+func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, errorLogger *ErrorLogger) (*Listener, error) {
+	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, errorLogger)
 }
 
 // Re-initialize kinesis client with new endpoint. Used for testing with kinesalite
@@ -358,8 +361,12 @@ func (l *Listener) handleInterrupt(signal os.Signal) {
 }
 
 func (l *Listener) handleError(err error) {
-	if err != nil && conf.Debug.Verbose {
-		log.Println("Received error: ", err.Error())
+	if err != nil {
+		if conf.Debug.Verbose {
+			log.Println("Received error: ", err.Error())
+		} else if l.errorLogger != nil {
+			l.errorLogger.AddError(err)
+		}
 	}
 
 	defer func() {
