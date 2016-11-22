@@ -25,7 +25,7 @@ func TestListenerStop(t *testing.T) {
 			listener.interrupts <- syscall.SIGINT
 
 			// Let it finish stopping
-			<-time.After(1 * time.Second)
+			<-time.After(3 * time.Second)
 
 			So(listener.IsListening(), ShouldEqual, false)
 		})
@@ -47,7 +47,7 @@ func TestListenerError(t *testing.T) {
 			listener.errors <- errors.New("All your base are belong to us!")
 
 			// Let the error propagate
-			<-time.After(1 * time.Second)
+			<-time.After(3 * time.Second)
 
 			So(listener.getErrCount(), ShouldNotEqual, 0)
 			So(listener.IsListening(), ShouldEqual, true)
@@ -65,7 +65,7 @@ func TestListenerMessage(t *testing.T) {
 		wg.Done()
 	})
 
-	<-time.After(1 * time.Second)
+	<-time.After(3 * time.Second)
 
 	for _, c := range cases {
 		Convey("Given a running listener", t, func() {
