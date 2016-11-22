@@ -206,9 +206,11 @@ retry:
 func (l *Listener) consume() {
 	l.setConsuming(true)
 
-	counter := 0
-	timer := time.Now()
-	needsRefreshIterator := false
+	read_counter := 0
+	read_timer := time.Now()
+
+	gsi_counter := 0
+	gsi_timer := time.Now()
 
 	for {
 		if !l.shouldConsume() {
@@ -216,16 +218,7 @@ func (l *Listener) consume() {
 			break
 		}
 
-		l.throttle(&counter, &timer)
-
-		if needsRefreshIterator {
-			if err := l.initShardIterator(); err != nil {
-				log.Println("Failed to refresh iterator: " + err.Error())
-			} else {
-				needsRefreshIterator = false
-			}
-			continue
-		}
+		l.throttle(&read_counter, &read_timer)
 
 		// args() will give us the shard iterator and type as well as the shard id
 		response, err := l.client.GetRecords(l.args())
@@ -247,8 +240,19 @@ func (l *Listener) consume() {
 				l.refreshClient(l.accessKey, l.secretKey, l.region)
 			}
 
-			needsRefreshIterator = true
-			continue
+		refresh_iterator:
+
+			// Refresh the shard iterator
+			err := l.initShardIterator()
+			if err != nil {
+				log.Println("Failed to refresh iterator: " + err.Error())
+
+				// If we received an error we should wait and attempt to
+				// refresh the shard iterator again
+				l.throttle(&gsi_counter, &gsi_timer)
+
+				goto refresh_iterator
+			}
 		}
 
 		if response != nil {
