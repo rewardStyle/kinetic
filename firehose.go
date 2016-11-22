@@ -58,7 +58,7 @@ func (p *Producer) firehoseFlush(counter *int, timer *time.Time) bool {
 	return true
 }
 
-// Initialize a producer for Kinesis Firehose with the params supplied in the configuration file
+// Firehose initializes a producer for Kinesis Firehose with the params supplied in the configuration file
 func (p *Producer) Firehose() (*Producer, error) {
 	if conf.Concurrency.Producer < 1 {
 		return nil, BadConcurrencyError
@@ -79,7 +79,7 @@ func (p *Producer) Firehose() (*Producer, error) {
 	return p.activate()
 }
 
-// Initialize a producer for Kinesis Firehose with the specified params
+// FirehoseC initializes a producer for Kinesis Firehose with the specified params
 func (p *Producer) FirehoseC(stream, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
 	if concurrency < 1 {
 		return nil, BadConcurrencyError

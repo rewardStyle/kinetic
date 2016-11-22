@@ -23,12 +23,14 @@ const (
 	kinesisWritesPerSec int = 1000
 	kinesisReadsPerSec  int = 5
 
+	// Timeout TODO
 	Timeout = 60
 )
 
 var (
 	conf = getConfig()
 
+	// ShardIterTypes are the types of iterators to use within Kinesis
 	ShardIterTypes shardIteratorTypes = map[int]string{
 		atSequenceNumber:    "AT_SEQUENCE_NUMBER",
 		afterSequenceNumber: "AFTER_SEQUENCE_NUMBER",
