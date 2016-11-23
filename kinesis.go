@@ -141,7 +141,7 @@ func (k *kinesis) checkActive() (bool, error) {
 }
 
 func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
-	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY"), conf.AWS.Region, endpoint)
+	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"), conf.AWS.Region, endpoint)
 	client.CreateStream(stream, 1)
 
 	// Wait for stream to create
@@ -150,8 +150,13 @@ func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
 	return client
 }
 
-func (k *kinesis) refreshClient(accessKey, secretKey, region string) {
-	k.client = gokinesis.New(gokinesis.NewAuth(accessKey, secretKey), region)
+func (k *kinesis) refreshClient(accessKey, secretKey, region string) error {
+	credentials, err := authenticate(accessKey, secretKey)
+	if err != nil {
+		return err
+	}
+	k.client = gokinesis.New(credentials, region)
+	return nil
 }
 
 func (k *kinesis) decMsgCount() {
