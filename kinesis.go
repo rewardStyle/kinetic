@@ -141,7 +141,7 @@ func (k *kinesis) checkActive() (bool, error) {
 }
 
 func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
-	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY"), conf.AWS.Region, endpoint)
+	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"), conf.AWS.Region, endpoint)
 	client.CreateStream(stream, 1)
 
 	// Wait for stream to create
