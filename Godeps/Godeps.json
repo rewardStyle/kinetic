@@ -1,6 +1,7 @@
 {
 	"ImportPath": "github.com/rewardStyle/kinetic",
 	"GoVersion": "go1.5.1",
+	"GodepVersion": "v75",
 	"Deps": [
 		{
 			"ImportPath": "github.com/jtolds/gls",
@@ -8,8 +9,8 @@
 		},
 		{
 			"ImportPath": "github.com/rewardStyle/go-kinesis",
-			"Comment": "1.0.1-21-g7e55cce",
-			"Rev": "06b9508b531901108d306a988d7a47532d4ca2a0"
+			"Comment": "1.1.1-5-gf093eb4",
+			"Rev": "f093eb44122ca89eccc698fa06df0aa63373aeff"
 		},
 		{
 			"ImportPath": "github.com/smartystreets/assertions",

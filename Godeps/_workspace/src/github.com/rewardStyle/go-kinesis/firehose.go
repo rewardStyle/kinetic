@@ -1,12 +1,12 @@
 package kinesis
 
-// PutRecordsResp stores the information that provides by PutRecord API call
+// PutRecordBatchResp stores the information that provides by PutRecordBatch API call
 type PutRecordBatchResp struct {
 	FailedPutCount   int
 	RequestResponses []PutRecordBatchResponses
 }
 
-// RecordResp stores individual Record information provided by PutRecords API call
+// RecordBatchResponses stores individual Record information provided by PutRecordBatch API call
 type PutRecordBatchResponses struct {
 	ErrorCode    string
 	ErrorMessage string
