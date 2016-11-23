@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -12,14 +13,17 @@ import (
 )
 
 const (
-	AccessEnvKey       = "AWS_ACCESS_KEY"
-	AccessEnvKeyId     = "AWS_ACCESS_KEY_ID"
-	SecretEnvKey       = "AWS_SECRET_KEY"
-	SecretEnvAccessKey = "AWS_SECRET_ACCESS_KEY"
+	AccessEnvKey        = "AWS_ACCESS_KEY"
+	AccessEnvKeyId      = "AWS_ACCESS_KEY_ID"
+	SecretEnvKey        = "AWS_SECRET_KEY"
+	SecretEnvAccessKey  = "AWS_SECRET_ACCESS_KEY"
+	SecurityTokenEnvKey = "AWS_SECURITY_TOKEN"
+	EcsMetadataEnvKey   = "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI"
 
-	AWSMetadataServer = "169.254.169.254"
-	AWSIAMCredsPath   = "/latest/meta-data/iam/security-credentials"
-	AWSIAMCredsURL    = "http://" + AWSMetadataServer + "/" + AWSIAMCredsPath
+	AWSMetadataServer    = "169.254.169.254"
+	AWSEcsMetadataServer = "169.254.170.2"
+	AWSIAMCredsPath      = "/latest/meta-data/iam/security-credentials"
+	AWSIAMCredsURL       = "http://" + AWSMetadataServer + "/" + AWSIAMCredsPath
 )
 
 // Auth interface for authentication credentials and information
@@ -46,10 +50,11 @@ type AuthCredentials struct {
 
 // NewAuth creates a *AuthCredentials struct that adheres to the Auth interface to
 // dynamically retrieve AWS credentials
-func NewAuth(accessKey, secretKey string) *AuthCredentials {
+func NewAuth(accessKey, secretKey, token string) *AuthCredentials {
 	return &AuthCredentials{
 		accessKey: accessKey,
 		secretKey: secretKey,
+		token:     token,
 	}
 }
 
@@ -65,14 +70,19 @@ func NewAuthFromEnv() (*AuthCredentials, error) {
 		secretKey = os.Getenv(SecretEnvAccessKey)
 	}
 
+	token := os.Getenv(SecurityTokenEnvKey)
+
 	if accessKey == "" {
 		return nil, fmt.Errorf("Unable to retrieve access key from %s or %s env variables", AccessEnvKey, AccessEnvKeyId)
 	}
 	if secretKey == "" {
 		return nil, fmt.Errorf("Unable to retrieve secret key from %s or %s env variables", SecretEnvKey, SecretEnvAccessKey)
 	}
+	if token == "" {
+		return nil, fmt.Errorf("Unable to retrieve security token from %s env variable", SecurityTokenEnvKey)
+	}
 
-	return NewAuth(accessKey, secretKey), nil
+	return NewAuth(accessKey, secretKey, token), nil
 }
 
 // NewAuthFromMetadata retrieves auth credentials from the metadata
@@ -115,20 +125,31 @@ func (a *AuthCredentials) GetAccessKey() string {
 }
 
 // Renew retrieves a new token and mutates it on an instance of the Auth struct
-func (a *AuthCredentials) Renew() error {
-	role, err := retrieveIAMRole()
-	if err != nil {
-		return err
-	}
+func (a *AuthCredentials) Renew() (err error) {
+	var data map[string]string
+	relativeUri := os.Getenv(EcsMetadataEnvKey)
+	if relativeUri != "" {
+		data, err = retrieveAWSCredentials(fmt.Sprintf("http://%s%s", AWSEcsMetadataServer, relativeUri))
+	} else {
+		role, err := retrieveIAMRole()
+		if err != nil {
+			return err
+		}
 
-	data, err := retrieveAWSCredentials(role)
-	if err != nil {
-		return err
+		data, err = retrieveAWSCredentials(fmt.Sprintf("%s/%s", AWSIAMCredsURL, role))
+		if err != nil {
+			return err
+		}
 	}
 
 	// Ignore the error, it just means we won't be able to refresh the
 	// credentials when they expire.
-	expiry, _ := time.Parse(time.RFC3339, data["Expiration"])
+	expiry, err := time.Parse(time.RFC3339, data["Expiration"])
+	if err != nil {
+		return err
+	}
+
+	log.Println("Renewed AWS credentials, new expiry: ", expiry.String())
 
 	a.expiry = expiry
 	a.accessKey = data["AccessKeyId"]
@@ -148,10 +169,10 @@ func (a *AuthCredentials) Sign(s *Service, t time.Time) []byte {
 	return h
 }
 
-func retrieveAWSCredentials(role string) (map[string]string, error) {
+func retrieveAWSCredentials(url string) (map[string]string, error) {
 	var bodybytes []byte
 	// Retrieve the json for this role
-	resp, err := http.Get(fmt.Sprintf("%s/%s", AWSIAMCredsURL, role))
+	resp, err := http.Get(url)
 	if err != nil || resp.StatusCode != http.StatusOK {
 		return nil, err
 	}
