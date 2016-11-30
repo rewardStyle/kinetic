@@ -25,6 +25,7 @@ var (
 	ThroughputExceededError = errors.New("Configured AWS Kinesis throughput has been exceeded!")
 	KinesisFailureError     = errors.New("AWS Kinesis internal failure.")
 	BadConcurrencyError     = errors.New("Concurrency must be greater than zero.")
+	DroppedMessageError     = errors.New("Channel is full, dropped message.")
 )
 
 // Producer keeps a queue of messages on a channel and continually attempts
@@ -280,6 +281,20 @@ func (p *Producer) Send(msg *Message) {
 		p.messages <- msg
 		p.wg.Done()
 	}()
+}
+
+// TryToSend tries to send the message, but if the channel is full it drops the message, and returns an error.
+func (p *Producer) TryToSend(msg *Message) error {
+	// Add the terminating record indicator
+	if p.getProducerType() == firehoseType {
+		msg.SetValue(append(msg.Value(), truncatedRecordTerminator...))
+	}
+	select {
+	case p.messages <- msg:
+		return nil
+	default:
+		return DroppedMessageError
+	}
 }
 
 // If our payload is larger than allowed Kinesis will write as much as

@@ -1,6 +1,7 @@
 package kinetic
 
 import (
+	"encoding/binary"
 	"errors"
 	"syscall"
 	"testing"
@@ -76,4 +77,24 @@ func TestProducerMessage(t *testing.T) {
 
 	listener.Close()
 	producer.Close()
+}
+
+func TestProducerTryToSend(t *testing.T) {
+	producer, _ := new(Producer).InitC("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1", 4)
+	producer.NewEndpoint(testEndpoint, "your-stream")
+	producer.Close() // This is to make the test deterministic.  It stops producer from sending messages.
+	var totDropped int
+	for i := 0; i < 5000; i++ {
+		b := make([]byte, 2)
+		binary.LittleEndian.PutUint16(b, uint16(i))
+		if err := producer.TryToSend(new(Message).Init(b, "foo")); nil != err {
+			totDropped++
+		}
+	}
+	Convey("Given a producer", t, func() {
+		Convey("TryToSend should drop messages when the queue is full", func() {
+			So(totDropped, ShouldEqual, 1000)
+			So(len(producer.messages), ShouldEqual, 4000)
+		})
+	})
 }
