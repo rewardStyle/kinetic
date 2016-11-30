@@ -52,15 +52,21 @@ type Producer struct {
 	// before removing them from this local queue
 	messages   chan *Message
 	interrupts chan os.Signal
+
+	errorLogger *ErrorLogger
 }
 
-func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
+func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, errorLogger *ErrorLogger) (*Producer, error) {
 	var err error
 	if concurrency < 1 {
 		return nil, BadConcurrencyError
 	}
 	if stream == "" {
 		return nil, NullStreamError
+	}
+	p.errorLogger = errorLogger
+	if p.errorLogger != nil {
+		p.errorLogger.StartLogging()
 	}
 
 	p.setConcurrency(concurrency)
@@ -142,12 +148,12 @@ func (p *Producer) activate() (*Producer, error) {
 
 // Initialize a producer with the params specified in the configuration file
 func (p *Producer) Init() (*Producer, error) {
-	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Producer)
+	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Producer, globalErrorLogger)
 }
 
 // Initialize a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
-func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
-	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
+func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, errorLogger *ErrorLogger) (*Producer, error) {
+	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, errorLogger)
 }
 
 // Re-initialize kinesis client with new endpoint. Used for testing with kinesalite
@@ -306,8 +312,10 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 	}
 
 	putResp, err := p.client.PutRecords(args)
-	if err != nil && conf.Debug.Verbose {
-		p.errors <- err
+	if err != nil {
+		go func() {
+			p.errors <- err
+		}()
 	}
 
 	// Because we do not know which of the records was successful or failed
@@ -362,6 +370,10 @@ func (p *Producer) Close() error {
 		p.interrupts <- syscall.SIGINT
 	}()
 
+	if p.errorLogger != nil {
+		p.errorLogger.StopLogging()
+	}
+
 	if conf.Debug.Verbose {
 		log.Println("Producer is shutting down.")
 	}
@@ -382,8 +394,12 @@ func (p *Producer) handleInterrupt(signal os.Signal) {
 }
 
 func (p *Producer) handleError(err error) {
-	if err != nil && conf.Debug.Verbose {
-		log.Println("Received error: ", err.Error())
+	if err != nil {
+		if conf.Debug.Verbose {
+			log.Println("Received error: ", err.Error())
+		} else if p.errorLogger != nil {
+			p.errorLogger.AddError(err)
+		}
 	}
 
 	defer func() {
