@@ -19,6 +19,7 @@ func TestProducerStop(t *testing.T) {
 
 		Convey("It should stop producing if sent an interrupt signal", func() {
 			producer.interrupts <- syscall.SIGINT
+			runtime.Gosched()
 
 			// Wait for it to stop
 			for {
