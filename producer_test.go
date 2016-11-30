@@ -3,11 +3,11 @@ package kinetic
 import (
 	"encoding/binary"
 	"errors"
+	. "github.com/smartystreets/goconvey/convey"
+	"runtime"
 	"syscall"
 	"testing"
 	"time"
-
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestProducerStop(t *testing.T) {
@@ -19,6 +19,7 @@ func TestProducerStop(t *testing.T) {
 
 		Convey("It should stop producing if sent an interrupt signal", func() {
 			producer.interrupts <- syscall.SIGINT
+			runtime.Gosched()
 
 			// Wait for it to stop
 			for {
@@ -83,6 +84,7 @@ func TestProducerTryToSend(t *testing.T) {
 	producer, _ := new(Producer).InitC("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1", 4)
 	producer.NewEndpoint(testEndpoint, "your-stream")
 	producer.Close() // This is to make the test deterministic.  It stops producer from sending messages.
+	runtime.Gosched()
 	var totDropped int
 	for i := 0; i < 5000; i++ {
 		b := make([]byte, 2)

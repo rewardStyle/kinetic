@@ -2,12 +2,12 @@ package kinetic
 
 import (
 	"errors"
+	. "github.com/smartystreets/goconvey/convey"
+	"runtime"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
-
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 const testEndpoint = "http://127.0.0.1:4567"
@@ -23,7 +23,7 @@ func TestListenerStop(t *testing.T) {
 
 		Convey("It should stop listening if sent an interrupt signal", func() {
 			listener.interrupts <- syscall.SIGINT
-
+			runtime.Gosched()
 			// Let it finish stopping
 			<-time.After(3 * time.Second)
 
