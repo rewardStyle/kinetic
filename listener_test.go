@@ -34,6 +34,25 @@ func TestListenerStop(t *testing.T) {
 	listener.Close()
 }
 
+func TestListenerSyncStop(t *testing.T) {
+	listener, _ := new(Listener).Init()
+	listener.NewEndpoint(testEndpoint, "stream-name")
+
+	Convey("Given a running listener", t, func() {
+		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
+			wg.Done()
+		})
+
+		Convey("It should stop listening if sent an interrupt signal", func() {
+			err := listener.CloseSync()
+			So(err, ShouldBeNil)
+			So(listener.IsListening(), ShouldEqual, false)
+		})
+	})
+
+	listener.Close()
+}
+
 func TestListenerError(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")

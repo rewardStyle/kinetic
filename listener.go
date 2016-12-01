@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 	"time"
@@ -300,7 +301,6 @@ func (l *Listener) Close() error {
 	if conf.Debug.Verbose {
 		log.Println("Listener is waiting for all tasks to finish...")
 	}
-
 	// Stop consuming
 	go func() {
 		l.interrupts <- syscall.SIGINT
@@ -311,7 +311,35 @@ func (l *Listener) Close() error {
 	if conf.Debug.Verbose {
 		log.Println("Listener is shutting down.")
 	}
+	runtime.Gosched()
+	return nil
+}
 
+// CloseSync closes the Listener in a syncronous manner.
+func (l *Listener) CloseSync() error {
+	if conf.Debug.Verbose {
+		log.Println("Listener is waiting for all tasks to finish...")
+	}
+	var err error
+	// Stop consuming
+	select {
+	case l.interrupts <- syscall.SIGINT:
+		break
+	default:
+		if conf.Debug.Verbose {
+			log.Println("Already closing listener.")
+		}
+		runtime.Gosched()
+		return err
+	}
+	l.wg.Wait()
+	for l.IsConsuming() {
+		runtime.Gosched()
+	}
+	if conf.Debug.Verbose {
+		log.Println("Listener is shutting down.")
+	}
+	runtime.Gosched()
 	return nil
 }
 
