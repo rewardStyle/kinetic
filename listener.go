@@ -13,9 +13,9 @@ import (
 
 var (
 	// ErrNullStream represents an error where the stream was not specified
-	ErrNullStream = errors.New("A stream must be specified!")
+	ErrNullStream = errors.New("A stream must be specified")
 	// ErrNotActive represents an error where the stream is not ready for processing
-	ErrNotActive = errors.New("The Stream is not yet active!")
+	ErrNotActive = errors.New("The Stream is not yet active")
 )
 
 // Listener represents a kinesis listener

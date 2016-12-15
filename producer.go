@@ -29,7 +29,7 @@ var (
 	// ErrBadConcurrency represents an error when the provided concurrency value is invalid
 	ErrBadConcurrency = errors.New("Concurrency must be greater than zero")
 	// ErrDroppedMessage represents an error the channel is full and messages are being dropped
-	ErrDroppedMessage = errors.New("Channel is full, dropped message.")
+	ErrDroppedMessage = errors.New("Channel is full, dropped message")
 )
 
 // Producer keeps a queue of messages on a channel and continually attempts
@@ -298,7 +298,7 @@ func (p *Producer) TryToSend(msg *Message) error {
 	case p.messages <- msg:
 		return nil
 	default:
-		return DroppedMessageError
+		return ErrDroppedMessage
 	}
 }
 

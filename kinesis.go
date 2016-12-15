@@ -122,7 +122,7 @@ func (k *kinesis) setSequenceNumber(sequenceNum string) {
 
 func (k *kinesis) setShardIterator(shardIter string) error {
 	if shardIter == "" || len(shardIter) == 0 {
-		return errors.New("Attempted to set shard iterator with empty value!")
+		return errors.New("Attempted to set shard iterator with empty value")
 	}
 
 	k.shardIterator = shardIter
