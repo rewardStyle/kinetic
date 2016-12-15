@@ -21,7 +21,14 @@ type Client struct {
 // This function assumes the Auth object has been sanely initialized. If you
 // wish to infer auth credentials from the environment, refer to NewAuth
 func NewClient(auth Auth) *Client {
-	return &Client{auth: auth, client: http.DefaultClient}
+	return &Client{
+		auth: auth,
+		client: &http.Client{
+			Transport: &http.Transport{
+				DisableKeepAlives: true,
+			},
+		},
+	}
 }
 
 // NewClientWithHTTPClient creates a client with a non-default http client

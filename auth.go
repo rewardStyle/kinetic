@@ -15,7 +15,7 @@ func authenticate(accessKey, secretKey string) (auth *gokinesis.AuthCredentials,
 			return nil, ErrMetaAuthentication
 		}
 	} else {
-		auth = gokinesis.NewAuth(accessKey, secretKey)
+		auth = gokinesis.NewAuth(accessKey, secretKey, "")
 	}
 	return
 }
