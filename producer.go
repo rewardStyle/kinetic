@@ -10,6 +10,8 @@ import (
 	"syscall"
 	"time"
 
+	"sync/atomic"
+
 	gokinesis "github.com/rewardStyle/go-kinesis"
 )
 
@@ -52,6 +54,17 @@ type Producer struct {
 	// before removing them from this local queue
 	messages   chan *Message
 	interrupts chan os.Signal
+
+	stats Stats
+}
+
+type Stats struct {
+	incCount     int64
+	processCount int64
+	retryCount   int64
+	succCount    int64
+	errCount     int64
+	dropCount    int64
 }
 
 func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
@@ -65,6 +78,7 @@ func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, regi
 
 	p.setConcurrency(concurrency)
 	p.setProducerType(kinesisType)
+	p.stats = Stats{}
 
 	p.initChannels()
 
@@ -217,6 +231,7 @@ stop:
 		select {
 		case msg := <-p.Messages():
 			p.incMsgCount()
+			atomic.AddInt64(&p.stats.processCount, 1)
 
 			if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
 				log.Println("Received message to send. Total messages received: " + strconv.FormatInt(p.getMsgCount(), 10))
@@ -254,7 +269,12 @@ stop:
 		case err := <-p.Errors():
 			p.incErrCount()
 			p.wg.Add(1)
-			go p.handleError(err)
+			go func() {
+				p.handleError(err)
+				p.wg.Done()
+			}()
+
+			<-p.sem
 		}
 	}
 
@@ -271,10 +291,13 @@ func (p *Producer) Errors() <-chan error {
 
 // Send a message to the queue for POSTing
 func (p *Producer) Send(msg *Message) {
+	atomic.AddInt64(&p.stats.incCount, 1)
+	p.send(msg)
+}
+
+func (p *Producer) send(msg *Message) {
 	// Add the terminating record indicator
-	if p.getProducerType() == firehoseType {
-		msg.SetValue(append(msg.Value(), truncatedRecordTerminator...))
-	}
+	p.setTerminatingIndicator(msg)
 
 	p.wg.Add(1)
 	go func() {
@@ -285,15 +308,23 @@ func (p *Producer) Send(msg *Message) {
 
 // TryToSend tries to send the message, but if the channel is full it drops the message, and returns an error.
 func (p *Producer) TryToSend(msg *Message) error {
+	atomic.AddInt64(&p.stats.incCount, 1)
+
 	// Add the terminating record indicator
-	if p.getProducerType() == firehoseType {
-		msg.SetValue(append(msg.Value(), truncatedRecordTerminator...))
-	}
+	p.setTerminatingIndicator(msg)
+
 	select {
 	case p.messages <- msg:
 		return nil
 	default:
+		atomic.AddInt64(&p.stats.dropCount, 1)
 		return DroppedMessageError
+	}
+}
+
+func (p *Producer) setTerminatingIndicator(msg *Message) {
+	if p.getProducerType() == firehoseType {
+		msg.SetValue(append(msg.Value(), truncatedRecordTerminator...))
 	}
 }
 
@@ -310,26 +341,39 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 		p.errors <- err
 	}
 
-	// Because we do not know which of the records was successful or failed
-	// we need to put them all back on the queue
-	if putResp != nil && putResp.FailedRecordCount > 0 {
-		if conf.Debug.Verbose {
-			log.Println("Failed records: " + strconv.Itoa(putResp.FailedRecordCount))
-		}
+	if putResp != nil {
+		// Because we do not know which of the records was successful or failed
+		// we need to put them all back on the queue
+		if putResp.FailedRecordCount > 0 {
+			if conf.Debug.Verbose {
+				log.Println("Failed records: " + strconv.Itoa(putResp.FailedRecordCount))
+			}
 
-		for idx, resp := range putResp.Records {
-			// Put failed records back on the queue
-			if resp.ErrorCode != "" || resp.ErrorMessage != "" {
-				p.decMsgCount()
-				p.errors <- errors.New(resp.ErrorMessage)
-				p.Send(new(Message).Init(args.Records[idx].Data, args.Records[idx].PartitionKey))
+			for idx, resp := range putResp.Records {
+				// Put failed records back on the queue
+				if resp.ErrorCode != "" || resp.ErrorMessage != "" {
+					p.decMsgCount()
+					p.errors <- errors.New(resp.ErrorMessage)
 
-				if conf.Debug.Verbose {
-					log.Println("Message in failed PutRecords put back on the queue: " + string(args.Records[idx].Data))
+					atomic.AddInt64(&p.stats.errCount, 1)
+
+					p.retryRecord(args.Records[idx])
+
+					if conf.Debug.Verbose {
+						log.Println("Message in failed PutRecords put back on the queue: " + string(args.Records[idx].Data))
+					}
+				} else {
+					// Messages were successful as they do not have error message or code
+					atomic.AddInt64(&p.stats.succCount, 1)
 				}
 			}
+		} else {
+			// All records were successful
+			atomic.AddInt64(&p.stats.succCount, int64(len(putResp.Records)))
 		}
 	} else if putResp == nil {
+		// Assume all records were error
+		atomic.AddInt64(&p.stats.errCount, int64(len(args.Records)))
 		// Retry posting these records as they most likely were not posted successfully
 		p.retryRecords(args.Records)
 	}
@@ -341,12 +385,17 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 
 func (p *Producer) retryRecords(records []gokinesis.Record) {
 	for _, record := range records {
-		p.Send(new(Message).Init(record.Data, record.PartitionKey))
+		p.retryRecord(record)
 
 		if conf.Debug.Verbose {
 			log.Println("Message in nil send response put back on the queue: " + string(record.Data))
 		}
 	}
+}
+
+func (p *Producer) retryRecord(record gokinesis.Record) {
+	atomic.AddInt64(&p.stats.retryCount, 1)
+	p.send(new(Message).Init(record.Data, record.PartitionKey))
 }
 
 // Stops queuing and producing and waits for all tasks to finish
@@ -385,10 +434,9 @@ func (p *Producer) handleError(err error) {
 	if err != nil && conf.Debug.Verbose {
 		log.Println("Received error: ", err.Error())
 	}
+}
 
-	defer func() {
-		<-p.sem
-	}()
-
-	p.wg.Done()
+// GetStats will return copy of current stats
+func (p *Producer) GetStats() Stats {
+	return p.stats
 }
