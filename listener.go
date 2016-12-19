@@ -12,10 +12,13 @@ import (
 )
 
 var (
-	NullStreamError = errors.New("A stream must be specified!")
-	NotActiveError  = errors.New("The Stream is not yet active!")
+	// ErrNullStream represents an error where the stream was not specified
+	ErrNullStream = errors.New("A stream must be specified")
+	// ErrNotActive represents an error where the stream is not ready for processing
+	ErrNotActive = errors.New("The Stream is not yet active")
 )
 
+// Listener represents a kinesis listener
 type Listener struct {
 	*kinesis
 
@@ -44,10 +47,10 @@ type Listener struct {
 func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
 	var err error
 	if concurrency < 1 {
-		return nil, BadConcurrencyError
+		return nil, ErrBadConcurrency
 	}
 	if stream == "" {
-		return nil, NullStreamError
+		return nil, ErrNullStream
 	}
 
 	l.setConcurrency(concurrency)
@@ -73,9 +76,8 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	if err != nil || active != true {
 		if err != nil {
 			return l, err
-		} else {
-			return l, NotActiveError
 		}
+		return l, ErrNotActive
 	}
 
 	// Start feeder consumer
@@ -84,17 +86,17 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	return l, err
 }
 
-// Initialize a listener with the params specified in the configuration file
+// Init initializes a listener with the params specified in the configuration file
 func (l *Listener) Init() (*Listener, error) {
 	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Listener)
 }
 
-// Initialize a listener with the supplied params
+// InitC initialize a listener with the supplied params
 func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
 	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
 }
 
-// Re-initialize kinesis client with new endpoint. Used for testing with kinesalite
+// NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
 func (l *Listener) NewEndpoint(endpoint, stream string) {
 	l.kinesis.client = l.kinesis.newClient(endpoint, stream)
 	l.initShardIterator()
@@ -128,7 +130,7 @@ func (l *Listener) setListening(listening bool) {
 	l.listeningMu.Unlock()
 }
 
-// Identifies whether or not messages and errors are being handled after consumption
+// IsListening identifies whether or not messages and errors are being handled after consumption
 func (l *Listener) IsListening() bool {
 	l.listeningMu.Lock()
 	defer l.listeningMu.Unlock()
@@ -141,7 +143,7 @@ func (l *Listener) setConsuming(consuming bool) {
 	l.consumingMu.Unlock()
 }
 
-// Identifies whether or not the kinesis stream is being polled
+// IsConsuming identifies whether or not the kinesis stream is being polled
 func (l *Listener) IsConsuming() bool {
 	l.consumingMu.Lock()
 	defer l.consumingMu.Unlock()
@@ -158,7 +160,7 @@ func (l *Listener) shouldConsume() bool {
 
 }
 
-// Handle the consumed messages, errors and interrupts
+// Listen handles the consumed messages, errors and interrupts
 func (l *Listener) Listen(fn msgFn) {
 	l.setListening(true)
 stop:
@@ -268,7 +270,7 @@ func (l *Listener) consume() {
 	}
 }
 
-// Retrive a message from the stream and return the value
+// Retrieve a message from the stream and return the value
 func (l *Listener) Retrieve() (*Message, error) {
 	select {
 	case msg := <-l.Messages():
@@ -281,7 +283,7 @@ func (l *Listener) Retrieve() (*Message, error) {
 	}
 }
 
-// Retrieve a message from the queue and apply the supplied function to the message
+// RetrieveFn retrieves a message from the queue and apply the supplied function to the message
 func (l *Listener) RetrieveFn(fn msgFn) {
 	select {
 	case err := <-l.Errors():
@@ -295,7 +297,7 @@ func (l *Listener) RetrieveFn(fn msgFn) {
 	}
 }
 
-// Stops consuming and listening and waits for all tasks to finish
+// Close stops consuming and listening and waits for all tasks to finish
 func (l *Listener) Close() error {
 	if conf.Debug.Verbose {
 		log.Println("Listener is waiting for all tasks to finish...")
@@ -315,10 +317,12 @@ func (l *Listener) Close() error {
 	return nil
 }
 
+// Errors gets the current number of errors on the Listener
 func (l *Listener) Errors() <-chan error {
 	return l.errors
 }
 
+// Messages gets the current number of messages on the Listener
 func (l *Listener) Messages() <-chan *Message {
 	l.messageMu.Lock()
 

@@ -2,12 +2,13 @@ package kinetic
 
 import (
 	"errors"
-	. "github.com/smartystreets/goconvey/convey"
 	"runtime"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 const testEndpoint = "http://127.0.0.1:4567"
@@ -44,7 +45,7 @@ func TestListenerError(t *testing.T) {
 		})
 
 		Convey("It should handle errors successfully", func() {
-			listener.errors <- errors.New("All your base are belong to us!")
+			listener.errors <- errors.New("All your base are belong to us")
 
 			// Let the error propagate
 			<-time.After(3 * time.Second)
