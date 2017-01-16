@@ -3,11 +3,12 @@ package kinetic
 import (
 	"encoding/binary"
 	"errors"
-	. "github.com/smartystreets/goconvey/convey"
 	"runtime"
 	"syscall"
 	"testing"
 	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestProducerStop(t *testing.T) {
@@ -61,7 +62,7 @@ func TestProducerError(t *testing.T) {
 		go producer.produce()
 
 		Convey("It should handle errors successfully", func() {
-			producer.errors <- errors.New("All your base are belong to us!")
+			producer.errors <- errors.New("All your base are belong to us")
 			// Let the error propagate
 			<-time.After(3 * time.Second)
 			So(producer.getErrCount(), ShouldEqual, 1)
