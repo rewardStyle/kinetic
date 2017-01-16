@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -370,7 +371,35 @@ func (p *Producer) Close() error {
 	if conf.Debug.Verbose {
 		log.Println("Producer is shutting down.")
 	}
+	runtime.Gosched()
+	return nil
+}
 
+// CloseSync closes the Producer in a syncronous manner.
+func (p *Producer) CloseSync() error {
+	if conf.Debug.Verbose {
+		log.Println("Listener is waiting for all tasks to finish...")
+	}
+	var err error
+	// Stop consuming
+	select {
+	case p.interrupts <- syscall.SIGINT:
+		break
+	default:
+		if conf.Debug.Verbose {
+			log.Println("Already closing listener.")
+		}
+		runtime.Gosched()
+		return err
+	}
+	p.wg.Wait()
+	for p.IsProducing() {
+		runtime.Gosched()
+	}
+	if conf.Debug.Verbose {
+		log.Println("Listener is shutting down.")
+	}
+	runtime.Gosched()
 	return nil
 }
 

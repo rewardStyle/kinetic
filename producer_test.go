@@ -36,6 +36,24 @@ func TestProducerStop(t *testing.T) {
 	producer.Close()
 }
 
+func TestSyncStop(t *testing.T) {
+	producer, _ := new(Producer).Init()
+	producer.NewEndpoint(testEndpoint, "stream-name")
+
+	Convey("Given a running producer", t, func() {
+		go producer.produce()
+		runtime.Gosched()
+		Convey("It should stop producing if sent an interrupt signal", func() {
+			err := producer.CloseSync()
+			So(err, ShouldBeNil)
+			// Wait for it to stop
+			So(producer.IsProducing(), ShouldEqual, false)
+		})
+	})
+
+	producer.Close()
+}
+
 func TestProducerError(t *testing.T) {
 	producer, _ := new(Producer).Init()
 	producer.NewEndpoint(testEndpoint, "stream-name")
