@@ -89,7 +89,7 @@ func TestListenerMessage(t *testing.T) {
 
 	for _, c := range cases {
 		Convey("Given a running listener", t, func() {
-			listener.addMessage(new(Message).Init(c.message, "test"))
+			listener.messages <- new(Message).Init(c.message, "test")
 
 			Convey("It should handle messages successfully", func() {
 				So(listener.IsListening(), ShouldEqual, true)

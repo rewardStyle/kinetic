@@ -29,7 +29,7 @@ type Listener struct {
 
 	concurrency   int
 	concurrencyMu sync.Mutex
-	sem           chan bool
+	sem           chan Empty
 
 	wg        sync.WaitGroup
 	msgBuffer int
@@ -60,7 +60,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	l.secretKey = secretKey
 	l.region = region
 
-	l.sem = make(chan bool, l.getConcurrency())
+	l.sem = make(chan Empty, l.getConcurrency())
 	l.errors = make(chan error, l.getConcurrency())
 	l.messages = make(chan *Message, l.msgBufSize())
 
@@ -166,14 +166,14 @@ func (l *Listener) Listen(fn msgFn) {
 	l.setListening(true)
 stop:
 	for {
-		getLock(l.sem)
+		getLock(l.sem) //counting semaphore
 
 		select {
-		case err := <-l.Errors():
+		case err := <-l.errors:
 			l.incErrCount()
 			l.wg.Add(1)
 			go l.handleError(err)
-		case msg := <-l.Messages():
+		case msg := <-l.messages:
 			l.incMsgCount()
 			l.wg.Add(1)
 			go l.handleMsg(msg, fn)
@@ -183,26 +183,6 @@ stop:
 		}
 	}
 	l.setListening(false)
-}
-
-func (l *Listener) addMessage(msg *Message) {
-retry:
-	l.messageMu.Lock()
-
-	l.msgBuffer++
-
-	// Allow reads to catch up to prevent deadlock
-	if l.msgBuffer >= l.msgBufSize() {
-		l.msgBuffer--
-		l.messageMu.Unlock()
-
-		<-time.After(1 * time.Millisecond)
-
-		goto retry
-	}
-
-	l.messages <- msg
-	l.messageMu.Unlock()
 }
 
 // Continually poll the Kinesis stream
@@ -263,7 +243,7 @@ func (l *Listener) consume() {
 
 			if len(response.Records) > 0 {
 				for _, record := range response.Records {
-					l.addMessage(&Message{record})
+					l.messages <- &Message{record}
 					l.setSequenceNumber(record.SequenceNumber)
 				}
 			}
@@ -274,7 +254,7 @@ func (l *Listener) consume() {
 // Retrieve a message from the stream and return the value
 func (l *Listener) Retrieve() (*Message, error) {
 	select {
-	case msg := <-l.Messages():
+	case msg := <-l.messages:
 		return msg, nil
 	case err := <-l.Errors():
 		return nil, err
@@ -290,7 +270,7 @@ func (l *Listener) RetrieveFn(fn msgFn) {
 	case err := <-l.Errors():
 		l.wg.Add(1)
 		go l.handleError(err)
-	case msg := <-l.Messages():
+	case msg := <-l.messages:
 		l.wg.Add(1)
 		go fn(msg.Value(), &l.wg)
 	case sig := <-l.interrupts:
@@ -350,19 +330,6 @@ func (l *Listener) Errors() <-chan error {
 	return l.errors
 }
 
-// Messages gets the current number of messages on the Listener
-func (l *Listener) Messages() <-chan *Message {
-	l.messageMu.Lock()
-
-	defer l.messageMu.Unlock()
-
-	if l.msgBuffer > 0 {
-		l.msgBuffer--
-	}
-
-	return l.messages
-}
-
 func (l *Listener) handleMsg(msg *Message, fn msgFn) {
 	if conf.Debug.Verbose {
 		if l.getMsgCount()%100 == 0 {
@@ -416,6 +383,6 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 	// since we started reading then we need to wait for the second to finish
 	if *counter >= kinesisReadsPerSec && !(time.Now().After(timer.Add(1 * time.Second))) {
 		// Wait for the remainder of the second - timer and counter will be reset on next pass
-		<-time.After(1*time.Second - time.Since(*timer))
+		time.Sleep(1*time.Second - time.Since(*timer))
 	}
 }

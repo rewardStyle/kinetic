@@ -43,7 +43,7 @@ type Producer struct {
 
 	concurrency   int
 	concurrencyMu sync.Mutex
-	sem           chan bool
+	sem           chan Empty
 
 	wg sync.WaitGroup
 
@@ -82,7 +82,7 @@ func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, regi
 }
 
 func (p *Producer) initChannels() {
-	p.sem = make(chan bool, p.getConcurrency())
+	p.sem = make(chan Empty, p.getConcurrency())
 	p.errors = make(chan error, p.getConcurrency())
 	p.messages = make(chan *Message, p.msgBufSize())
 

@@ -22,10 +22,12 @@ const (
 
 	kinesisWritesPerSec int = 1000
 	kinesisReadsPerSec  int = 5
-
 	// Timeout TODO
 	Timeout = 60
 )
+
+// Empty is an empty struct.  It is mostly used for counting semaphore purposes
+type Empty struct{}
 
 var (
 	conf = getConfig()
@@ -185,6 +187,6 @@ func (k *kinesis) getErrCount() int64 {
 	return atomic.LoadInt64(&k.errCount)
 }
 
-func getLock(sem chan bool) {
-	sem <- true
+func getLock(sem chan Empty) {
+	sem <- Empty{}
 }
