@@ -63,6 +63,7 @@ type Producer struct {
 	stats Stats
 }
 
+// Stats stores runtime metrics that are queryable via the GetStats call
 type Stats struct {
 	incCount     int64
 	processCount int64
