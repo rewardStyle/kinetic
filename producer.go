@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"sync"
 	"syscall"
@@ -24,10 +25,14 @@ const (
 )
 
 var (
-	ThroughputExceededError = errors.New("Configured AWS Kinesis throughput has been exceeded!")
-	KinesisFailureError     = errors.New("AWS Kinesis internal failure.")
-	BadConcurrencyError     = errors.New("Concurrency must be greater than zero.")
-	DroppedMessageError     = errors.New("Channel is full, dropped message.")
+	// ErrThroughputExceeded represents an error when the Kinesis throughput has been exceeded
+	ErrThroughputExceeded = errors.New("Configured AWS Kinesis throughput has been exceeded")
+	// ErrKinesisFailure represents a generic internal AWS Kinesis error
+	ErrKinesisFailure = errors.New("AWS Kinesis internal failure")
+	// ErrBadConcurrency represents an error when the provided concurrency value is invalid
+	ErrBadConcurrency = errors.New("Concurrency must be greater than zero")
+	// ErrDroppedMessage represents an error the channel is full and messages are being dropped
+	ErrDroppedMessage = errors.New("Channel is full, dropped message")
 )
 
 // Producer keeps a queue of messages on a channel and continually attempts
@@ -70,10 +75,10 @@ type Stats struct {
 func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
 	var err error
 	if concurrency < 1 {
-		return nil, BadConcurrencyError
+		return nil, ErrBadConcurrency
 	}
 	if stream == "" {
-		return nil, NullStreamError
+		return nil, ErrNullStream
 	}
 
 	p.setConcurrency(concurrency)
@@ -143,9 +148,8 @@ func (p *Producer) activate() (*Producer, error) {
 	if err != nil || active != true {
 		if err != nil {
 			return p, err
-		} else {
-			return p, NotActiveError
 		}
+		return p, ErrNotActive
 	}
 
 	// go start feeder consumer and let listen processes them
@@ -154,17 +158,17 @@ func (p *Producer) activate() (*Producer, error) {
 	return p, err
 }
 
-// Initialize a producer with the params specified in the configuration file
+// Init initializes a producer with the params specified in the configuration file
 func (p *Producer) Init() (*Producer, error) {
 	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Producer)
 }
 
-// Initialize a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
+// InitC initializes a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
 func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
 	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
 }
 
-// Re-initialize kinesis client with new endpoint. Used for testing with kinesalite
+// NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
 func (p *Producer) NewEndpoint(endpoint, stream string) {
 	// Re-initialize kinesis client for testing
 	p.kinesis.client = p.kinesis.newClient(endpoint, stream)
@@ -206,7 +210,7 @@ func (p *Producer) setProducing(producing bool) {
 
 }
 
-// Identifies whether or not the messages are queued for POSTing to the stream
+// IsProducing identifies whether or not the messages are queued for POSTing to the stream
 func (p *Producer) IsProducing() bool {
 	p.producingMu.Lock()
 	defer p.producingMu.Unlock()
@@ -281,10 +285,12 @@ stop:
 	p.setProducing(false)
 }
 
+// Messages gets the current number of messages on the Producer
 func (p *Producer) Messages() <-chan *Message {
 	return p.messages
 }
 
+// Errors gets the current number of errors on the Producer
 func (p *Producer) Errors() <-chan error {
 	return p.errors
 }
@@ -318,7 +324,7 @@ func (p *Producer) TryToSend(msg *Message) error {
 		return nil
 	default:
 		atomic.AddInt64(&p.stats.dropCount, 1)
-		return DroppedMessageError
+		return ErrDroppedMessage
 	}
 }
 
@@ -398,7 +404,7 @@ func (p *Producer) retryRecord(record gokinesis.Record) {
 	p.send(new(Message).Init(record.Data, record.PartitionKey))
 }
 
-// Stops queuing and producing and waits for all tasks to finish
+// Close stops queuing and producing and waits for all tasks to finish
 func (p *Producer) Close() error {
 	if conf.Debug.Verbose {
 		log.Println("Producer is waiting for all tasks to finish...")
@@ -414,7 +420,35 @@ func (p *Producer) Close() error {
 	if conf.Debug.Verbose {
 		log.Println("Producer is shutting down.")
 	}
+	runtime.Gosched()
+	return nil
+}
 
+// CloseSync closes the Producer in a syncronous manner.
+func (p *Producer) CloseSync() error {
+	if conf.Debug.Verbose {
+		log.Println("Listener is waiting for all tasks to finish...")
+	}
+	var err error
+	// Stop consuming
+	select {
+	case p.interrupts <- syscall.SIGINT:
+		break
+	default:
+		if conf.Debug.Verbose {
+			log.Println("Already closing listener.")
+		}
+		runtime.Gosched()
+		return err
+	}
+	p.wg.Wait()
+	for p.IsProducing() {
+		runtime.Gosched()
+	}
+	if conf.Debug.Verbose {
+		log.Println("Listener is shutting down.")
+	}
+	runtime.Gosched()
 	return nil
 }
 

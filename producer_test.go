@@ -3,11 +3,12 @@ package kinetic
 import (
 	"encoding/binary"
 	"errors"
-	. "github.com/smartystreets/goconvey/convey"
 	"runtime"
 	"syscall"
 	"testing"
 	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestProducerStop(t *testing.T) {
@@ -35,6 +36,24 @@ func TestProducerStop(t *testing.T) {
 	producer.Close()
 }
 
+func TestSyncStop(t *testing.T) {
+	producer, _ := new(Producer).Init()
+	producer.NewEndpoint(testEndpoint, "stream-name")
+
+	Convey("Given a running producer", t, func() {
+		go producer.produce()
+		runtime.Gosched()
+		Convey("It should stop producing if sent an interrupt signal", func() {
+			err := producer.CloseSync()
+			So(err, ShouldBeNil)
+			// Wait for it to stop
+			So(producer.IsProducing(), ShouldEqual, false)
+		})
+	})
+
+	producer.Close()
+}
+
 func TestProducerError(t *testing.T) {
 	producer, _ := new(Producer).Init()
 	producer.NewEndpoint(testEndpoint, "stream-name")
@@ -43,7 +62,7 @@ func TestProducerError(t *testing.T) {
 		go producer.produce()
 
 		Convey("It should handle errors successfully", func() {
-			producer.errors <- errors.New("All your base are belong to us!")
+			producer.errors <- errors.New("All your base are belong to us")
 			// Let the error propagate
 			<-time.After(3 * time.Second)
 			So(producer.getErrCount(), ShouldEqual, 1)

@@ -2,12 +2,13 @@ package kinetic
 
 import (
 	"errors"
-	. "github.com/smartystreets/goconvey/convey"
 	"runtime"
 	"sync"
 	"syscall"
 	"testing"
 	"time"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 const testEndpoint = "http://127.0.0.1:4567"
@@ -34,6 +35,25 @@ func TestListenerStop(t *testing.T) {
 	listener.Close()
 }
 
+func TestListenerSyncStop(t *testing.T) {
+	listener, _ := new(Listener).Init()
+	listener.NewEndpoint(testEndpoint, "stream-name")
+
+	Convey("Given a running listener", t, func() {
+		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
+			wg.Done()
+		})
+
+		Convey("It should stop listening if sent an interrupt signal", func() {
+			err := listener.CloseSync()
+			So(err, ShouldBeNil)
+			So(listener.IsListening(), ShouldEqual, false)
+		})
+	})
+
+	listener.Close()
+}
+
 func TestListenerError(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
@@ -44,7 +64,7 @@ func TestListenerError(t *testing.T) {
 		})
 
 		Convey("It should handle errors successfully", func() {
-			listener.errors <- errors.New("All your base are belong to us!")
+			listener.errors <- errors.New("All your base are belong to us")
 
 			// Let the error propagate
 			<-time.After(3 * time.Second)
