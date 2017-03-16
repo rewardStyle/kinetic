@@ -256,7 +256,7 @@ func (l *Listener) Retrieve() (*Message, error) {
 	select {
 	case msg := <-l.messages:
 		return msg, nil
-	case err := <-l.Errors():
+	case err := <-l.errors:
 		return nil, err
 	case sig := <-l.interrupts:
 		l.handleInterrupt(sig)
@@ -267,7 +267,7 @@ func (l *Listener) Retrieve() (*Message, error) {
 // RetrieveFn retrieves a message from the queue and apply the supplied function to the message
 func (l *Listener) RetrieveFn(fn msgFn) {
 	select {
-	case err := <-l.Errors():
+	case err := <-l.errors:
 		l.wg.Add(1)
 		go l.handleError(err)
 	case msg := <-l.messages:
@@ -323,11 +323,6 @@ func (l *Listener) CloseSync() error {
 	}
 	runtime.Gosched()
 	return nil
-}
-
-// Errors gets the current number of errors on the Listener
-func (l *Listener) Errors() <-chan error {
-	return l.errors
 }
 
 func (l *Listener) handleMsg(msg *Message, fn msgFn) {
