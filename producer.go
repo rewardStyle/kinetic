@@ -11,8 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	gokinesis "github.com/rewardStyle/go-kinesis"
+	"github.com/aws/aws-sdk-go/aws"
+	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 )
+
+var _ = awsKinesis.EndpointsID
 
 const (
 	firehoseURL     = "https://kinesis.%s.amazonaws.com"
@@ -32,6 +35,15 @@ var (
 	// ErrDroppedMessage represents an error the channel is full and messages are being dropped
 	ErrDroppedMessage = errors.New("Channel is full, dropped message")
 )
+
+// interface StreamProducer {
+// 	Init() (Producer, error)
+// 	InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (Producer, error)
+// 	NewEndpoint(endpoint, stream string) (err error)
+// 	IsProducing() bool
+// 	Send(msg *Message)
+// 	TryToSend(msg *Message) error
+// }
 
 // Producer keeps a queue of messages on a channel and continually attempts
 // to POST the records using the PutRecords method. If the messages were
@@ -155,13 +167,14 @@ func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, reg
 }
 
 // NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
-func (p *Producer) NewEndpoint(endpoint, stream string) {
+func (p *Producer) NewEndpoint(endpoint, stream string) (err error) {
 	// Re-initialize kinesis client for testing
-	p.kinesis.client = p.kinesis.newClient(endpoint, stream)
+	p.kinesis.client, err = p.kinesis.newClient(endpoint, stream)
 
 	if !p.IsProducing() {
 		go p.produce()
 	}
+	return
 }
 
 // Each shard can support up to 1,000 records per second for writes, up to a maximum total
@@ -183,7 +196,7 @@ func (p *Producer) kinesisFlush(counter *int, timer *time.Time) bool {
 	if *counter >= kinesisWritesPerSec && !(time.Now().After(timer.Add(1 * time.Second))) {
 		// Wait for the remainder of the second - timer and counter
 		// will be reset on next pass
-		<-time.After(1*time.Second - time.Since(*timer))
+		time.Sleep(1*time.Second - time.Since(*timer))
 	}
 
 	return true
@@ -226,13 +239,27 @@ stop:
 				log.Println("Received message to send. Total messages received: " + strconv.FormatInt(p.getMsgCount(), 10))
 			}
 
-			kargs := p.args()
-			fargs := p.firehoseArgs()
+			// kargs := p.args()
+			// fargs := p.firehoseArgs()
 
 			if p.getProducerType() == kinesisType {
-				kargs.AddRecord(msg.Value(), string(msg.Key()))
+
+				kargs := &awsKinesis.PutRecordsInput{StreamName: aws.String(p.stream)}
+				kargs.Records = append(
+					kargs.Records,
+					&awsKinesis.PutRecordsRequestEntry{
+						Data:         msg.Value(),
+						PartitionKey: aws.String(string(msg.Key()))})
+				if p.kinesisFlush(&counter, &timer) {
+					p.wg.Add(1)
+					go func() {
+						p.sendRecords(kargs)
+						p.wg.Done()
+					}()
+				}
 			} else if p.getProducerType() == firehoseType {
-				fargs.AddRecord(msg.Value(), string(msg.Key()))
+				fargs := &awsFire
+
 			}
 
 			if p.getProducerType() == firehoseType && p.firehoseFlush(&counter, &timer) {
@@ -265,7 +292,7 @@ stop:
 	p.setProducing(false)
 }
 
-// Messages gets the current number of messages on the Producer
+// Messages gets the current message channel from the producer
 func (p *Producer) Messages() <-chan *Message {
 	return p.messages
 }
@@ -306,7 +333,7 @@ func (p *Producer) TryToSend(msg *Message) error {
 // If our payload is larger than allowed Kinesis will write as much as
 // possible and fail the rest. We can then put them back on the queue
 // to re-send
-func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
+func (p *Producer) sendRecords(args *awsKinesis.PutRecordsInput) {
 	if p.getProducerType() != kinesisType {
 		return
 	}
@@ -345,7 +372,7 @@ func (p *Producer) sendRecords(args *gokinesis.RequestArgs) {
 	}
 }
 
-func (p *Producer) retryRecords(records []gokinesis.Record) {
+func (p *Producer) retryRecords(records []awsKinesis.Record) {
 	for _, record := range records {
 		p.Send(new(Message).Init(record.Data, record.PartitionKey))
 

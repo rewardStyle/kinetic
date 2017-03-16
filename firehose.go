@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	gokinesis "github.com/rewardStyle/go-kinesis"
+	"github.com/aws/aws-sdk-go/aws"
+	//gokinesis "github.com/rewardStyle/go-kinesis"
+	"github.com/aws/aws-sdk-go/service/firehose"
 )
 
 const (
@@ -15,14 +17,16 @@ const (
 	truncatedRecordTerminator string = ``
 )
 
-func (k *kinesis) firehoseArgs() *gokinesis.RequestArgs {
-	args := gokinesis.NewArgs()
-	args.Add("DeliveryStreamName", k.stream)
-	return args
-}
+// func (k *kinesis) firehoseArgs() *gokinesis.RequestArgs {
+// 	args := gokinesis.NewArgs()
+// 	args.Add("DeliveryStreamName", k.stream)
+// 	return args
+// }
 
 func (k *kinesis) checkFirehoseActive() (bool, error) {
-	status, err := k.client.DescribeDeliveryStream(k.firehoseArgs())
+	status, err := k.client.DescribeDeliveryStream(firehose.DescribeDeliveryStreamInput{
+		DeliveryStreamName: aws.String(k.stream),
+	})
 	if err != nil {
 		return false, err
 	}
@@ -65,10 +69,11 @@ func (p *Producer) Firehose() (*Producer, error) {
 	}
 	p.setConcurrency(conf.Concurrency.Producer)
 	p.initChannels()
-	auth, err := authenticate(conf.AWS.AccessKey, conf.AWS.SecretKey)
+	sess, err := authenticate(conf.AWS.AccessKey, conf.AWS.SecretKey)
 	p.kinesis = &kinesis{
 		stream: conf.Firehose.Stream,
-		client: gokinesis.NewWithEndpoint(auth, conf.AWS.Region, fmt.Sprintf(firehoseURL, conf.AWS.Region)),
+		client: firehose.New(sess),
+	//gokinesis.NewWithEndpoint(auth, conf.AWS.Region, fmt.Sprintf(firehoseURL, conf.AWS.Region)),
 	}
 	if err != nil {
 		return p, err
@@ -93,7 +98,7 @@ func (p *Producer) FirehoseC(stream, accessKey, secretKey, region string, concur
 	auth, err := authenticate(accessKey, secretKey)
 	p.kinesis = &kinesis{
 		stream: stream,
-		client: gokinesis.NewWithEndpoint(auth, region, fmt.Sprintf(firehoseURL, region)),
+		client: firehose.//gokinesis.NewWithEndpoint(auth, region, fmt.Sprintf(firehoseURL, region)),
 	}
 	if err != nil {
 		return p, err
