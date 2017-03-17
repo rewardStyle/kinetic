@@ -2,6 +2,7 @@ package kinetic
 
 import (
 	"errors"
+	"log"
 	"runtime"
 	"sync"
 	"syscall"
@@ -22,7 +23,8 @@ func CreateAndWaitForStream(client awsKinesisIface.KinesisAPI, name string) {
 		ShardCount: aws.Int64(1),
 	})
 	stream := &awsKinesis.DescribeStreamInput{StreamName: aws.String(name), Limit: aws.Int64(1)}
-	client.WaitUntilStreamExists(stream)
+	err := client.WaitUntilStreamExists(stream)
+	log.Println(err)
 	time.Sleep(time.Second)
 }
 
