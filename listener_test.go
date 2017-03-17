@@ -23,6 +23,7 @@ func CreateAndWaitForStream(client awsKinesisIface.KinesisAPI, name string) {
 	})
 	stream := &awsKinesis.DescribeStreamInput{StreamName: aws.String(name), Limit: aws.Int64(1)}
 	client.WaitUntilStreamExists(stream)
+	time.Sleep(time.Second)
 }
 
 func TestListenerStop(t *testing.T) {
