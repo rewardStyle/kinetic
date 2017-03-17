@@ -36,19 +36,22 @@ var (
 	ErrDroppedMessage = errors.New("Channel is full, dropped message")
 )
 
-// interface StreamProducer {
-// 	Init() (Producer, error)
-// 	InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (Producer, error)
-// 	NewEndpoint(endpoint, stream string) (err error)
-// 	IsProducing() bool
-// 	Send(msg *Message)
-// 	TryToSend(msg *Message) error
-// }
+// Producer is an interface for sending messages to a stream of some sort.
+type Producer interface {
+	Init() (Producer, error)
+	InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (Producer, error)
+	NewEndpoint(endpoint, stream string) (err error)
+	IsProducing() bool
+	Send(msg *Message)
+	TryToSend(msg *Message) error
+	Close() error
+	CloseSync() error
+}
 
-// Producer keeps a queue of messages on a channel and continually attempts
+// KinesisProducer keeps a queue of messages on a channel and continually attempts
 // to POST the records using the PutRecords method. If the messages were
 // not sent successfully they are placed back on the queue to retry
-type Producer struct {
+type KinesisProducer struct {
 	*kinesis
 
 	producerType int
@@ -71,7 +74,7 @@ type Producer struct {
 	interrupts chan os.Signal
 }
 
-func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
+func (p *KinesisProducer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (Producer, error) {
 	var err error
 	if concurrency < 1 {
 		return nil, ErrBadConcurrency
@@ -93,7 +96,7 @@ func (p *Producer) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	return p.activate()
 }
 
-func (p *Producer) initChannels() {
+func (p *KinesisProducer) initChannels() {
 	p.sem = make(chan Empty, p.getConcurrency())
 	p.errors = make(chan error, p.getConcurrency())
 	p.messages = make(chan *Message, p.msgBufSize())
@@ -102,47 +105,39 @@ func (p *Producer) initChannels() {
 	signal.Notify(p.interrupts, os.Interrupt)
 }
 
-func (p *Producer) setConcurrency(concurrency int) {
+func (p *KinesisProducer) setConcurrency(concurrency int) {
 	p.concurrencyMu.Lock()
 	p.concurrency = concurrency
 	p.concurrencyMu.Unlock()
 }
 
-func (p *Producer) getConcurrency() int {
+func (p *KinesisProducer) getConcurrency() int {
 	p.concurrencyMu.Lock()
 	defer p.concurrencyMu.Unlock()
 	return p.concurrency
 }
 
-func (p *Producer) msgBufSize() int {
+func (p *KinesisProducer) msgBufSize() int {
 	p.concurrencyMu.Lock()
 	defer p.concurrencyMu.Unlock()
 	return p.concurrency * 1000
 }
 
-func (p *Producer) setProducerType(producerType int) {
+func (p *KinesisProducer) setProducerType(producerType int) {
 	p.typeMu.Lock()
 	p.producerType = producerType
 	p.typeMu.Unlock()
 }
 
-func (p *Producer) getProducerType() int {
+func (p *KinesisProducer) getProducerType() int {
 	p.typeMu.Lock()
 	defer p.typeMu.Unlock()
 	return p.producerType
 }
 
-func (p *Producer) activate() (*Producer, error) {
+func (p *KinesisProducer) activate() (Producer, error) {
 	// Is the stream ready?
-	var active bool
-	var err error
-
-	if p.getProducerType() == kinesisType {
-		active, err = p.checkActive()
-	} else {
-		active, err = p.checkFirehoseActive()
-	}
-
+	active, err := p.checkActive()
 	if err != nil || active != true {
 		if err != nil {
 			return p, err
@@ -157,17 +152,17 @@ func (p *Producer) activate() (*Producer, error) {
 }
 
 // Init initializes a producer with the params specified in the configuration file
-func (p *Producer) Init() (*Producer, error) {
+func (p *KinesisProducer) Init() (Producer, error) {
 	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Producer)
 }
 
 // InitC initializes a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
-func (p *Producer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Producer, error) {
+func (p *KinesisProducer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (Producer, error) {
 	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
 }
 
 // NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
-func (p *Producer) NewEndpoint(endpoint, stream string) (err error) {
+func (p *KinesisProducer) NewEndpoint(endpoint, stream string) (err error) {
 	// Re-initialize kinesis client for testing
 	p.kinesis.client, err = p.kinesis.newClient(endpoint, stream)
 
@@ -182,7 +177,7 @@ func (p *Producer) NewEndpoint(endpoint, stream string) (err error) {
 // to operations such as PutRecord and PutRecords.
 // TODO: payload inspection & throttling
 // http://docs.aws.amazon.com/kinesis/latest/dev/service-sizes-and-limits.html
-func (p *Producer) kinesisFlush(counter *int, timer *time.Time) bool {
+func (p *KinesisProducer) kinesisFlush(counter *int, timer *time.Time) bool {
 	// If a second has passed since the last timer start, reset the timer
 	if time.Now().After(timer.Add(1 * time.Second)) {
 		*timer = time.Now()
@@ -202,7 +197,7 @@ func (p *Producer) kinesisFlush(counter *int, timer *time.Time) bool {
 	return true
 }
 
-func (p *Producer) setProducing(producing bool) {
+func (p *KinesisProducer) setProducing(producing bool) {
 	p.producingMu.Lock()
 	p.producing = producing
 	p.producingMu.Unlock()
@@ -210,7 +205,7 @@ func (p *Producer) setProducing(producing bool) {
 }
 
 // IsProducing identifies whether or not the messages are queued for POSTing to the stream
-func (p *Producer) IsProducing() bool {
+func (p *KinesisProducer) IsProducing() bool {
 	p.producingMu.Lock()
 	defer p.producingMu.Unlock()
 	return p.producing
@@ -221,7 +216,7 @@ func (p *Producer) IsProducing() bool {
 // Maximum of 1000 requests a second for a single shard. Each PutRecords can
 // accept a maximum of 500 records per request and each record can be as large
 // as 1MB per record OR 5MB per request
-func (p *Producer) produce() {
+func (p *KinesisProducer) produce() {
 	p.setProducing(true)
 
 	counter := 0
@@ -242,33 +237,13 @@ stop:
 			// kargs := p.args()
 			// fargs := p.firehoseArgs()
 
-			if p.getProducerType() == kinesisType {
-
-				kargs := &awsKinesis.PutRecordsInput{StreamName: aws.String(p.stream)}
-				kargs.Records = append(
-					kargs.Records,
-					&awsKinesis.PutRecordsRequestEntry{
-						Data:         msg.Value(),
-						PartitionKey: aws.String(string(msg.Key()))})
-				if p.kinesisFlush(&counter, &timer) {
-					p.wg.Add(1)
-					go func() {
-						p.sendRecords(kargs)
-						p.wg.Done()
-					}()
-				}
-			} else if p.getProducerType() == firehoseType {
-				fargs := &awsFire
-
-			}
-
-			if p.getProducerType() == firehoseType && p.firehoseFlush(&counter, &timer) {
-				p.wg.Add(1)
-				go func() {
-					p.sendFirehoseRecords(fargs)
-					p.wg.Done()
-				}()
-			} else if p.kinesisFlush(&counter, &timer) {
+			kargs := &awsKinesis.PutRecordsInput{StreamName: aws.String(p.stream)}
+			kargs.Records = append(
+				kargs.Records,
+				&awsKinesis.PutRecordsRequestEntry{
+					Data:         msg.Value(),
+					PartitionKey: aws.String(string(msg.Key()))})
+			if p.kinesisFlush(&counter, &timer) {
 				p.wg.Add(1)
 				go func() {
 					p.sendRecords(kargs)
@@ -293,22 +268,18 @@ stop:
 }
 
 // Messages gets the current message channel from the producer
-func (p *Producer) Messages() <-chan *Message {
+func (p *KinesisProducer) Messages() <-chan *Message {
 	return p.messages
 }
 
 // Errors gets the current number of errors on the Producer
-func (p *Producer) Errors() <-chan error {
+func (p *KinesisProducer) Errors() <-chan error {
 	return p.errors
 }
 
 // Send a message to the queue for POSTing
-func (p *Producer) Send(msg *Message) {
+func (p *KinesisProducer) Send(msg *Message) {
 	// Add the terminating record indicator
-	if p.getProducerType() == firehoseType {
-		msg.SetValue(append(msg.Value(), truncatedRecordTerminator...))
-	}
-
 	p.wg.Add(1)
 	go func() {
 		p.messages <- msg
@@ -317,11 +288,8 @@ func (p *Producer) Send(msg *Message) {
 }
 
 // TryToSend tries to send the message, but if the channel is full it drops the message, and returns an error.
-func (p *Producer) TryToSend(msg *Message) error {
+func (p *KinesisProducer) TryToSend(msg *Message) error {
 	// Add the terminating record indicator
-	if p.getProducerType() == firehoseType {
-		msg.SetValue(append(msg.Value(), truncatedRecordTerminator...))
-	}
 	select {
 	case p.messages <- msg:
 		return nil
@@ -333,7 +301,7 @@ func (p *Producer) TryToSend(msg *Message) error {
 // If our payload is larger than allowed Kinesis will write as much as
 // possible and fail the rest. We can then put them back on the queue
 // to re-send
-func (p *Producer) sendRecords(args *awsKinesis.PutRecordsInput) {
+func (p *KinesisProducer) sendRecords(args *awsKinesis.PutRecordsInput) {
 	if p.getProducerType() != kinesisType {
 		return
 	}
@@ -345,17 +313,20 @@ func (p *Producer) sendRecords(args *awsKinesis.PutRecordsInput) {
 
 	// Because we do not know which of the records was successful or failed
 	// we need to put them all back on the queue
-	if putResp != nil && putResp.FailedRecordCount > 0 {
+	failedRecordCount := aws.Int64Value(putResp.FailedRecordCount)
+	if putResp != nil && failedRecordCount > 0 {
 		if conf.Debug.Verbose {
-			log.Println("Failed records: " + strconv.Itoa(putResp.FailedRecordCount))
+			log.Printf("Failed records: %d", failedRecordCount)
 		}
 
 		for idx, resp := range putResp.Records {
 			// Put failed records back on the queue
-			if resp.ErrorCode != "" || resp.ErrorMessage != "" {
+			errorCode := aws.StringValue(resp.ErrorCode)
+			errorMessage := aws.StringValue(resp.ErrorMessage)
+			if errorCode != "" || errorMessage != "" {
 				p.decMsgCount()
-				p.errors <- errors.New(resp.ErrorMessage)
-				p.Send(new(Message).Init(args.Records[idx].Data, args.Records[idx].PartitionKey))
+				p.errors <- errors.New(errorMessage)
+				p.Send(new(Message).Init(args.Records[idx].Data, aws.StringValue(args.Records[idx].PartitionKey)))
 
 				if conf.Debug.Verbose {
 					log.Println("Message in failed PutRecords put back on the queue: " + string(args.Records[idx].Data))
@@ -372,9 +343,9 @@ func (p *Producer) sendRecords(args *awsKinesis.PutRecordsInput) {
 	}
 }
 
-func (p *Producer) retryRecords(records []awsKinesis.Record) {
+func (p *KinesisProducer) retryRecords(records []*awsKinesis.PutRecordsRequestEntry) {
 	for _, record := range records {
-		p.Send(new(Message).Init(record.Data, record.PartitionKey))
+		p.Send(new(Message).Init(record.Data, aws.StringValue(record.PartitionKey)))
 
 		if conf.Debug.Verbose {
 			log.Println("Message in nil send response put back on the queue: " + string(record.Data))
@@ -383,7 +354,7 @@ func (p *Producer) retryRecords(records []awsKinesis.Record) {
 }
 
 // Close stops queuing and producing and waits for all tasks to finish
-func (p *Producer) Close() error {
+func (p *KinesisProducer) Close() error {
 	if conf.Debug.Verbose {
 		log.Println("Producer is waiting for all tasks to finish...")
 	}
@@ -403,7 +374,7 @@ func (p *Producer) Close() error {
 }
 
 // CloseSync closes the Producer in a syncronous manner.
-func (p *Producer) CloseSync() error {
+func (p *KinesisProducer) CloseSync() error {
 	if conf.Debug.Verbose {
 		log.Println("Listener is waiting for all tasks to finish...")
 	}
@@ -430,7 +401,7 @@ func (p *Producer) CloseSync() error {
 	return nil
 }
 
-func (p *Producer) handleInterrupt(signal os.Signal) {
+func (p *KinesisProducer) handleInterrupt(signal os.Signal) {
 	if conf.Debug.Verbose {
 		log.Println("Producer received interrupt signal")
 	}
@@ -442,7 +413,7 @@ func (p *Producer) handleInterrupt(signal os.Signal) {
 	p.Close()
 }
 
-func (p *Producer) handleError(err error) {
+func (p *KinesisProducer) handleError(err error) {
 	if err != nil && conf.Debug.Verbose {
 		log.Println("Received error: ", err.Error())
 	}

@@ -2,6 +2,9 @@ package kinetic
 
 import (
 	"errors"
+	"fmt"
+	"log"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,7 +15,24 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
+	"github.com/kr/pretty"
 )
+
+func prettyPrint(x interface{}, opts ...interface{}) {
+	fmt.Printf("%# v\n", pretty.Formatter(x))
+
+	for _, opt := range opts {
+		switch o := opt.(type) {
+		case string:
+			switch o {
+			case "exit":
+				os.Exit(1)
+			case "panic":
+				panic(o)
+			}
+		}
+	}
+}
 
 const (
 	atSequenceNumber = iota
@@ -66,6 +86,7 @@ type streamStatusTypes map[int]string
 type kinesis struct {
 	stream            string
 	shard             string
+	endPoint          string
 	shardIteratorType string
 	shardIterator     string
 	sequenceNumber    string
@@ -80,7 +101,11 @@ type kinesis struct {
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
 
 	sess, err := authenticate(accessKey, secretKey)
-	client := awsKinesis.New(sess)
+	conf := aws.NewConfig().WithRegion(region)
+	if k.endPoint != "" {
+		conf = conf.WithEndpoint(k.endPoint)
+	}
+	client := awsKinesis.New(sess, conf)
 
 	k = &kinesis{
 		stream:            stream,
@@ -100,36 +125,31 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 	return k, nil
 }
 
-// func (k *kinesis) args() *awsKinesis. {
-// 	args := gokinesis.NewArgs()
-// 	args.Add("StreamName", k.stream)
-// 	args.Add("ShardId", k.shard)
-// 	args.Add("ShardIterator", k.shardIterator)
-//
-// 	if k.sequenceNumber != "" {
-// 		args.Add("StartingSequenceNumber", k.sequenceNumber)
-// 		args.Add("ShardIteratorType", ShardIterTypes[atSequenceNumber])
-// 	} else {
-// 		args.Add("ShardIteratorType", k.shardIteratorType)
-// 	}
-//
-// 	return args
-// }
-
 func (k *kinesis) initShardIterator() error {
+	// log.Println(k.sequenceNumber)
+	var awsSeqNumber *string
+	if k.sequenceNumber != "" {
+		awsSeqNumber = aws.String(k.sequenceNumber)
+	}
+	k.sequenceNumber = aws.StringValue(awsSeqNumber)
 	resp, err := k.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
 		ShardId:                aws.String(k.shard),             // Required
 		ShardIteratorType:      aws.String(k.shardIteratorType), // Required
 		StreamName:             aws.String(k.stream),            // Required
-		StartingSequenceNumber: aws.String(k.sequenceNumber),
+		StartingSequenceNumber: awsSeqNumber,
 		Timestamp:              aws.Time(time.Now()),
 	})
+	log.Print("here1")
 	if err != nil {
+		log.Print("here2")
+
 		return err
 	}
 	if resp.ShardIterator != nil {
+		log.Print("here")
 		return k.setShardIterator(*resp.ShardIterator)
 	}
+
 	return ErrNilShardIterator
 }
 
@@ -171,45 +191,27 @@ func (k *kinesis) checkActive() (bool, error) {
 	return false, nil
 }
 
-// func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
-// 	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"), conf.AWS.Region, endpoint)
-// 	client.CreateStream(stream, 1)
-//
-// 	// Wait for stream to create
-// 	k.client.WaitUntilStreamExists(*kinesis.DescribeStreamInput)
-//
-// 	return client
-// }
-
 func (k *kinesis) newClient(endpoint, stream string) (*awsKinesis.Kinesis, error) {
-	// if accessKey == "" || secretKey == "" {
-	// 	if sess, err = session.NewSession(); err != nil {
-	// 		return nil, ErrMetaAuthentication
-	// 	}
-	// } else {
-	// 	conf := &aws.Config{}
-	// 	conf = conf.WithCredentials(credentials.NewStaticCredentials(accessKey, secretKey, ""))
-	// 	sess, err = session.NewSessionWithOptions(session.Options{Config: *conf})
-	// }
-	// return
-	//
-	//
-
+	k.endPoint = endpoint
 	conf := &aws.Config{}
 	conf = conf.WithCredentials(
-		credentials.NewStaticCredentials("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"))
-	conf = conf.WithEndpoint(endpoint)
+		credentials.NewStaticCredentials("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"),
+	).WithEndpoint(endpoint).WithRegion("us-east-1").WithDisableSSL(true).WithMaxRetries(3)
 
+	// fake region
+	//prettyPrint(conf)
+	prettyPrint("")
 	sess, err := session.NewSessionWithOptions(session.Options{Config: *conf})
-	return awsKinesis.New(sess), err
+	return awsKinesis.New(sess, conf), err
 }
 
 func (k *kinesis) refreshClient(accessKey, secretKey, region string) error {
 	sess, err := authenticate(accessKey, secretKey)
+	conf := aws.NewConfig().WithRegion(region).WithEndpoint(k.endPoint)
 	if err != nil {
 		return err
 	}
-	k.client = awsKinesis.New(sess)
+	k.client = awsKinesis.New(sess, conf)
 	return nil
 }
 

@@ -7,23 +7,23 @@ type Message struct {
 	awsKinesis.Record
 }
 
-// Init initializes a Message
-func (k *Message) Init(msg []byte, key string, sequenceNumber *string) *Message {
+// Init initializes a Message.
+// Currently we are ignoring sequenceNumber.
+func (k *Message) Init(msg []byte, key string) *Message {
 	return &Message{
 		awsKinesis.Record{
-			Data:           msg,
-			PartitionKey:   &key,
-			SequenceNumber: sequenceNumber,
+			Data:         msg,
+			PartitionKey: &key,
 		},
 	}
 }
 
-// SetValue sets the underlying value of the gokinesis record
+// SetValue sets the underlying value of the underlying record
 func (k *Message) SetValue(value []byte) {
 	k.Record.Data = value
 }
 
-// Value gets the underlying value of the gokinesis record
+// Value gets the underlying value of the underlying record
 func (k *Message) Value() []byte {
 	return k.Record.Data
 }
