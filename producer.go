@@ -169,6 +169,7 @@ func (p *KinesisProducer) NewEndpoint(endpoint, stream string) (err error) {
 	return
 }
 
+// ReInit re-initializes the shard iterator.  Used with conjucntion with NewEndpoint
 func (p *KinesisProducer) ReInit() {
 	if !p.IsProducing() {
 		go p.produce()
