@@ -4,7 +4,6 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 
@@ -116,7 +115,6 @@ func (k *kinesis) initShardIterator() error {
 		ShardIteratorType:      aws.String(k.shardIteratorType), // Required
 		StreamName:             aws.String(k.stream),            // Required
 		StartingSequenceNumber: awsSeqNumber,
-		Timestamp:              aws.Time(time.Now()),
 	})
 	if err != nil {
 		return err
