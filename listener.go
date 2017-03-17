@@ -103,12 +103,15 @@ func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, reg
 // NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
 func (l *Listener) NewEndpoint(endpoint, stream string) (err error) {
 	l.kinesis.client, err = l.kinesis.newClient(endpoint, stream)
+	return
+}
+
+func (l *Listener) ReInit() {
 	l.initShardIterator()
 
 	if !l.IsConsuming() {
 		go l.consume()
 	}
-	return
 }
 
 func (l *Listener) setConcurrency(concurrency int) {

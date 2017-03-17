@@ -2,7 +2,6 @@ package kinetic
 
 import (
 	"errors"
-	"log"
 	"runtime"
 	"sync"
 	"syscall"
@@ -23,15 +22,14 @@ func CreateAndWaitForStream(client awsKinesisIface.KinesisAPI, name string) {
 		ShardCount: aws.Int64(1),
 	})
 	stream := &awsKinesis.DescribeStreamInput{StreamName: aws.String(name), Limit: aws.Int64(1)}
-	err := client.WaitUntilStreamExists(stream)
-	log.Println(err)
-	time.Sleep(time.Second)
+	client.WaitUntilStreamExists(stream)
 }
 
 func TestListenerStop(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
 	CreateAndWaitForStream(listener.client, "stream-name")
+	listener.ReInit()
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -55,6 +53,7 @@ func TestListenerSyncStop(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
 	CreateAndWaitForStream(listener.client, "stream-name")
+	listener.ReInit()
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -75,6 +74,7 @@ func TestListenerError(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
 	CreateAndWaitForStream(listener.client, "stream-name")
+	listener.ReInit()
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -99,6 +99,7 @@ func TestListenerMessage(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
 	CreateAndWaitForStream(listener.client, "stream-name")
+	listener.ReInit()
 
 	go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
 		wg.Done()
@@ -127,6 +128,9 @@ func TestRetrieveMessage(t *testing.T) {
 	listener.NewEndpoint(testEndpoint, "your-stream")
 	producer.NewEndpoint(testEndpoint, "your-stream")
 	CreateAndWaitForStream(listener.client, "your-stream")
+	listener.ReInit()
+	producer.ReInit()
+
 	time.Sleep(10)
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
@@ -135,9 +139,10 @@ func TestRetrieveMessage(t *testing.T) {
 
 			Convey("It should be passed on the queue without error", func() {
 				msg, err := listener.Retrieve()
-				if err != nil {
-					t.Fatalf(err.Error())
-				}
+				// if err != nil {
+				// 	t.Fatalf(err.Error())
+				// }
+				So(err, ShouldBeNil)
 
 				So(string(msg.Value()), ShouldResemble, string(c.message))
 			})

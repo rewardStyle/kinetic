@@ -2,7 +2,6 @@ package kinetic
 
 import (
 	"errors"
-	"log"
 	"sync"
 	"sync/atomic"
 
@@ -112,7 +111,6 @@ func (k *kinesis) initShardIterator() error {
 		awsSeqNumber = aws.String(k.sequenceNumber)
 		k.shardIteratorType = ShardIterTypes[atSequenceNumber]
 	}
-	log.Printf("shard: %s, it: %s, stream: %s, seq: %s", k.shard, k.shardIteratorType, k.stream, k.sequenceNumber)
 	resp, err := k.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
 		ShardId:                aws.String(k.shard),             // Required
 		ShardIteratorType:      aws.String(k.shardIteratorType), // Required
@@ -120,12 +118,9 @@ func (k *kinesis) initShardIterator() error {
 		StartingSequenceNumber: awsSeqNumber,
 	})
 	if err != nil {
-		log.Printf("got an error from GetShardIterator")
 		return err
 	}
-	log.Println(resp)
 	if resp.ShardIterator != nil {
-		log.Printf("No error, but missing ShardIterator in response")
 		return k.setShardIterator(*resp.ShardIterator)
 	}
 
@@ -159,7 +154,6 @@ func (k *kinesis) checkActive() (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	log.Println(status)
 	if status.StreamDescription.StreamStatus == nil {
 		return false, ErrNilShardStatus
 	}

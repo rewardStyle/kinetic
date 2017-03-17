@@ -41,6 +41,7 @@ type Producer interface {
 	Init() (Producer, error)
 	InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (Producer, error)
 	NewEndpoint(endpoint, stream string) (err error)
+	ReInit()
 	IsProducing() bool
 	Send(msg *Message)
 	TryToSend(msg *Message) error
@@ -165,7 +166,10 @@ func (p *KinesisProducer) InitC(stream, shard, shardIterType, accessKey, secretK
 func (p *KinesisProducer) NewEndpoint(endpoint, stream string) (err error) {
 	// Re-initialize kinesis client for testing
 	p.kinesis.client, err = p.kinesis.newClient(endpoint, stream)
+	return
+}
 
+func (p *KinesisProducer) ReInit() {
 	if !p.IsProducing() {
 		go p.produce()
 	}
