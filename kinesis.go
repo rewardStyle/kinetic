@@ -109,6 +109,7 @@ func (k *kinesis) initShardIterator() error {
 	var awsSeqNumber *string
 	if k.sequenceNumber != "" {
 		awsSeqNumber = aws.String(k.sequenceNumber)
+		k.shardIteratorType = ShardIterTypes[atSequenceNumber]
 	}
 	resp, err := k.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
 		ShardId:                aws.String(k.shard),             // Required
