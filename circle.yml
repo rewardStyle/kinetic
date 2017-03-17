@@ -7,6 +7,9 @@ machine:
 
 dependencies:
   pre:
+    - bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/master/binscripts/gvm-installer)
+    - gvm install go1.8
+    - gvm use go1.8 --default
     - go get github.com/tools/godep
     - go get -u github.com/golang/lint/golint
     - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
