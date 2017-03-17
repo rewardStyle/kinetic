@@ -21,7 +21,8 @@ func CreateAndWaitForStream(client awsKinesisIface.KinesisAPI, name string) {
 		StreamName: aws.String(name),
 		ShardCount: aws.Int64(1),
 	})
-	client.WaitUntilStreamExists(&awsKinesis.DescribeStreamInput{StreamName: aws.String("name"), Limit: aws.Int64(1)})
+	stream := &awsKinesis.DescribeStreamInput{StreamName: aws.String(name), Limit: aws.Int64(1)}
+	client.WaitUntilStreamExists(stream)
 }
 
 func TestListenerStop(t *testing.T) {
@@ -123,10 +124,11 @@ func TestRetrieveMessage(t *testing.T) {
 	listener.NewEndpoint(testEndpoint, "your-stream")
 	producer.NewEndpoint(testEndpoint, "your-stream")
 	CreateAndWaitForStream(listener.client, "your-stream")
-
+	time.Sleep(10)
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
 			producer.Send(new(Message).Init(c.message, "test"))
+			time.Sleep(3)
 
 			Convey("It should be passed on the queue without error", func() {
 				msg, err := listener.Retrieve()
