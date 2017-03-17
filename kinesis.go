@@ -2,9 +2,6 @@ package kinetic
 
 import (
 	"errors"
-	"fmt"
-	"log"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,24 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
-	"github.com/kr/pretty"
 )
-
-func prettyPrint(x interface{}, opts ...interface{}) {
-	fmt.Printf("%# v\n", pretty.Formatter(x))
-
-	for _, opt := range opts {
-		switch o := opt.(type) {
-		case string:
-			switch o {
-			case "exit":
-				os.Exit(1)
-			case "panic":
-				panic(o)
-			}
-		}
-	}
-}
 
 const (
 	atSequenceNumber = iota
@@ -131,7 +111,6 @@ func (k *kinesis) initShardIterator() error {
 	if k.sequenceNumber != "" {
 		awsSeqNumber = aws.String(k.sequenceNumber)
 	}
-	k.sequenceNumber = aws.StringValue(awsSeqNumber)
 	resp, err := k.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
 		ShardId:                aws.String(k.shard),             // Required
 		ShardIteratorType:      aws.String(k.shardIteratorType), // Required
@@ -139,14 +118,10 @@ func (k *kinesis) initShardIterator() error {
 		StartingSequenceNumber: awsSeqNumber,
 		Timestamp:              aws.Time(time.Now()),
 	})
-	log.Print("here1")
 	if err != nil {
-		log.Print("here2")
-
 		return err
 	}
 	if resp.ShardIterator != nil {
-		log.Print("here")
 		return k.setShardIterator(*resp.ShardIterator)
 	}
 
@@ -199,8 +174,6 @@ func (k *kinesis) newClient(endpoint, stream string) (*awsKinesis.Kinesis, error
 	).WithEndpoint(endpoint).WithRegion("us-east-1").WithDisableSSL(true).WithMaxRetries(3)
 
 	// fake region
-	//prettyPrint(conf)
-	prettyPrint("")
 	sess, err := session.NewSessionWithOptions(session.Options{Config: *conf})
 	return awsKinesis.New(sess, conf), err
 }

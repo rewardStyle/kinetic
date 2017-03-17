@@ -238,7 +238,6 @@ func (l *Listener) consume() {
 			err := l.initShardIterator()
 			if err != nil {
 				log.Println("Failed to refresh iterator: " + err.Error())
-
 				// If we received an error we should wait and attempt to
 				// refresh the shard iterator again
 				l.throttle(&GsiCounter, &GsiTimer)

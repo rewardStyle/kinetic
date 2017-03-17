@@ -15,6 +15,7 @@ func TestProducerStop(t *testing.T) {
 	producerInterface, _ := new(KinesisProducer).Init()
 	producerInterface.NewEndpoint(testEndpoint, "stream-name")
 	producer := producerInterface.(*KinesisProducer)
+	CreateAndWaitForStream(producer.client, "stream-name")
 
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
@@ -41,6 +42,7 @@ func TestSyncStop(t *testing.T) {
 	producerInterface, _ := new(KinesisProducer).Init()
 	producerInterface.NewEndpoint(testEndpoint, "stream-name")
 	producer := producerInterface.(*KinesisProducer)
+	CreateAndWaitForStream(producer.client, "stream-name")
 
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
@@ -60,6 +62,7 @@ func TestProducerError(t *testing.T) {
 	producerInterface, _ := new(KinesisProducer).Init()
 	producerInterface.NewEndpoint(testEndpoint, "stream-name")
 	producer := producerInterface.(*KinesisProducer)
+	CreateAndWaitForStream(producer.client, "stream-name")
 
 	Convey("Given a running producer", t, func() {
 		go producer.produce()
@@ -83,6 +86,8 @@ func TestProducerMessage(t *testing.T) {
 	listener.NewEndpoint(testEndpoint, "your-stream")
 	producer.NewEndpoint(testEndpoint, "your-stream")
 
+	CreateAndWaitForStream(producer.(*KinesisProducer).client, "your-stream")
+
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
 			producer.Send(new(Message).Init(c.message, "test"))
@@ -105,6 +110,8 @@ func TestProducerMessage(t *testing.T) {
 func TestProducerTryToSend(t *testing.T) {
 	producer, _ := new(KinesisProducer).InitC("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1", 4)
 	producer.NewEndpoint(testEndpoint, "your-stream")
+	CreateAndWaitForStream(producer.(*KinesisProducer).client, "stream-name")
+
 	producer.Close() // This is to make the test deterministic.  It stops producer from sending messages.
 	runtime.Gosched()
 	var totDropped int
