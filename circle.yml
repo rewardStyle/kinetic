@@ -2,7 +2,7 @@ machine:
   environment:
     GO_VERSION: "1.8"
     IMPORT_PATH: "github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
-    CODE_PATH:  "$HOME/.gvm/pkgsets/go1.8/global/src/github.com/rewardStyle/kinetic"
+    GOPATH: "$HOME/.gvm/pkgsets/stable/global"
   services:
     - docker
 
@@ -16,18 +16,16 @@ dependencies:
     - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
     - mkdir -p "$GOPATH/src/$IMPORT_PATH"
-    - rsync -azvrC --delete ./ "$GOPATH/src/$IMPORT_PATH/"
-    - rsync -azvrC --delete $HOME/$CIRCLE_PROJECT_REPONAME "$GOPATH/src/$IMPORT_PATH/"
+    - rsync -azvrC --delete $HOME/$CIRCLE_PROJECT_REPONAME "$GOPATH/src/github.com/$CIRCLE_PROJECT_USERNAME/"
+    - go get -u github.com/Masterminds/glide && go install github.com/Masterminds/glide
+
+    - cd $GOPATH/src/$IMPORT_PATH && glide i
 
 test:
   pre:
-    - go vet ./...
-      pwd: $CODE_PATH
-    - golint -set_exit_status
-      pwd: $CODE_PATH
-    - gosimple
-      pwd: $CODE_PATH
+    - cd "$GOPATH/src/$IMPORT_PATH" && go vet $(glide nv)
+    - cd "$GOPATH/src/$IMPORT_PATH" && golint -set_exit_status $(glide nv)
+    - cd "$GOPATH/src/$IMPORT_PATH" && gosimple $(glide nv)
 
   override:
-    - go test -v -race -cover
-      pwd: $CODE_PATH
+    - cd $CODE_PATH && go test -v -race -cover $(glide nv)
