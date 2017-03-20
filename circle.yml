@@ -28,4 +28,4 @@ test:
     - cd "$GOPATH/src/$IMPORT_PATH" && gosimple $(glide nv)
 
   override:
-    - cd $CODE_PATH && go test -v -race -cover $(glide nv)
+    - cd $GOPATH/src/$IMPORT_PATH && go test -v -race -cover $(glide nv)
