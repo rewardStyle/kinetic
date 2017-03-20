@@ -17,14 +17,6 @@ import (
 
 var _ = awsKinesis.EndpointsID
 
-const (
-	firehoseURL     = "https://kinesis.%s.amazonaws.com"
-	firehoseVersion = "20150804"
-
-	kinesisType = iota
-	firehoseType
-)
-
 var (
 	// ErrThroughputExceeded represents an error when the Kinesis throughput has been exceeded
 	ErrThroughputExceeded = errors.New("Configured AWS Kinesis throughput has been exceeded")
@@ -55,8 +47,6 @@ type Producer interface {
 type KinesisProducer struct {
 	*kinesis
 
-	producerType int
-
 	concurrency   int
 	concurrencyMu sync.Mutex
 	sem           chan Empty
@@ -65,7 +55,6 @@ type KinesisProducer struct {
 
 	producing   bool
 	producingMu sync.Mutex
-	typeMu      sync.Mutex
 
 	errors chan error
 
@@ -85,7 +74,6 @@ func (p *KinesisProducer) init(stream, shard, shardIterType, accessKey, secretKe
 	}
 
 	p.setConcurrency(concurrency)
-	p.setProducerType(kinesisType)
 
 	p.initChannels()
 
@@ -122,18 +110,6 @@ func (p *KinesisProducer) msgBufSize() int {
 	p.concurrencyMu.Lock()
 	defer p.concurrencyMu.Unlock()
 	return p.concurrency * 1000
-}
-
-func (p *KinesisProducer) setProducerType(producerType int) {
-	p.typeMu.Lock()
-	p.producerType = producerType
-	p.typeMu.Unlock()
-}
-
-func (p *KinesisProducer) getProducerType() int {
-	p.typeMu.Lock()
-	defer p.typeMu.Unlock()
-	return p.producerType
 }
 
 func (p *KinesisProducer) activate() (Producer, error) {
@@ -305,9 +281,6 @@ func (p *KinesisProducer) TryToSend(msg *Message) error {
 // possible and fail the rest. We can then put them back on the queue
 // to re-send
 func (p *KinesisProducer) sendRecords(args *awsKinesis.PutRecordsInput) {
-	if p.getProducerType() != kinesisType {
-		return
-	}
 
 	putResp, err := p.client.PutRecords(args)
 	if err != nil && conf.Debug.Verbose {

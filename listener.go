@@ -34,14 +34,12 @@ type Listener struct {
 	concurrencyMu sync.Mutex
 	sem           chan Empty
 
-	wg        sync.WaitGroup
-	msgBuffer int
+	wg sync.WaitGroup
 
 	listening   bool
 	listeningMu sync.Mutex
 	consuming   bool
 	consumingMu sync.Mutex
-	messageMu   sync.Mutex
 
 	errors     chan error
 	messages   chan *Message

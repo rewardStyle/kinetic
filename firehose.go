@@ -36,7 +36,6 @@ type Firehose struct {
 	wg            sync.WaitGroup
 	producing     bool
 	producingMu   sync.Mutex
-	typeMu        sync.Mutex
 	errors        chan error
 	messages      chan *Message
 	interrupts    chan os.Signal
@@ -274,6 +273,7 @@ stop:
 			if err != nil && conf.Debug.Verbose {
 				log.Println("Received error: ", err.Error())
 			}
+			p.incErrCount()
 			<-p.sem
 		}
 	}
@@ -360,10 +360,6 @@ func (p *Firehose) ReInit() {
 	if !p.IsProducing() {
 		go p.produce()
 	}
-}
-
-func (p *Firehose) decMsgCount() {
-	atomic.AddInt64(&p.msgCount, -1)
 }
 
 func (p *Firehose) incMsgCount() {
