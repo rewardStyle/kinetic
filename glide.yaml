@@ -1,7 +1,7 @@
 package: github.com/rewardStyle/kinetic
 import:
 - package: github.com/aws/aws-sdk-go
-  version: f70a8a7d8680992d62277dc6bd76e32a08152ac1
+  version: 5b99715ae2945a2434a2371f4e6c5542e839a32d
   subpackages:
   - aws
   - aws/awserr
