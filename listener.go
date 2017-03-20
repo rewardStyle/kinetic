@@ -77,7 +77,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 
 	// Is the stream ready?
 	active, err := l.checkActive()
-	if err != nil || active != true {
+	if err != nil || !active {
 		if err != nil {
 			return l, err
 		}

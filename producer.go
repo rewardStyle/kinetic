@@ -139,7 +139,7 @@ func (p *KinesisProducer) getProducerType() int {
 func (p *KinesisProducer) activate() (Producer, error) {
 	// Is the stream ready?
 	active, err := p.checkActive()
-	if err != nil || active != true {
+	if err != nil || !active {
 		if err != nil {
 			return p, err
 		}
@@ -257,8 +257,6 @@ stop:
 			}
 
 			<-p.sem
-
-			break
 		case sig := <-p.interrupts:
 			go p.handleInterrupt(sig)
 			break stop

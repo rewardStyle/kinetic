@@ -97,11 +97,7 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 	}
 
 	err = k.initShardIterator()
-	if err != nil {
-		return k, err
-	}
-
-	return k, nil
+	return k, err
 }
 
 func (k *kinesis) initShardIterator() error {

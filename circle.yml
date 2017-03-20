@@ -1,8 +1,8 @@
 machine:
   environment:
-    GOPATH: "$HOME/.go_workspace"
     GO_VERSION: "1.8"
     IMPORT_PATH: "github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
+    CODE_PATH:  "$HOME/.gvm/pkgsets/go1.8/global/src/github.com/rewardStyle/kinetic"
   services:
     - docker
 
@@ -10,7 +10,8 @@ dependencies:
   pre:
     - bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/1.0.22/binscripts/gvm-installer)
     - source "$HOME/.gvm/scripts/gvm" && gvm install go$GO_VERSION -B --name=stable && gvm use stable --default
-    - go get github.com/tools/godep
+    - go get honnef.co/go/tools/cmd/staticcheck
+    - go get honnef.co/go/tools/cmd/gosimple
     - go get -u github.com/golang/lint/golint
     - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
@@ -21,7 +22,12 @@ dependencies:
 test:
   pre:
     - go vet ./...
+      pwd: $CODE_PATH
     - golint -set_exit_status
+      pwd: $CODE_PATH
+    - gosimple
+      pwd: $CODE_PATH
 
   override:
-    - godep go test -v -race -cover
+    - go test -v -race -cover
+      pwd: $CODE_PATH

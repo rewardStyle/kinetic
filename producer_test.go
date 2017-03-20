@@ -118,7 +118,7 @@ func TestProducerTryToSend(t *testing.T) {
 	CreateAndWaitForStream(producer.(*KinesisProducer).client, "stream-name")
 	producer.ReInit()
 
-	producer.Close() // This is to make the test deterministic.  It stops producer from sending messages.
+	closeError := producer.CloseSync() // This is to make the test deterministic.  It stops producer from sending messages.
 	runtime.Gosched()
 	var totDropped int
 	for i := 0; i < 5000; i++ {
@@ -130,6 +130,7 @@ func TestProducerTryToSend(t *testing.T) {
 	}
 	Convey("Given a producer", t, func() {
 		Convey("TryToSend should drop messages when the queue is full", func() {
+			So(closeError, ShouldBeNil)
 			So(totDropped, ShouldEqual, 1000)
 			So(len(producer.(*KinesisProducer).messages), ShouldEqual, 4000)
 		})

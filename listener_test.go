@@ -131,11 +131,11 @@ func TestRetrieveMessage(t *testing.T) {
 	listener.ReInit()
 	producer.ReInit()
 
-	time.Sleep(10)
+	time.Sleep(10 * time.Millisecond)
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
 			producer.Send(new(Message).Init(c.message, "test"))
-			time.Sleep(3)
+			time.Sleep(3 * time.Millisecond)
 
 			Convey("It should be passed on the queue without error", func() {
 				msg, err := listener.Retrieve()
