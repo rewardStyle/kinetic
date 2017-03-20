@@ -8,14 +8,28 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
+	awsKinesisIface "github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
 const testEndpoint = "http://127.0.0.1:4567"
 
+func CreateAndWaitForStream(client awsKinesisIface.KinesisAPI, name string) {
+	client.CreateStream(&awsKinesis.CreateStreamInput{
+		StreamName: aws.String(name),
+		ShardCount: aws.Int64(1),
+	})
+	stream := &awsKinesis.DescribeStreamInput{StreamName: aws.String(name), Limit: aws.Int64(1)}
+	client.WaitUntilStreamExists(stream)
+}
+
 func TestListenerStop(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
+	CreateAndWaitForStream(listener.client, "stream-name")
+	listener.ReInit()
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -26,7 +40,7 @@ func TestListenerStop(t *testing.T) {
 			listener.interrupts <- syscall.SIGINT
 			runtime.Gosched()
 			// Let it finish stopping
-			<-time.After(3 * time.Second)
+			time.Sleep(3 * time.Second)
 
 			So(listener.IsListening(), ShouldEqual, false)
 		})
@@ -38,6 +52,8 @@ func TestListenerStop(t *testing.T) {
 func TestListenerSyncStop(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
+	CreateAndWaitForStream(listener.client, "stream-name")
+	listener.ReInit()
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -57,6 +73,8 @@ func TestListenerSyncStop(t *testing.T) {
 func TestListenerError(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
+	CreateAndWaitForStream(listener.client, "stream-name")
+	listener.ReInit()
 
 	Convey("Given a running listener", t, func() {
 		go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
@@ -80,6 +98,8 @@ func TestListenerError(t *testing.T) {
 func TestListenerMessage(t *testing.T) {
 	listener, _ := new(Listener).Init()
 	listener.NewEndpoint(testEndpoint, "stream-name")
+	CreateAndWaitForStream(listener.client, "stream-name")
+	listener.ReInit()
 
 	go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
 		wg.Done()
@@ -103,20 +123,26 @@ func TestListenerMessage(t *testing.T) {
 
 func TestRetrieveMessage(t *testing.T) {
 	listener, _ := new(Listener).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1", 10)
-	producer, _ := new(Producer).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1", 10)
+	producer, _ := new(KinesisProducer).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1", 10)
 
 	listener.NewEndpoint(testEndpoint, "your-stream")
 	producer.NewEndpoint(testEndpoint, "your-stream")
+	CreateAndWaitForStream(listener.client, "your-stream")
+	listener.ReInit()
+	producer.ReInit()
 
+	time.Sleep(10)
 	for _, c := range cases {
 		Convey("Given a valid message", t, func() {
 			producer.Send(new(Message).Init(c.message, "test"))
+			time.Sleep(3)
 
 			Convey("It should be passed on the queue without error", func() {
 				msg, err := listener.Retrieve()
-				if err != nil {
-					t.Fatalf(err.Error())
-				}
+				// if err != nil {
+				// 	t.Fatalf(err.Error())
+				// }
+				So(err, ShouldBeNil)
 
 				So(string(msg.Value()), ShouldResemble, string(c.message))
 			})

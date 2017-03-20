@@ -10,6 +10,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 )
 
 var (
@@ -98,8 +101,13 @@ func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, reg
 }
 
 // NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
-func (l *Listener) NewEndpoint(endpoint, stream string) {
-	l.kinesis.client = l.kinesis.newClient(endpoint, stream)
+func (l *Listener) NewEndpoint(endpoint, stream string) (err error) {
+	l.kinesis.client, err = l.kinesis.newClient(endpoint, stream)
+	return
+}
+
+// ReInit re-initializes the shard iterator.  Used with conjucntion with NewEndpoint
+func (l *Listener) ReInit() {
 	l.initShardIterator()
 
 	if !l.IsConsuming() {
@@ -204,7 +212,12 @@ func (l *Listener) consume() {
 		l.throttle(&readCounter, &readTimer)
 
 		// args() will give us the shard iterator and type as well as the shard id
-		response, err := l.client.GetRecords(l.args())
+		response, err := l.client.GetRecords(
+			&awsKinesis.GetRecordsInput{
+				Limit:         aws.Int64(10000),
+				ShardIterator: aws.String(l.shardIterator),
+			},
+		)
 		if err != nil {
 			go func() {
 				l.errors <- err
@@ -229,7 +242,6 @@ func (l *Listener) consume() {
 			err := l.initShardIterator()
 			if err != nil {
 				log.Println("Failed to refresh iterator: " + err.Error())
-
 				// If we received an error we should wait and attempt to
 				// refresh the shard iterator again
 				l.throttle(&GsiCounter, &GsiTimer)
@@ -238,13 +250,15 @@ func (l *Listener) consume() {
 			}
 		}
 
-		if response != nil {
-			l.setShardIterator(response.NextShardIterator)
+		if response != nil && response.NextShardIterator != nil {
+			l.setShardIterator(*response.NextShardIterator)
 
 			if len(response.Records) > 0 {
 				for _, record := range response.Records {
-					l.messages <- &Message{record}
-					l.setSequenceNumber(record.SequenceNumber)
+					if record != nil {
+						l.messages <- &Message{*record}
+					}
+					l.setSequenceNumber(*record.SequenceNumber)
 				}
 			}
 		}
