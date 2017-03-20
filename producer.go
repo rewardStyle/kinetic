@@ -232,7 +232,7 @@ stop:
 		getLock(p.sem)
 
 		select {
-		case msg := <-p.Messages():
+		case msg := <-p.messages:
 			p.incMsgCount()
 
 			if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
@@ -262,7 +262,7 @@ stop:
 		case sig := <-p.interrupts:
 			go p.handleInterrupt(sig)
 			break stop
-		case err := <-p.Errors():
+		case err := <-p.errors:
 			p.incErrCount()
 			p.wg.Add(1)
 			go p.handleError(err)
@@ -270,16 +270,6 @@ stop:
 	}
 
 	p.setProducing(false)
-}
-
-// Messages gets the current message channel from the producer
-func (p *KinesisProducer) Messages() <-chan *Message {
-	return p.messages
-}
-
-// Errors gets the current number of errors on the Producer
-func (p *KinesisProducer) Errors() <-chan error {
-	return p.errors
 }
 
 // Send a message to the queue for POSTing

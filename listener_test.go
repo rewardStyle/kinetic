@@ -113,7 +113,7 @@ func TestListenerMessage(t *testing.T) {
 
 			Convey("It should handle messages successfully", func() {
 				So(listener.IsListening(), ShouldEqual, true)
-				So(listener.Errors(), ShouldNotResemble, nil)
+				So(listener.errors, ShouldNotResemble, nil)
 			})
 		})
 	}
