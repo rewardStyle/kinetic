@@ -214,10 +214,6 @@ stop:
 			if conf.Debug.Verbose && p.getMsgCount()%100 == 0 {
 				log.Println("Received message to send. Total messages received: " + strconv.FormatInt(p.getMsgCount(), 10))
 			}
-
-			// kargs := p.args()
-			// fargs := p.firehoseArgs()
-
 			kargs := &awsKinesis.PutRecordsInput{StreamName: aws.String(p.stream)}
 			kargs.Records = append(
 				kargs.Records,

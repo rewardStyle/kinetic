@@ -15,11 +15,6 @@ Before using kinetic, you should make sure you have a created a Kinesis stream a
 ## Testing
 Tests are written using [goconvey](http://goconvey.co/) and [kinesalite](https://github.com/mhart/kinesalite). Make sure you have kinesalite running locally before attempting to run the tests. They can be run either via the comamnd line:
 
-Do not be afraid if while running this test you see something that looks like this:
-```2017/03/17 14:05:51 Failed to refresh iterator: ResourceNotFoundException: Shard shardId-000000000000 in stream your-stream under account 000000000000 does not exist
-	status code: 400, request id: bcc63f00-0b44-11e7-a08c-fbdf76b97a66
-```
-
 
 ```sh
 $ go test -v -cover -race

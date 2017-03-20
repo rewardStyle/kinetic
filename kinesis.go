@@ -101,7 +101,6 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 }
 
 func (k *kinesis) initShardIterator() error {
-	// log.Println(k.sequenceNumber)
 	var awsSeqNumber *string
 	if k.sequenceNumber != "" {
 		awsSeqNumber = aws.String(k.sequenceNumber)

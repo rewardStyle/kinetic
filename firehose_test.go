@@ -5,22 +5,11 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-	// httpmock "gopkg.in/jarcoal/httpmock.v1"
 
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/firehose"
 	. "github.com/smartystreets/goconvey/convey"
 )
-
-// "testing"
-// "net/http"
-//
-// 	"github.com/aws/aws-sdk-go/aws"
-// 	"github.com/aws/aws-sdk-go/aws/credentials"
-// 	"github.com/aws/aws-sdk-go/aws/session"
-//   "github.com/smartystreets/goconvey/convey"
-// 	awsFirehoseIface "github.com/aws/aws-sdk-go/service/firehose/firehoseiface"
-// awsFirehose "github.com/aws/aws-sdk-go/service/firehose"
 
 func TestFireHose(t *testing.T) {
 	producer, _ := new(Firehose).InitC("your-stream", "", "", "accesskey", "secretkey", "us-east-1", 4)
@@ -28,7 +17,6 @@ func TestFireHose(t *testing.T) {
 	producer.(*Firehose).client = new(fakefirehose)
 	producer.ReInit()
 	Convey("Given a running firehose producer", t, func() {
-		//go producer.(*Firehose).produce()
 		Convey("it should send data to the firehose stream", func() {
 			for i := 0; i < 100; i++ {
 				producer.Send(new(Message).Init([]byte("this is a message"), ""))
@@ -78,7 +66,6 @@ func (f *fakefirehose) PutRecordRequest(*firehose.PutRecordInput) (*request.Requ
 	return nil, nil
 }
 func (f *fakefirehose) PutRecord(*firehose.PutRecordInput) (*firehose.PutRecordOutput, error) {
-	//atomic.AddInt64(&(f.count), 1)
 	return nil, nil
 }
 func (f *fakefirehose) PutRecordBatchRequest(*firehose.PutRecordBatchInput) (*request.Request, *firehose.PutRecordBatchOutput) {
@@ -86,7 +73,6 @@ func (f *fakefirehose) PutRecordBatchRequest(*firehose.PutRecordBatchInput) (*re
 }
 func (f *fakefirehose) PutRecordBatch(*firehose.PutRecordBatchInput) (*firehose.PutRecordBatchOutput, error) {
 	atomic.AddInt64(&(f.count), 1)
-	//f.count++
 	return &firehose.PutRecordBatchOutput{
 		RequestResponses: []*firehose.PutRecordBatchResponseEntry{
 			&firehose.PutRecordBatchResponseEntry{},
