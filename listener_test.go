@@ -105,7 +105,7 @@ func TestListenerMessage(t *testing.T) {
 		wg.Done()
 	})
 
-	<-time.After(3 * time.Second)
+	time.Sleep(3 * time.Second)
 
 	for _, c := range cases {
 		Convey("Given a running listener", t, func() {
@@ -117,8 +117,8 @@ func TestListenerMessage(t *testing.T) {
 			})
 		})
 	}
-
-	listener.Close()
+	time.Sleep(2 * time.Second)
+	listener.CloseSync()
 }
 
 func TestRetrieveMessage(t *testing.T) {
@@ -139,18 +139,16 @@ func TestRetrieveMessage(t *testing.T) {
 
 			Convey("It should be passed on the queue without error", func() {
 				msg, err := listener.Retrieve()
-				// if err != nil {
-				// 	t.Fatalf(err.Error())
-				// }
 				So(err, ShouldBeNil)
 
 				So(string(msg.Value()), ShouldResemble, string(c.message))
 			})
 		})
 	}
-
-	producer.Close()
-	listener.Close()
+	time.Sleep(1 * time.Second)
+	producer.CloseSync()
+	time.Sleep(1 * time.Second)
+	listener.CloseSync()
 }
 
 var cases = []struct {
