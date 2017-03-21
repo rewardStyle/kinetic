@@ -144,7 +144,7 @@ func (k *kinesis) setShardIterator(shardIter string) error {
 
 func (k *kinesis) checkActive() (bool, error) {
 	status, err := k.client.DescribeStream(&awsKinesis.DescribeStreamInput{
-		StreamName: aws.String("StreamName"), // Required
+		StreamName: aws.String(k.stream), // Required
 	})
 	if err != nil {
 		return false, err
