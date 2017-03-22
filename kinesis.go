@@ -84,7 +84,7 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 		Timeout: Timeout,
 	}
 	sess, err := authenticate(accessKey, secretKey)
-	conf := aws.NewConfig().WithRegion(region).WithHTTPClient(httpClient)
+	conf := aws.NewConfig().WithRegion(region).WithHTTPClient(httpClient).WithLogLevel(aws.LogDebugWithRequestRetries | aws.LogDebugWithRequestErrors | aws.LogDebugWithHTTPBody)
 	if k.endPoint != "" {
 		conf = conf.WithEndpoint(k.endPoint)
 	}
