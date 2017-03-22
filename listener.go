@@ -318,7 +318,6 @@ func (l *Listener) CloseSync() error {
 	// Stop consuming
 	select {
 	case l.interrupts <- syscall.SIGINT:
-		break
 	default:
 		if conf.Debug.Verbose {
 			log.Println("Already closing listener.")
@@ -330,10 +329,15 @@ func (l *Listener) CloseSync() error {
 	for l.IsConsuming() {
 		runtime.Gosched()
 	}
+
 	if conf.Debug.Verbose {
 		log.Println("Listener is shutting down.")
 	}
+	for l.IsListening() {
+		runtime.Gosched()
+	}
 	runtime.Gosched()
+
 	return nil
 }
 
