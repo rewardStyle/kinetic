@@ -2,6 +2,7 @@ package kinetic
 
 import (
 	"errors"
+	"net"
 	"net/http"
 	"sync"
 	"sync/atomic"
@@ -29,7 +30,15 @@ const (
 	kinesisWritesPerSec int = 1000
 	kinesisReadsPerSec  int = 5
 	// Timeout TODO
-	Timeout = 60 * time.Second
+)
+
+var (
+	// HTTPTimeout is the timeout for http for requests.
+	HTTPTimeout = 60 * time.Second
+	// DialTimeout is the timeout for the tpc dial.
+	DialTimeout = 5 * time.Second
+	// HandShakeTimeout is the timeout for the tpc handshake.
+	HandShakeTimeout = 5 * time.Second
 )
 
 // ErrNilShardIterator is an error for when we get back a nil shard iterator
@@ -81,14 +90,22 @@ type kinesis struct {
 
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
 	httpClient := &http.Client{
-		Timeout: Timeout,
+		Transport: &http.Transport{
+			Dial: (&net.Dialer{
+				Timeout: DialTimeout,
+			}).Dial,
+			TLSHandshakeTimeout: HandShakeTimeout},
+		Timeout: HTTPTimeout,
 	}
 	sess, err := authenticate(accessKey, secretKey)
-	conf := aws.NewConfig().WithRegion(region).WithHTTPClient(httpClient).WithLogLevel(aws.LogDebugWithRequestRetries | aws.LogDebugWithRequestErrors | aws.LogDebugWithHTTPBody)
-	if k.endPoint != "" {
-		conf = conf.WithEndpoint(k.endPoint)
+	awsConf := aws.NewConfig().WithRegion(region).WithHTTPClient(httpClient)
+	if conf.Debug.Verbose {
+		awsConf = awsConf.WithLogLevel(aws.LogDebugWithRequestRetries | aws.LogDebugWithRequestErrors)
 	}
-	client := awsKinesis.New(sess, conf)
+	if k.endPoint != "" {
+		awsConf = awsConf.WithEndpoint(k.endPoint)
+	}
+	client := awsKinesis.New(sess, awsConf)
 
 	k = &kinesis{
 		stream:            stream,
