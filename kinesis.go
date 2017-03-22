@@ -2,6 +2,7 @@ package kinetic
 
 import (
 	"errors"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
-	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -80,9 +80,8 @@ type kinesis struct {
 }
 
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
-	httpClient := &fasthttp.Client{
-		WriteTimeout: Timeout,
-		ReadTimeout:  Timeout,
+	httpClient := &http.Client{
+		Timeout: Timeout,
 	}
 	sess, err := authenticate(accessKey, secretKey)
 	conf := aws.NewConfig().WithRegion(region).WithHTTPClient(httpClient)
