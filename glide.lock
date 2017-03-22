@@ -1,5 +1,5 @@
-hash: c178dbd27e8a90c66854415d5bc65d76be516a5033ea92216cd1d0f32f709373
-updated: 2017-03-20T14:16:53.247369041-05:00
+hash: 888c76d30c4f09b8dc1b9e3f03b5f8aca71a4fce1f61f86b00ec2acf4f1bff87
+updated: 2017-03-22T03:38:40.868274029-05:00
 imports:
 - name: github.com/aws/aws-sdk-go
   version: 5b99715ae2945a2434a2371f4e6c5542e839a32d
@@ -43,6 +43,16 @@ imports:
   version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
 - name: github.com/jtolds/gls
   version: f1ac7f4f24f50328e6bc838ca4437d1612a0243c
+- name: github.com/klauspost/compress
+  version: e3b7981a12dd3cab49afa1d3a50e715846f23732
+  subpackages:
+  - flate
+  - gzip
+  - zlib
+- name: github.com/klauspost/cpuid
+  version: 09cded8978dc9e80714c4d85b0322337b0a1e5e0
+- name: github.com/klauspost/crc32
+  version: cb6bfca970f6908083f26f39a79009d608efd5cd
 - name: github.com/smartystreets/assertions
   version: c9ee7d9e9a2aeec0bee7c4a516f3e0ad7cb7e558
   subpackages:
@@ -54,6 +64,12 @@ imports:
   - convey
   - convey/gotest
   - convey/reporting
+- name: github.com/valyala/bytebufferpool
+  version: e746df99fe4a3986f4d4f79e13c1e0117ce9c2f7
+- name: github.com/valyala/fasthttp
+  version: 0503f9d38c2eb8793a0210f950a815810ffd1b64
+  subpackages:
+  - fasthttputil
 - name: gopkg.in/gcfg.v1
   version: 27e4946190b4a327b539185f2b5b1f7c84730728
   subpackages:

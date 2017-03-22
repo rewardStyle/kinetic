@@ -4,6 +4,7 @@ import (
 	"errors"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
+	"github.com/valyala/fasthttp"
 )
 
 const (
@@ -27,7 +29,7 @@ const (
 	kinesisWritesPerSec int = 1000
 	kinesisReadsPerSec  int = 5
 	// Timeout TODO
-	Timeout = 60
+	Timeout = 60 * time.Second
 )
 
 // ErrNilShardIterator is an error for when we get back a nil shard iterator
@@ -78,9 +80,12 @@ type kinesis struct {
 }
 
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
-
+	httpClient := &fasthttp.Client{
+		WriteTimeout: Timeout,
+		ReadTimeout:  Timeout,
+	}
 	sess, err := authenticate(accessKey, secretKey)
-	conf := aws.NewConfig().WithRegion(region)
+	conf := aws.NewConfig().WithRegion(region).WithHTTPClient(httpClient)
 	if k.endPoint != "" {
 		conf = conf.WithEndpoint(k.endPoint)
 	}
