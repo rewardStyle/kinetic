@@ -1,0 +1,569 @@
+package listener
+
+import (
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"sync"
+	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/session"
+	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis" // TODO: can rename this back to just kinesis after we drop the kinesis struct
+	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
+)
+
+// TODO: stats interface belongs to a separate file
+type StatsListener interface {
+	IncConsumedCount(int)
+	IncDeliveredCount(int)
+	IncProcessedCount(int)
+	IncErroredCount(int)
+}
+
+type NilStatsListener struct{}
+
+func (l *NilStatsListener) IncConsumedCount(count int)  {}
+func (l *NilStatsListener) IncDeliveredCount(count int) {}
+func (l *NilStatsListener) IncProcessedCount(count int) {}
+func (l *NilStatsListener) IncErroredCount(count int)   {}
+
+// TODO: this is currently defined elsewhere
+// type Empty struct{}
+
+var (
+	ErrCannotSetSequenceNumber     = errors.New("Cannot set sequence number while consuming")
+	ErrEmptySequenceNumber         = errors.New("Attempted to set sequence number with empty value")
+	ErrEmptyShardIterator          = errors.New("Attmpted to set shard iterator with empty value")
+	ErrNilGetShardIteratorResponse = errors.New("GetShardIteratore returned an nil response")
+	ErrNilGetRecordsResponse       = errors.New("GetRecords returned an nil response")
+	ErrNilStreamDescription        = errors.New("DescribeStream returned an nil StreamDescription")
+	ErrTimeoutReadResponseBody     = errors.New("Timeout while reading response body")
+)
+
+// TODO: %s/Listener/Listener/g
+type Listener struct {
+	accessKey     string
+	secretKey     string
+	securityToken string
+	region        string
+
+	stream   string
+	shard    string
+	endpoint string
+
+	shardIteratorType string
+	shardIterator     string
+	sequenceNumber    string
+	timestamp         time.Time
+
+	stats   StatsListener
+	statsMu sync.Mutex
+
+	batchSize   int
+	concurrency int
+
+	errors         chan error
+	messages       chan *Message
+	interrupts     chan os.Signal
+	concurrencySem chan Empty
+	wg             sync.WaitGroup
+	streamReady    sync.Once
+
+	consuming   bool
+	consumingMu sync.Mutex
+
+	client            kinesisiface.KinesisAPI
+	awsSdkLogLevel    aws.LogLevelType
+	httpClientTimeout time.Duration
+}
+
+// NewListener creates a new listener for listening to message on a Kinesis
+// stream
+func NewListener(stream, shard, shardIterType, accessKey, secretKey, region string, batchSize, concurrency int, httpClientTimeout time.Duration) (*Listener, error) {
+	return &Listener{
+		accessKey:         accessKey,
+		secretKey:         secretKey,
+		region:            region,
+		stream:            stream,
+		shard:             shard,
+		shardIteratorType: shardIterType,
+		stats:             &NilStatsListener{},
+		batchSize:         batchSize,
+		concurrency:       concurrency,
+		errors:            make(chan error, batchSize),
+		messages:          make(chan *Message, batchSize),
+		interrupts:        make(chan os.Signal, 1),
+		concurrencySem:    make(chan Empty, concurrency),
+		awsSdkLogLevel:    aws.LogOff,
+		httpClientTimeout: httpClientTimeout,
+	}, nil
+}
+
+// SetStartingSequenceNumber sets the sequence number when using the
+// AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER shard iterator type.
+func (l *Listener) SetStartingSequenceNumber(sequenceNumber string) error {
+	// Do not allow client to call SetSequenceNumber after we have started
+	// consuming.  This is really only meant to set the starting sequence
+	// number when the Listener has been instantiated with a
+	// ShardIteratorType of AT_SEQUENCE_NUMBER or AFTER_SEQUENCE_NUMBER
+	if l.IsConsuming() {
+		return ErrCannotSetSequenceNumber
+	}
+	l.sequenceNumber = sequenceNumber
+	return nil
+}
+
+// Sets the log level
+func (l *Listener) SetLogLevel(level aws.LogLevelType) {
+	l.awsSdkLogLevel = level
+}
+
+// IsConsuming returns true while consuming.
+func (l *Listener) IsConsuming() bool {
+	l.consumingMu.Lock()
+	defer l.consumingMu.Unlock()
+	return l.consuming
+}
+
+func (l *Listener) setConsuming(consuming bool) {
+	l.consumingMu.Lock()
+	defer l.consumingMu.Unlock()
+	l.consuming = consuming
+}
+
+// GetConcurrency returns the number of outstanding goroutines that the listener
+// will spawn.
+func (l *Listener) GetConcurrency() int {
+	return l.concurrency
+}
+
+// GetBatchSize returns the maximum number of messages to retrieve at once using
+// the GetRecords API.
+func (l *Listener) GetBatchSize() int {
+	return l.batchSize
+}
+
+// SetStatsListener sets the stats listener for counting the number of messages
+// consumed, delievered, processed, and errored.
+func (l *Listener) SetStatsListener(stats StatsListener) {
+	// We protect this with a Mutex in case the client library calls
+	// SetStatsListener after we have started consuming.
+	l.statsMu.Lock()
+	defer l.statsMu.Unlock()
+	l.stats = stats
+}
+
+// setShardIterator sets the shardIterator to use when calling GetRecords.  Do
+// not call this function outside of the consume goroutine.
+func (l *Listener) setShardIterator(shardIterator string) error {
+	if len(shardIterator) == 0 {
+		return ErrEmptyShardIterator
+	}
+	l.shardIterator = shardIterator
+	return nil
+}
+
+// setSequenceNumber sets the sequenceNumber of the last delivered message.  Do
+// not call this function outside of the consume goroutine.
+func (l *Listener) setSequenceNumber(sequenceNumber string) error {
+	if len(sequenceNumber) == 0 {
+		return ErrEmptySequenceNumber
+	}
+	l.sequenceNumber = sequenceNumber
+	return nil
+}
+
+// Logs a debug message using the AWS SDK logger
+func (l *Listener) Log(args ...interface{}) {
+	if l.client != nil && l.awsSdkLogLevel.AtLeast(aws.LogDebug) {
+		l.client.(*awsKinesis.Kinesis).Config.Logger.Log(args...)
+	}
+}
+
+// TODO: no one calls this yet
+func (l *Listener) checkActive() (bool, error) {
+	if err := l.ensureClient(); err != nil {
+		return false, err
+	}
+	resp, err := l.client.DescribeStream(&awsKinesis.DescribeStreamInput{
+		StreamName: aws.String(l.stream), // Required
+	})
+	if err != nil {
+		return false, err
+	}
+	if resp.StreamDescription == nil {
+		return false, ErrNilStreamDescription
+	}
+	if resp.StreamDescription.StreamStatus == nil {
+		return false, ErrNilShardStatus
+	}
+	if *resp.StreamDescription.StreamStatus == "ACTIVE" {
+		return true, nil
+	}
+	return false, nil
+}
+
+// TODO: no one calls this yet
+func (l *Listener) waitUntilActive(timeout time.Duration) bool {
+	start := time.Now()
+	for {
+		if time.Now().After(start.Add(timeout)) {
+			return false
+		}
+		if active, _ := l.checkActive(); active {
+			return true
+		}
+		time.Sleep(1 * time.Second)
+	}
+}
+
+// ensureClient will lazily make sure we have an AWS Kinesis client
+func (l *Listener) ensureClient() error {
+	// From the aws-go-sdk documentation:
+	// http://docs.aws.amazon.com/sdk-for-go/api/aws/session/
+	//
+	// Concurrency:
+	// Sessions are safe to use concurrently as long as the Session is not
+	// being modified.  The SDK will not modify the Session once the Session
+	// has been created.  Creating service clients concurrently from a
+	// shared Session is safe.
+	//
+	// We need to think through the impact of creating a new client (for
+	// example, after receiving an error from Kinesis) while there may be
+	// outstanding goroutines still processing messages.  My cursory thought
+	// is that this is safe to do, as any outstanding messages will likely
+	// not interact with the Kinesis stream.  At worst, we would need a lock
+	// around the ensureClient method to make sure that no two goroutines
+	// are trying to ensure the client at the same time.
+	//
+	// As we don't expose any methods (or in fact, even the Listener object
+	// itself) to the client through the API, I don't forsee needing to add
+	// this lock unless something dramatically changes about the design of
+	// this library.
+	if l.client != nil {
+		return nil
+	}
+
+	var err error
+	var sess *session.Session
+	if l.accessKey == "" || l.secretKey == "" {
+		sess, err = session.NewSession()
+	} else {
+		sess, err = session.NewSession(&aws.Config{
+			Credentials: credentials.NewStaticCredentials(l.accessKey, l.secretKey, l.securityToken),
+		})
+	}
+	if err != nil {
+		return err
+	}
+
+	config := aws.NewConfig()
+	if l.region != "" {
+		config = config.WithRegion(l.region)
+	}
+	if l.endpoint != "" {
+		config = config.WithEndpoint(l.endpoint)
+	}
+	config = config.WithLogLevel(l.awsSdkLogLevel)
+	config = config.WithHTTPClient(&http.Client{
+		Timeout: l.httpClientTimeout,
+	})
+
+	l.client = awsKinesis.New(sess, config)
+	return nil
+}
+
+// ensureShardIterator will lazily make sure that we have a valid ShardIterator,
+// calling the GetShardIterator API with the configured ShardIteratorType (with
+// any applicable StartingSequenceNumber or Timestamp) if necessary.
+func (l *Listener) ensureShardIterator() error {
+	if l.shardIterator != "" {
+		return nil
+	}
+
+	var sequenceNumber *string
+	var timestamp *time.Time
+	if l.sequenceNumber != "" {
+		sequenceNumber = aws.String(l.sequenceNumber)
+	}
+	if !l.timestamp.IsZero() {
+		timestamp = aws.Time(l.timestamp)
+	}
+	resp, err := l.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
+		ShardId:                aws.String(l.shard),             // Required
+		ShardIteratorType:      aws.String(l.shardIteratorType), // Required
+		StreamName:             aws.String(l.stream),            // Required
+		StartingSequenceNumber: sequenceNumber,
+		Timestamp:              timestamp,
+	})
+	if err != nil {
+		l.Log(err)
+		return err
+	}
+	if resp == nil {
+		return ErrNilGetShardIteratorResponse
+	}
+	if resp.ShardIterator == nil {
+		return ErrNilShardIterator
+	}
+	return l.setShardIterator(*resp.ShardIterator)
+}
+
+func (l *Listener) consumeRecords(size int) error {
+	if err := l.ensureClient(); err != nil {
+		return err
+	}
+
+	if err := l.ensureShardIterator(); err != nil {
+		return err
+	}
+
+	// NOTE: We use the GetRecordsRequest method of creating requests to allow
+	// for registering custom handlers for debugging.
+	start := time.Now()
+	req, resp := l.client.GetRecordsRequest(&awsKinesis.GetRecordsInput{
+		Limit:         aws.Int64(int64(size)),
+		ShardIterator: aws.String(l.shardIterator),
+	})
+
+	// If debug log is turned on, log some GetRecords debugging
+	if l.awsSdkLogLevel.AtLeast(aws.LogDebug) {
+		req.Handlers.Send.PushBack(func(r *request.Request) {
+			l.Log("Finished GetRecords Send, took", time.Since(start))
+		})
+		req.Handlers.Unmarshal.PushFront(func(r *request.Request) {
+			l.Log("Finished GetRecords Unmarshal, took", time.Since(start))
+		})
+	}
+
+	// NOTE: Ok this is a mess.
+	// Here, we insert a handler to be called after the Send handler and
+	// before the the Unmarshal handler in the aws-go-sdk library.
+	//
+	// The Send handler will call http.Client.Do() on the request, which
+	// blocks until the response headers have been read before returning an
+	// HTTPResponse.
+	//
+	// The Unmarshal handler will ultimately call ioutil.ReadAll() on the
+	// HTTPResponse.Body stream.
+	//
+	// Our handler wraps the HTTPResponse.Body with our own ReadCloser so
+	// that we can implement a timeout mechanism on the Read() call (which
+	// is called by the ioutil.ReadAll() function)
+	req.Handlers.Unmarshal.PushFront(func(r *request.Request) {
+		l.LogDebug("Started GetRecords Unmarshal, took", time.Since(start))
+		// Here, we set a timer that the initial Read() call on
+		// HTTPResponse.Body must return by.  Note that the normal
+		// http.Client Timeout is still in effect.
+		timer := time.NewTimer(2 * time.Second)
+
+		r.HTTPResponse.Body = &TimeoutReadCloser{
+			ReadCloser: r.HTTPResponse.Body,
+			OnReadFn: func(stream io.ReadCloser, b []byte) (n int, err error) {
+				// The OnReadFn will be called each time
+				// ioutil.ReadAll calls Read on the
+				// TimeoutReadCloser.
+
+				// First, we set up a struct that to hold the
+				// results of the Read() call that can go
+				// through a channel
+				type Result struct {
+					n   int
+					err error
+				}
+
+				// Next, we build a channel with which to pass
+				// the Read() results
+				c := make(chan Result, 1)
+
+				// Now, we call the Read() on the
+				// HTTPResponse.Body in a goroutine and feed the
+				// results into the channel
+				readStart := time.Now()
+				go func() {
+					var result Result
+					result.n, result.err = stream.Read(b)
+					c <- result
+				}()
+
+				// Finally, we poll for the Read() to complete
+				// or the timer to elapse.
+				select {
+				case result := <-c:
+					// If we sucessfully Read() from the
+					// HTTPResponse.Body, we reset our
+					// timeout and return the results from
+					// the Read()
+					timer.Reset(2 * time.Second)
+					n, err = result.n, result.err
+					l.LogDebug(fmt.Sprintf("DEBUG: read %d bytes, took %v", n, time.Since(readStart)))
+				case <-timer.C:
+					// If we timeout, we return an error
+					// that will unblock ioutil.ReadAll().
+					// This will cause the Unmarshal handler
+					// to return an error.  This error will
+					// propogate to the original req.Send()
+					// call (below)
+					l.LogDebug(fmt.Sprintf("DEBUG: read timed out after %v", time.Since(readStart)))
+					err = ErrTimeoutReadResponseBody
+				}
+				return
+			},
+			OnCloseFn: func() {
+				l.LogDebug("Finished GetRecords body read, took", time.Since(start))
+			},
+		}
+	})
+
+	// Send the GetRecords request
+	l.LogDebug("Starting GetRecords build/sign request, took", time.Since(start))
+	if err := req.Send(); err != nil {
+		return err
+	}
+
+	// Process Records
+	l.LogDebug(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), l.shard, time.Since(start)))
+	if resp == nil {
+		return ErrNilGetRecordsResponse
+	}
+	if len(resp.Records) > 0 {
+		for _, record := range resp.Records {
+			if record != nil {
+				l.messages <- &Message{*record}
+			}
+			if record.SequenceNumber != nil {
+				// We can safely ignore if this call returns
+				// error, as if we somehow receive an empty
+				// sequence number from AWS, we will simply not
+				// set it.  At worst, this causes us to
+				// reprocess this record if we happen to refresh
+				// the iterator.
+				l.setSequenceNumber(*record.SequenceNumber)
+			}
+		}
+		// Set the ShardIteratorType to AT_SEQUENCE_NUMBER in case we
+		// need to call GetShardIterator again.
+		//
+		// Note, we save the sequence number above per message we
+		// deliver to the channel.  This allows our next call to
+		// GetShardIterator start either AT or AFTER the last delivered
+		// message.  This is different from checkpointing in that it
+		// does not deal with crash recovery.  In crash recovery, we
+		// assume that any messages in flight will not be processed and
+		// thus want to checkpoint our last processed message.  This is
+		// more for refreshing the shard iterator and we can assume
+		// messages in flight will eventually be processed.
+		//
+		// TODO: This probably should be AFTER_SEQUENCE_NUMBER
+		l.shardIteratorType = "AT_SEQUENCE_NUMBER"
+	}
+	if resp.NextShardIterator != nil {
+		// TODO: According to AWS docs:
+		// http://docs.aws.amazon.com/sdk-for-go/api/service/kinesis/#GetRecordsOutput
+		//
+		// NextShardIterator: The next position in the shard
+		// from which to start sequentially reading data
+		// records.  If set to null, the shard has been closed
+		// and the requested iterator will not return any more
+		// data.
+		//
+		// When dealing with streams that will merge or split,
+		// we need to detect that the shard has closed and
+		// notify the client library.
+		//
+		// TODO: I don't know if we should be ignoring an error returned
+		// by setShardIterator in case of an empty shard iterator in the
+		// response.  There isn't much we can do, and the best path for
+		// recovery may be simply to reprocess the batch and see if we
+		// get a valid NextShardIterator from AWS the next time around.
+		l.setShardIterator(*resp.NextShardIterator)
+	}
+	return nil
+}
+
+func (l *Listener) consume() {
+	l.setConsuming(true)
+	counter := 0
+	timer := time.Now()
+	for {
+		l.throttle(&counter, &timer)
+		l.consumeRecords(l.batchSize)
+		// TODO: We have several error conditions that we might want
+		// to handle here.
+		//
+		// For one, if we were unable to ensureClient or
+		// ensureShardIterator, we may want to set a maximum number of
+		// attempts before we abort.
+		//
+		// If we encounter an error trying to send the GetRecords
+		// request, or process the GetRecords response, we may want to
+		// refresh our client (we can do that by setting l.client to
+		// nil).
+	}
+	l.setConsuming(false)
+}
+
+// Kinesis allows five read ops per second per shard
+// http://docs.aws.amazon.com/kinesis/latest/dev/service-sizes-and-limits.html
+func (l *Listener) throttle(counter *int, timer *time.Time) {
+	if time.Now().After(timer.Add(1 * time.Second)) {
+		*timer = time.Now()
+		*counter = 0
+	}
+
+	*counter++
+
+	// If we have attempted five times and it has been less than one second
+	// since we started reading then we need to wait for the second to finish
+	if *counter >= 5 && !(time.Now().After(timer.Add(1 * time.Second))) {
+		// Wait for the remainder of the second - timer and counter will be reset on next pass
+		time.Sleep(1*time.Second - time.Since(*timer))
+	}
+}
+
+// TODO: this needs to be reworked more carefully
+func (l *Listener) Listen(fn msgFn) {
+	if !l.IsConsuming() {
+		go l.consume()
+	}
+stop:
+	for {
+		l.concurrencySem <- Empty{}
+		select {
+		case <-l.errors:
+		case msg := <-l.messages:
+			l.wg.Add(1)
+			go l.handleMsg(msg, fn)
+		case <-l.interrupts:
+			break stop
+		}
+	}
+}
+
+// TODO: this needs to be reworked more carefully
+func (l *Listener) handleMsg(msg *Message, fn msgFn) {
+	defer func() {
+		<-l.concurrencySem
+	}()
+	fn(msg.Value(), &l.wg)
+}
+
+// // TODO: We use a once for checkActive currently because once a
+// // stream has been active, it should not become inactive.  As we
+// // implement shard splitting/merging, we *may* have to revisit
+// // this.
+// var active bool
+// l.streamReady.Do(func() {
+// 	active, err = l.checkActive()
+// })
+// if err != nil {
+// 	return
+// }
+// if !active {
+// 	return ErrNotActive
+// }

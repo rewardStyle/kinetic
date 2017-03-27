@@ -10,6 +10,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
+	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 )
 
 var (
@@ -29,16 +32,14 @@ type Listener struct {
 
 	concurrency   int
 	concurrencyMu sync.Mutex
-	sem           chan bool
+	sem           chan Empty
 
-	wg        sync.WaitGroup
-	msgBuffer int
+	wg sync.WaitGroup
 
 	listening   bool
 	listeningMu sync.Mutex
 	consuming   bool
 	consumingMu sync.Mutex
-	messageMu   sync.Mutex
 
 	errors     chan error
 	messages   chan *Message
@@ -60,7 +61,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	l.secretKey = secretKey
 	l.region = region
 
-	l.sem = make(chan bool, l.getConcurrency())
+	l.sem = make(chan Empty, l.getConcurrency())
 	l.errors = make(chan error, l.getConcurrency())
 	l.messages = make(chan *Message, l.msgBufSize())
 
@@ -74,7 +75,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 
 	// Is the stream ready?
 	active, err := l.checkActive()
-	if err != nil || active != true {
+	if err != nil || !active {
 		if err != nil {
 			return l, err
 		}
@@ -98,8 +99,13 @@ func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, reg
 }
 
 // NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
-func (l *Listener) NewEndpoint(endpoint, stream string) {
-	l.kinesis.client = l.kinesis.newClient(endpoint, stream)
+func (l *Listener) NewEndpoint(endpoint, stream string) (err error) {
+	l.kinesis.client, err = l.kinesis.newClient(endpoint, stream)
+	return
+}
+
+// ReInit re-initializes the shard iterator.  Used with conjucntion with NewEndpoint
+func (l *Listener) ReInit() {
 	l.initShardIterator()
 
 	if !l.IsConsuming() {
@@ -166,14 +172,14 @@ func (l *Listener) Listen(fn msgFn) {
 	l.setListening(true)
 stop:
 	for {
-		getLock(l.sem)
+		getLock(l.sem) //counting semaphore
 
 		select {
-		case err := <-l.Errors():
+		case err := <-l.errors:
 			l.incErrCount()
 			l.wg.Add(1)
 			go l.handleError(err)
-		case msg := <-l.Messages():
+		case msg := <-l.messages:
 			l.incMsgCount()
 			l.wg.Add(1)
 			go l.handleMsg(msg, fn)
@@ -183,26 +189,6 @@ stop:
 		}
 	}
 	l.setListening(false)
-}
-
-func (l *Listener) addMessage(msg *Message) {
-retry:
-	l.messageMu.Lock()
-
-	l.msgBuffer++
-
-	// Allow reads to catch up to prevent deadlock
-	if l.msgBuffer >= l.msgBufSize() {
-		l.msgBuffer--
-		l.messageMu.Unlock()
-
-		<-time.After(1 * time.Millisecond)
-
-		goto retry
-	}
-
-	l.messages <- msg
-	l.messageMu.Unlock()
 }
 
 // Continually poll the Kinesis stream
@@ -224,7 +210,12 @@ func (l *Listener) consume() {
 		l.throttle(&readCounter, &readTimer)
 
 		// args() will give us the shard iterator and type as well as the shard id
-		response, err := l.client.GetRecords(l.args())
+		response, err := l.client.GetRecords(
+			&awsKinesis.GetRecordsInput{
+				Limit:         aws.Int64(10000),
+				ShardIterator: aws.String(l.shardIterator),
+			},
+		)
 		if err != nil {
 			go func() {
 				l.errors <- err
@@ -249,7 +240,6 @@ func (l *Listener) consume() {
 			err := l.initShardIterator()
 			if err != nil {
 				log.Println("Failed to refresh iterator: " + err.Error())
-
 				// If we received an error we should wait and attempt to
 				// refresh the shard iterator again
 				l.throttle(&GsiCounter, &GsiTimer)
@@ -258,13 +248,15 @@ func (l *Listener) consume() {
 			}
 		}
 
-		if response != nil {
-			l.setShardIterator(response.NextShardIterator)
+		if response != nil && response.NextShardIterator != nil {
+			l.setShardIterator(*response.NextShardIterator)
 
 			if len(response.Records) > 0 {
 				for _, record := range response.Records {
-					l.addMessage(&Message{record})
-					l.setSequenceNumber(record.SequenceNumber)
+					if record != nil {
+						l.messages <- &Message{*record}
+					}
+					l.setSequenceNumber(*record.SequenceNumber)
 				}
 			}
 		}
@@ -274,7 +266,7 @@ func (l *Listener) consume() {
 // Retrieve a message from the stream and return the value
 func (l *Listener) Retrieve() (*Message, error) {
 	select {
-	case msg := <-l.Messages():
+	case msg := <-l.messages:
 		return msg, nil
 	case err := <-l.Errors():
 		return nil, err
@@ -290,7 +282,7 @@ func (l *Listener) RetrieveFn(fn msgFn) {
 	case err := <-l.Errors():
 		l.wg.Add(1)
 		go l.handleError(err)
-	case msg := <-l.Messages():
+	case msg := <-l.messages:
 		l.wg.Add(1)
 		go fn(msg.Value(), &l.wg)
 	case sig := <-l.interrupts:
@@ -350,19 +342,6 @@ func (l *Listener) Errors() <-chan error {
 	return l.errors
 }
 
-// Messages gets the current number of messages on the Listener
-func (l *Listener) Messages() <-chan *Message {
-	l.messageMu.Lock()
-
-	defer l.messageMu.Unlock()
-
-	if l.msgBuffer > 0 {
-		l.msgBuffer--
-	}
-
-	return l.messages
-}
-
 func (l *Listener) handleMsg(msg *Message, fn msgFn) {
 	if conf.Debug.Verbose {
 		if l.getMsgCount()%100 == 0 {
@@ -416,6 +395,6 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 	// since we started reading then we need to wait for the second to finish
 	if *counter >= kinesisReadsPerSec && !(time.Now().After(timer.Add(1 * time.Second))) {
 		// Wait for the remainder of the second - timer and counter will be reset on next pass
-		<-time.After(1*time.Second - time.Since(*timer))
+		time.Sleep(1*time.Second - time.Since(*timer))
 	}
 }

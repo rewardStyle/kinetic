@@ -1,24 +1,31 @@
 machine:
   environment:
-    GOPATH: "$HOME/.go_workspace"
+    GO_VERSION: "1.8"
     IMPORT_PATH: "github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
+    GOPATH: "$HOME/.gvm/pkgsets/stable/global"
   services:
     - docker
 
 dependencies:
   pre:
-    - go get github.com/tools/godep
+    - bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/1.0.22/binscripts/gvm-installer)
+    - source "$HOME/.gvm/scripts/gvm" && gvm install go$GO_VERSION -B --name=stable && gvm use stable --default
+    - go get honnef.co/go/tools/cmd/staticcheck
+    - go get honnef.co/go/tools/cmd/gosimple
     - go get -u github.com/golang/lint/golint
     - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
     - mkdir -p "$GOPATH/src/$IMPORT_PATH"
-    - rsync -azvrC --delete ./ "$GOPATH/src/$IMPORT_PATH/"
-    - rsync -azvrC --delete $HOME/$CIRCLE_PROJECT_REPONAME "$GOPATH/src/$IMPORT_PATH/"
+    - rsync -azvrC --delete $HOME/$CIRCLE_PROJECT_REPONAME "$GOPATH/src/github.com/$CIRCLE_PROJECT_USERNAME/"
+    - go get -u github.com/Masterminds/glide && go install github.com/Masterminds/glide
+
+    - cd $GOPATH/src/$IMPORT_PATH && glide i
 
 test:
   pre:
-    - go vet ./...
-    - golint -set_exit_status
+    - cd "$GOPATH/src/$IMPORT_PATH" && go vet $(glide nv)
+    - cd "$GOPATH/src/$IMPORT_PATH" && golint -set_exit_status $(glide nv)
+    - cd "$GOPATH/src/$IMPORT_PATH" && gosimple $(glide nv)
 
   override:
-    - godep go test -v -race -cover
+    - cd $GOPATH/src/$IMPORT_PATH && go test -v -race -cover $(glide nv)
