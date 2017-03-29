@@ -293,8 +293,8 @@ func TestListener(t *testing.T) {
 				})
 			}()
 			wg.Wait()
-			So(count, ShouldBeBetweenOrEqual, 1, 20)
-			Printf("(count was %d)", count)
+			So(atomic.LoadInt64(&count), ShouldBeBetweenOrEqual, 1, 20)
+			Printf("(count was %d)", atomic.LoadInt64(&count))
 		})
 
 		Reset(func() {

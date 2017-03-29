@@ -653,7 +653,7 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 		l.stats.AddDeliveredSample(1)
 		l.concurrencySem <- Empty{}
 		wg.Add(1)
-		go func() {
+		go func(msg *message.Message) {
 			defer func() {
 				<-l.concurrencySem
 			}()
@@ -665,7 +665,7 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 			l.stats.AddProcessedTime(time.Since(start))
 			l.stats.AddProcessedSample(1)
 			wg.Done()
-		}()
+		}(msg)
 	}
 }
 
