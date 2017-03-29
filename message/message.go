@@ -1,17 +1,17 @@
-package kinetic
+package message
 
-import awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
+import kinesis "github.com/aws/aws-sdk-go/service/kinesis"
 
 // Message represents an item on the Kinesis stream
 type Message struct {
-	awsKinesis.Record
+	kinesis.Record
 }
 
 // Init initializes a Message.
 // Currently we are ignoring sequenceNumber.
 func (k *Message) Init(msg []byte, key string) *Message {
 	return &Message{
-		awsKinesis.Record{
+		kinesis.Record{
 			Data:         msg,
 			PartitionKey: &key,
 		},

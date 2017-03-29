@@ -7,38 +7,31 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
-)
 
-const ()
+	"github.com/rewardStyle/kinetic"
+	"github.com/rewardStyle/kinetic/logging"
+)
 
 type Config struct {
 	awsConfig *aws.Config
-
-	stream string
-
-	logLevel aws.LogLevelType
-	stats    StatsListener
-
-	getRecordsReadTimeout time.Duration
-
-	shard         string
-	batchSize     int
-	concurrency   int
-	shardIterator *ShardIterator
+	*listenerConfig
 }
 
-func NewConfig(stream string) *Config {
+func NewConfig(stream, shard string) *Config {
 	return &Config{
 		awsConfig: aws.NewConfig().WithHTTPClient(&http.Client{
 			Timeout: 5 * time.Minute,
 		}),
-		stream:                stream,
-		logLevel:              aws.LogOff,
-		stats:                 &NilStatsListener{},
-		batchSize:             10000,
-		concurrency:           10000,
-		shardIterator:         NewShardIterator(),
-		getRecordsReadTimeout: 1 * time.Second,
+		listenerConfig: &listenerConfig{
+			stream:                stream,
+			shard:                 shard,
+			batchSize:             10000,
+			concurrency:           10000,
+			shardIterator:         NewShardIterator(),
+			getRecordsReadTimeout: 1 * time.Second,
+			stats:    &NilStatsListener{},
+			logLevel: logging.LogOff,
+		},
 	}
 }
 
@@ -66,7 +59,7 @@ func (c *Config) WithLogger(logger aws.Logger) *Config {
 
 func (c *Config) WithLogLevel(logLevel aws.LogLevelType) *Config {
 	c.awsConfig.WithLogLevel(logLevel & 0xffff)
-	c.logLevel = logLevel >> 16
+	c.logLevel = logLevel & 0xffff0000
 	return c
 }
 
@@ -77,13 +70,12 @@ func (c *Config) WithHttpClientTimeout(timeout time.Duration) *Config {
 	return c
 }
 
-func (c *Config) WithStatsListener(stats StatsListener) *Config {
-	c.stats = stats
-	return c
+func (c *Config) GetSession() (*session.Session, error) {
+	return session.NewSession(c.awsConfig)
 }
 
-func (c *Config) WithShardId(shard string) *Config {
-	c.shard = shard
+func (c *Config) FromKinetic(k *kinetic.Kinetic) *Config {
+	c.awsConfig = k.GetSession().Config
 	return c
 }
 
@@ -107,6 +99,7 @@ func (c *Config) WithGetRecordsReadTimeout(timouet time.Duration) *Config {
 	return c
 }
 
-func (c *Config) GetAwsSession() (*session.Session, error) {
-	return session.NewSession(c.awsConfig)
+func (c *Config) WithStatsListener(stats StatsListener) *Config {
+	c.stats = stats
+	return c
 }

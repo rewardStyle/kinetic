@@ -1,89 +1,65 @@
 package kinetic
 
 import (
-	"io/ioutil"
-	"log"
-	"os"
+	"net/http"
+	"time"
 
-	"gopkg.in/gcfg.v1"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
 )
 
-var (
-	configPath = "/etc/kinetic.conf"
+type Config struct {
+	awsConfig *aws.Config
+	*kineticConfig
+}
 
-	defaultConfig = `
-[kinesis]
-stream              = stream-name
-shard               = 0
-sharditeratortype   = 3
-
-[firehose]
-stream              = firehose-stream-name
-
-[aws]
-accesskey           = accesskey
-secretkey           = secretkey
-region              = us-east-1
-
-[debug]
-verbose             = true
-
-[concurrency]
-listener            = 100
-producer            = 100
-`
-)
-
-type config struct {
-	Kinesis struct {
-		Stream            string
-		Shard             string
-		ShardIteratorType int
-	}
-
-	Firehose struct {
-		Stream string
-	}
-
-	AWS struct {
-		AccessKey string
-		SecretKey string
-		Region    string
-	}
-
-	Debug struct {
-		Verbose bool
-	}
-
-	Concurrency struct {
-		Listener int
-		Producer int
+func NewConfig() *Config {
+	return &Config{
+		awsConfig: aws.NewConfig().WithHTTPClient(&http.Client{
+			Timeout: 5 * time.Minute,
+		}),
+		kineticConfig: &kineticConfig{
+			logLevel: aws.LogOff,
+		},
 	}
 }
 
-func getConfig() *config {
-	con := new(config)
+func (c *Config) WithCredentials(accessKey, secretKey, securityToken string) *Config {
+	c.awsConfig.WithCredentials(
+		credentials.NewStaticCredentials(accessKey, secretKey, securityToken),
+	)
+	return c
+}
 
-	file, err := ioutil.ReadFile(configPath)
-	if err != nil {
-		switch err.(type) {
-		case *os.PathError:
-			log.Println("Failed to parse config. Loading default configuration.")
-			file = []byte(defaultConfig)
-		default:
-			log.Println("Missing config: " + configPath + ". Loading default configuration.")
-			file = []byte(defaultConfig)
-		}
-	}
+func (c *Config) WithRegion(region string) *Config {
+	c.awsConfig.WithRegion(region)
+	return c
+}
 
-	err = gcfg.ReadStringInto(con, string(file))
-	if err != nil {
-		log.Println("Failed to parse config. Loading default configuration.")
-		err = gcfg.ReadStringInto(con, string(defaultConfig))
-		if err != nil {
-			panic(err)
-		}
-	}
+func (c *Config) WithEndpoint(endpoint string) *Config {
+	c.awsConfig.WithEndpoint(endpoint)
+	return c
+}
 
-	return con
+func (c *Config) WithLogger(logger aws.Logger) *Config {
+	c.awsConfig.WithLogger(logger)
+	return c
+}
+
+func (c *Config) WithLogLevel(logLevel aws.LogLevelType) *Config {
+	c.awsConfig.WithLogLevel(logLevel & 0xffff)
+	c.logLevel = logLevel & 0xffff0000
+	return c
+}
+
+func (c *Config) WithHttpClientTimeout(timeout time.Duration) *Config {
+	c.awsConfig.WithHTTPClient(&http.Client{
+		Timeout: timeout,
+	})
+	return c
+}
+
+func (c *Config) GetSession() (*session.Session, error) {
+	return session.NewSession(c.awsConfig)
 }

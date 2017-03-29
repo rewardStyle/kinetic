@@ -12,10 +12,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 
-	"github.com/rewardStyle/kinetic"
+	"github.com/rewardStyle/kinetic/logging"
+	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic/utils"
 )
 
 var (
@@ -98,20 +101,33 @@ func (it *ShardIterator) getTimestamp() *time.Time {
 	return aws.Time(it.timestamp)
 }
 
+type listenerConfig struct {
+	stream string
+	shard  string
+
+	batchSize             int
+	concurrency           int
+	shardIterator         *ShardIterator
+	getRecordsReadTimeout time.Duration
+	stats                 StatsListener
+
+	logLevel aws.LogLevelType
+}
+
 type Listener struct {
-	Config *Config
+	*listenerConfig
 
 	nextShardIterator string
 
-	messages       chan *kinetic.Message
+	messages       chan *message.Message
 	concurrencySem chan Empty
 	throttleSem    chan Empty
 	pipeOfDeath    chan Empty
-	wg             sync.WaitGroup
 
 	consuming   bool
 	consumingMu sync.Mutex
 
+	session  *session.Session
 	client   kinesisiface.KinesisAPI
 	clientMu sync.Mutex
 }
@@ -119,130 +135,24 @@ type Listener struct {
 // NewListener creates a new listener for listening to message on a Kinesis
 // stream.
 func NewListener(config *Config) (*Listener, error) {
-	l := &Listener{
-		Config:         config,
+	session, err := config.GetSession()
+	if err != nil {
+		return nil, err
+	}
+	return &Listener{
+		listenerConfig: config.listenerConfig,
 		concurrencySem: make(chan Empty, config.concurrency),
 		throttleSem:    make(chan Empty, 5),
 		pipeOfDeath:    make(chan Empty),
-	}
-	return l, nil
+		session:        session,
+	}, nil
 }
 
 // Logs a debug message using the AWS SDK logger.
 func (l *Listener) Log(args ...interface{}) {
-	l.ensureClient()
-	if l.client != nil && l.Config.logLevel.AtLeast(aws.LogDebug) {
-		l.Config.awsConfig.Logger.Log(args...)
+	if l.session.Config.LogLevel.Matches(logging.LogDebug) {
+		l.session.Config.Logger.Log(args...)
 	}
-}
-
-// CreateStream creates the stream.
-func (l *Listener) CreateStream(shards int) error {
-	if err := l.ensureClient(); err != nil {
-		return err
-	}
-	_, err := l.client.CreateStream(&kinesis.CreateStreamInput{
-		StreamName: aws.String(l.Config.stream),
-		ShardCount: aws.Int64(int64(shards)),
-	})
-	if err != nil {
-		l.Log("Error creating stream:", err)
-	}
-	return err
-}
-
-// WaitUntilActive waits until the stream is active.  Timeouts can be set via
-// context.  Defaults to 18 retries with a 10s delay (180s or 3 minutes total).
-func (l *Listener) WaitUntilActive(ctx context.Context, opts ...request.WaiterOption) error {
-	if err := l.ensureClient(); err != nil {
-		return err
-	}
-	return l.client.WaitUntilStreamExistsWithContext(ctx, &kinesis.DescribeStreamInput{
-		StreamName: aws.String(l.Config.stream), // Required
-	}, opts...)
-}
-
-// DeleteStream deletes the stream.
-func (l *Listener) DeleteStream() error {
-	if err := l.ensureClient(); err != nil {
-		return err
-	}
-	_, err := l.client.DeleteStream(&kinesis.DeleteStreamInput{
-		StreamName: aws.String(l.Config.stream),
-	})
-	if err != nil {
-		l.Log("Error deleting stream:", err)
-	}
-	return err
-}
-
-// WaitUntilDeleted waits until the stream is does not exist.  Timeouts can be
-// set via context.  Defaults to 18 retries with a 10s delay (180s or 3 minutes
-// total).
-func (l *Listener) WaitUntilDeleted(ctx context.Context, opts ...request.WaiterOption) error {
-	if err := l.ensureClient(); err != nil {
-		return err
-	}
-	w := request.Waiter{
-		Name:        "WaitUntilStreamIsDeleted",
-		MaxAttempts: 18,
-		Delay:       request.ConstantWaiterDelay(10 * time.Second),
-		Acceptors: []request.WaiterAcceptor{
-			{
-				State:    request.SuccessWaiterState,
-				Matcher:  request.ErrorWaiterMatch,
-				Expected: kinesis.ErrCodeResourceNotFoundException,
-			},
-		},
-		Logger: l.Config.awsConfig.Logger,
-		NewRequest: func(opts []request.Option) (*request.Request, error) {
-			req, _ := l.client.DescribeStreamRequest(&kinesis.DescribeStreamInput{
-				StreamName: aws.String(l.Config.stream), // Required
-			})
-			req.SetContext(ctx)
-			req.ApplyOptions(opts...)
-			return req, nil
-		},
-	}
-	w.ApplyOptions(opts...)
-	return w.WaitWithContext(ctx)
-}
-
-// GetShards gets a list of shards in a stream.
-func (l *Listener) GetShards() ([]string, error) {
-	if err := l.ensureClient(); err != nil {
-		return nil, err
-	}
-	resp, err := l.client.DescribeStream(&kinesis.DescribeStreamInput{
-		StreamName: aws.String(l.Config.stream),
-	})
-	if err != nil {
-		l.Log("Error describing stream", err)
-		return nil, err
-	}
-	if resp == nil {
-		return nil, ErrNilDescribeStreamResponse
-	}
-	if resp.StreamDescription == nil {
-		return nil, ErrNilStreamDescription
-	}
-	var shards []string
-	for _, shard := range resp.StreamDescription.Shards {
-		if shard.ShardId != nil {
-			shards = append(shards, aws.StringValue(shard.ShardId))
-		}
-	}
-	return shards, nil
-}
-
-// SetShard sets the shard for the listener.
-func (l *Listener) SetShard(shard string) error {
-	if !l.blockConsumers() {
-		return ErrCannotSetShard
-	}
-	defer l.allowConsumers()
-	l.Config.shard = shard
-	return nil
 }
 
 // setNextShardIterator sets the nextShardIterator to use when calling
@@ -271,12 +181,12 @@ func (l *Listener) setSequenceNumber(sequenceNumber string) error {
 	if len(sequenceNumber) == 0 {
 		return ErrEmptySequenceNumber
 	}
-	l.Config.shardIterator.AtSequenceNumber(sequenceNumber)
+	l.shardIterator.AtSequenceNumber(sequenceNumber)
 	return nil
 }
 
 // ensureClient will lazily make sure we have an AWS Kinesis client.
-func (l *Listener) ensureClient() error {
+func (l *Listener) ensureClient() {
 	// From the aws-go-sdk documentation:
 	// http://docs.aws.amazon.com/sdk-for-go/api/aws/session/
 	//
@@ -300,16 +210,9 @@ func (l *Listener) ensureClient() error {
 	// this library.
 	l.clientMu.Lock()
 	defer l.clientMu.Unlock()
-	if l.client != nil {
-		return nil
+	if l.client == nil {
+		l.client = kinesis.New(l.session)
 	}
-
-	session, err := l.Config.GetAwsSession()
-	if err != nil {
-		return err
-	}
-	l.client = kinesis.New(session)
-	return nil
 }
 
 // ensureShardIterator will lazily make sure that we have a valid ShardIterator,
@@ -320,16 +223,17 @@ func (l *Listener) ensureClient() error {
 // that only one call to Listen and Retrieve/RetrieveFn can be running at a
 // time.
 func (l *Listener) ensureShardIterator() error {
+	l.ensureClient()
 	if l.nextShardIterator != "" {
 		return nil
 	}
 
 	resp, err := l.client.GetShardIterator(&kinesis.GetShardIteratorInput{
-		ShardId:                aws.String(l.Config.shard),                           // Required
-		ShardIteratorType:      aws.String(l.Config.shardIterator.shardIteratorType), // Required
-		StreamName:             aws.String(l.Config.stream),                          // Required
-		StartingSequenceNumber: l.Config.shardIterator.getStartingSequenceNumber(),
-		Timestamp:              l.Config.shardIterator.getTimestamp(),
+		ShardId:                aws.String(l.shard),                           // Required
+		ShardIteratorType:      aws.String(l.shardIterator.shardIteratorType), // Required
+		StreamName:             aws.String(l.stream),                          // Required
+		StartingSequenceNumber: l.shardIterator.getStartingSequenceNumber(),
+		Timestamp:              l.shardIterator.getTimestamp(),
 	})
 	if err != nil {
 		l.Log(err)
@@ -366,10 +270,7 @@ func (l *Listener) throttle(sem chan Empty) {
 // eventually fires and closes the socket, but this can be susceptible to FD
 // exhaustion.
 func (l *Listener) fetchBatch(size int) (int, error) {
-	if err := l.ensureClient(); err != nil {
-		return 0, err
-	}
-
+	l.ensureClient()
 	if err := l.ensureShardIterator(); err != nil {
 		return 0, err
 	}
@@ -387,7 +288,7 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 	})
 
 	// If debug is turned on, add some handlers for GetRecords logging
-	if l.Config.logLevel.AtLeast(aws.LogDebug) {
+	if l.session.Config.LogLevel.AtLeast(aws.LogDebug) {
 		req.Handlers.Send.PushBack(func(r *request.Request) {
 			l.Log("Finished GetRecords Send, took", time.Since(start))
 		})
@@ -412,9 +313,9 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 		// HTTPResponse.Body must return by.  Note that the normal
 		// http.Client Timeout is still in effect.
 		startReadTime = time.Now()
-		timer := time.NewTimer(l.Config.getRecordsReadTimeout)
+		timer := time.NewTimer(l.getRecordsReadTimeout)
 
-		r.HTTPResponse.Body = &kinetic.TimeoutReadCloser{
+		r.HTTPResponse.Body = &utils.TimeoutReadCloser{
 			ReadCloser: r.HTTPResponse.Body,
 			OnReadFn: func(stream io.ReadCloser, b []byte) (n int, err error) {
 				// The OnReadFn will be called each time
@@ -451,7 +352,7 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 					// HTTPResponse.Body, we reset our
 					// timeout and return the results from
 					// the Read()
-					timer.Reset(l.Config.getRecordsReadTimeout)
+					timer.Reset(l.getRecordsReadTimeout)
 					n, err = result.n, result.err
 					l.Log(fmt.Sprintf("DEBUG: read %d bytes, took %v", n, time.Since(readStart)))
 				case <-timer.C:
@@ -467,7 +368,7 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 				return
 			},
 			OnCloseFn: func() {
-				l.Config.stats.AddGetRecordsReadResponseTime(time.Since(startReadTime))
+				l.stats.AddGetRecordsReadResponseTime(time.Since(startReadTime))
 				l.Log("Finished GetRecords body read, took", time.Since(start))
 				startUnmarshalTime = time.Now()
 			},
@@ -475,30 +376,30 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 	})
 
 	req.Handlers.Unmarshal.PushBack(func(r *request.Request) {
-		l.Config.stats.AddGetRecordsUnmarshalTime(time.Since(startUnmarshalTime))
+		l.stats.AddGetRecordsUnmarshalTime(time.Since(startUnmarshalTime))
 		l.Log("Finished GetRecords Unmarshal, took", time.Since(start))
 	})
 
 	// Send the GetRecords request
 	l.Log("Starting GetRecords build/sign request, took", time.Since(start))
-	l.Config.stats.AddGetRecordsCalled(1)
+	l.stats.AddGetRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		l.Log("Error getting records:", err)
 		return 0, err
 	}
 
 	// Process Records
-	l.Log(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), l.Config.shard, time.Since(start)))
+	l.Log(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), l.shard, time.Since(start)))
 	if resp == nil {
 		return 0, ErrNilGetRecordsResponse
 	}
 	delivered := 0
-	l.Config.stats.AddBatchSizeSample(len(resp.Records))
+	l.stats.AddBatchSizeSample(len(resp.Records))
 	for _, record := range resp.Records {
 		if record != nil {
 			delivered++
-			l.messages <- &kinetic.Message{*record}
-			l.Config.stats.AddConsumedSample(1)
+			l.messages <- &message.Message{*record}
+			l.stats.AddConsumedSample(1)
 		}
 		if record.SequenceNumber != nil {
 			// We can safely ignore if this call returns
@@ -549,7 +450,7 @@ func (l *Listener) blockConsumers() bool {
 // startConsuming handles any initialization needed in preparation to start
 // consuming.
 func (l *Listener) startConsuming() {
-	l.messages = make(chan *kinetic.Message, l.Config.batchSize)
+	l.messages = make(chan *message.Message, l.batchSize)
 }
 
 // shouldConsume is a convenience function that allows functions to break their
@@ -587,7 +488,7 @@ func (l *Listener) IsConsuming() bool {
 
 // Retrieve waits for a message from the stream and return the value.
 // Cancellation supported through contexts.
-func (l *Listener) RetrieveWithContext(ctx context.Context) (*kinetic.Message, error) {
+func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, error) {
 	if !l.blockConsumers() {
 		return nil, ErrAlreadyConsuming
 	}
@@ -606,14 +507,14 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*kinetic.Message, e
 			return nil, err
 		}
 		if n > 0 {
-			l.Config.stats.AddDeliveredSample(1)
+			l.stats.AddDeliveredSample(1)
 			return <-l.messages, nil
 		}
 	}
 }
 
 // Retrieve waits for a message from the stream and return the value.
-func (l *Listener) Retrieve() (*kinetic.Message, error) {
+func (l *Listener) Retrieve() (*message.Message, error) {
 	return l.RetrieveWithContext(context.TODO())
 }
 
@@ -629,7 +530,7 @@ func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageFn) erro
 	wg.Add(1)
 	go fn(msg.Value(), &wg)
 	wg.Wait()
-	l.Config.stats.AddProcessedSample(1)
+	l.stats.AddProcessedSample(1)
 	return nil
 }
 
@@ -662,13 +563,13 @@ func (l *Listener) consume(ctx context.Context) {
 			if !ok {
 				break stop
 			}
-			_, err = l.fetchBatch(l.Config.batchSize)
+			_, err = l.fetchBatch(l.batchSize)
 
 			if err != nil {
 				switch err := err.(type) {
 				case net.Error:
 					if err.Timeout() {
-						l.Config.stats.AddGetRecordsTimeout(1)
+						l.stats.AddGetRecordsTimeout(1)
 						l.Log("Received net error:", err.Error())
 					} else {
 						l.Log("Received unknown net error:", err.Error())
@@ -676,7 +577,7 @@ func (l *Listener) consume(ctx context.Context) {
 				case error:
 					switch err {
 					case ErrTimeoutReadResponseBody:
-						l.Config.stats.AddGetRecordsReadTimeout(1)
+						l.stats.AddGetRecordsReadTimeout(1)
 						l.Log("Received error:", err.Error())
 					case ErrEmptySequenceNumber:
 						fallthrough
@@ -694,7 +595,7 @@ func (l *Listener) consume(ctx context.Context) {
 				case awserr.Error:
 					switch err.Code() {
 					case kinesis.ErrCodeProvisionedThroughputExceededException:
-						l.Config.stats.AddProvisionedThroughputExceeded(1)
+						l.stats.AddProvisionedThroughputExceeded(1)
 					case kinesis.ErrCodeResourceNotFoundException:
 						fallthrough
 					case kinesis.ErrCodeInvalidArgumentException:
@@ -728,7 +629,7 @@ stop:
 			if !ok {
 				break stop
 			}
-			l.Config.stats.AddDeliveredSample(1)
+			l.stats.AddDeliveredSample(1)
 			l.concurrencySem <- Empty{}
 			wg.Add(1)
 			go func() {
@@ -739,7 +640,7 @@ stop:
 				fnWg.Add(1)
 				fn(msg.Value(), &fnWg)
 				fnWg.Wait()
-				l.Config.stats.AddProcessedSample(1)
+				l.stats.AddProcessedSample(1)
 				wg.Done()
 			}()
 		}

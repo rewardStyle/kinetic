@@ -1,4 +1,4 @@
-package kinetic
+package utils
 
 import (
 	"io"
