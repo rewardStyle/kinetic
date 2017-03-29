@@ -648,32 +648,24 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 	l.consume(ctx)
 	var wg sync.WaitGroup
 	defer wg.Wait()
-stop:
-	for {
-		select {
-		case msg, ok := <-l.messages:
-			// Listen should always run until it the messages
-			// channel closes.
-			if !ok {
-				break stop
-			}
-			l.stats.AddDeliveredSample(1)
-			l.concurrencySem <- Empty{}
-			wg.Add(1)
-			go func() {
-				defer func() {
-					<-l.concurrencySem
-				}()
-				var fnWg sync.WaitGroup
-				fnWg.Add(1)
-				start := time.Now()
-				fn(msg.Value(), &fnWg)
-				fnWg.Wait()
-				l.stats.AddProcessedTime(time.Since(start))
-				l.stats.AddProcessedSample(1)
-				wg.Done()
+
+	for msg := range l.messages {
+		l.stats.AddDeliveredSample(1)
+		l.concurrencySem <- Empty{}
+		wg.Add(1)
+		go func() {
+			defer func() {
+				<-l.concurrencySem
 			}()
-		}
+			var fnWg sync.WaitGroup
+			fnWg.Add(1)
+			start := time.Now()
+			fn(msg.Value(), &fnWg)
+			fnWg.Wait()
+			l.stats.AddProcessedTime(time.Since(start))
+			l.stats.AddProcessedSample(1)
+			wg.Done()
+		}()
 	}
 }
 
