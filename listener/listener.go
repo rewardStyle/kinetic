@@ -22,65 +22,89 @@ import (
 )
 
 var (
-	// errors tha can occur in Retrieve / RetrieveFn (and their WithContext variants)
+	// ErrAlreadyConsuming is returned when attempting to consume when the
+	// Listener is already consuming.  May be returned by
+	// Retrieve/RetrieveFn.
 	ErrAlreadyConsuming = errors.New("Listener already consuming.  Only one Listen, Retrieve, or RetrieveFn may be active at a time")
 
-	// errors that can occur in GetShards
-	ErrNilDescribeStreamResponse = errors.New("DescribeStream returned a nil response")
-	ErrNilStreamDescription      = errors.New("DescribeStream returned a nil StreamDescription")
+	// ErrEmptySequenceNumber is returned when attempting to set an empty
+	// sequence number.
+	ErrEmptySequenceNumber = errors.New("Attempted to set sequence number with empty value")
 
-	// errors that can occur in SetShard
-	ErrCannotSetShard = errors.New("Cannot set shard while consuming")
+	// ErrEmptyShardIterator is returned when attempting to set an empty
+	// sequence number.
+	ErrEmptyShardIterator = errors.New("Attempted to set shard iterator with empty value")
 
-	// errors that can occur in fetchBatch
-	ErrEmptySequenceNumber         = errors.New("Attempted to set sequence number with empty value")
-	ErrEmptyShardIterator          = errors.New("Attempted to set shard iterator with empty value")
+	// ErrNilGetShardIteratorResponse is returned when the GetShardIterator
+	// call returns a nil response.
 	ErrNilGetShardIteratorResponse = errors.New("GetShardIteratore returned a nil response")
-	ErrNilShardIterator            = errors.New("GetShardIterator returned a nil ShardIterator")
-	ErrNilGetRecordsResponse       = errors.New("GetRecords returned an nil response")
-	ErrTimeoutReadResponseBody     = errors.New("Timeout while reading response body")
 
+	// ErrNilShardIterator is returned when the GetShardIterator call
+	// returns a nil shard iterator.
+	ErrNilShardIterator = errors.New("GetShardIterator returned a nil ShardIterator")
+
+	// ErrNilGetRecordsResponse is returned when the GetRecords calls
+	// returns a nil response.
+	ErrNilGetRecordsResponse = errors.New("GetRecords returned an nil response")
+
+	// ErrTimeoutReadResponseBody is returned when a timeout occurs while
+	// reading the GetRecords response body.
+	ErrTimeoutReadResponseBody = errors.New("Timeout while reading response body")
+
+	// ErrPipeOfDeath returns when the pipe of death is closed.
 	ErrPipeOfDeath = errors.New("Received pipe of death")
 )
 
+// Empty is used a as a dummy type for counting semaphore channels.
 type Empty struct{}
 
+// MessageFn defines the signature of a message handler used by Listen and
+// RetrieveFn.
 type MessageFn func([]byte, *sync.WaitGroup)
 
+// ShardIterator represents the settings used to retrieve a shard iterator from
+// the GetShardIterator API.
 type ShardIterator struct {
 	shardIteratorType string
 	sequenceNumber    string
 	timestamp         time.Time
 }
 
+// NewShardIterator creates a new ShardIterator.  The default shard iterator
+// type is TRIM_HORIZON.
 func NewShardIterator() *ShardIterator {
 	return &ShardIterator{
 		shardIteratorType: "TRIM_HORIZON",
 	}
 }
 
+// TrimHorizon sets the shard iterator to TRIM_HORIZON.
 func (it *ShardIterator) TrimHorizon() *ShardIterator {
 	it.shardIteratorType = "TRIM_HORIZON"
 	return it
 }
 
+// Latest sets the shard iterator to LATEST.
 func (it *ShardIterator) Latest() *ShardIterator {
 	it.shardIteratorType = "LATEST"
 	return it
 }
 
+// AtSequenceNumber sets the shard iterator to AT_SEQUENCE_NUMBER.
 func (it *ShardIterator) AtSequenceNumber(sequenceNumber string) *ShardIterator {
 	it.shardIteratorType = "AT_SEQUENCE_NUMBER"
 	it.sequenceNumber = sequenceNumber
 	return it
 }
 
+// AfterSequenceNumber sets the shard iterator to AFTER_SEQUENCE_NUMBER.
 func (it *ShardIterator) AfterSequenceNumber(sequenceNumber string) *ShardIterator {
 	it.shardIteratorType = "AFTER_SEQUENCE_NUMBER"
 	it.sequenceNumber = sequenceNumber
 	return it
 }
 
+// AtTimestamp sets the shard iterator to AT_TIMESTAMP.
 func (it *ShardIterator) AtTimestamp(timestamp time.Time) *ShardIterator {
 	it.shardIteratorType = "AT_TIMESTAMP"
 	it.timestamp = timestamp
@@ -114,6 +138,7 @@ type listenerConfig struct {
 	logLevel aws.LogLevelType
 }
 
+// Listener polls the Kinesis stream for messages.
 type Listener struct {
 	*listenerConfig
 
@@ -148,7 +173,7 @@ func NewListener(config *Config) (*Listener, error) {
 	}, nil
 }
 
-// Logs a debug message using the AWS SDK logger.
+// Log a debug message using the AWS SDK logger.
 func (l *Listener) Log(args ...interface{}) {
 	if l.session.Config.LogLevel.Matches(logging.LogDebug) {
 		l.session.Config.Logger.Log(args...)
@@ -315,12 +340,12 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 		startReadTime = time.Now()
 		timer := time.NewTimer(l.getRecordsReadTimeout)
 
-		r.HTTPResponse.Body = &utils.TimeoutReadCloser{
+		r.HTTPResponse.Body = &utils.ReadCloserWrapper{
 			ReadCloser: r.HTTPResponse.Body,
 			OnReadFn: func(stream io.ReadCloser, b []byte) (n int, err error) {
 				// The OnReadFn will be called each time
 				// ioutil.ReadAll calls Read on the
-				// TimeoutReadCloser.
+				// ReadCloserWrapper.
 
 				// First, we set up a struct that to hold the
 				// results of the Read() call that can go
@@ -387,6 +412,7 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 		l.Log("Error getting records:", err)
 		return 0, err
 	}
+	l.stats.AddGetRecordsTime(time.Since(start))
 
 	// Process Records
 	l.Log(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), l.shard, time.Since(start)))
@@ -398,7 +424,7 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 	for _, record := range resp.Records {
 		if record != nil {
 			delivered++
-			l.messages <- &message.Message{*record}
+			l.messages <- &message.Message{Record: *record}
 			l.stats.AddConsumedSample(1)
 		}
 		if record.SequenceNumber != nil {
@@ -486,7 +512,7 @@ func (l *Listener) IsConsuming() bool {
 	return l.consuming
 }
 
-// Retrieve waits for a message from the stream and return the value.
+// RetrieveWithContext waits for a message from the stream and return the value.
 // Cancellation supported through contexts.
 func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, error) {
 	if !l.blockConsumers() {
@@ -518,8 +544,8 @@ func (l *Listener) Retrieve() (*message.Message, error) {
 	return l.RetrieveWithContext(context.TODO())
 }
 
-// RetrieveFn retrieves a message from the stream and dispatches it to the
-// supplied function.  RetrieveFn will wait until the function completes.
+// RetrieveFnWithContext retrieves a message from the stream and dispatches it
+// to the supplied function.  RetrieveFn will wait until the function completes.
 // Cancellation supported through context.
 func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageFn) error {
 	msg, err := l.RetrieveWithContext(ctx)
@@ -528,8 +554,10 @@ func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageFn) erro
 	}
 	var wg sync.WaitGroup
 	wg.Add(1)
+	start := time.Now()
 	go fn(msg.Value(), &wg)
 	wg.Wait()
+	l.stats.AddProcessedTime(time.Since(start))
 	l.stats.AddProcessedSample(1)
 	return nil
 }
@@ -613,9 +641,9 @@ func (l *Listener) consume(ctx context.Context) {
 	}()
 }
 
-// Listen listens and delivers message to the supplied function.  Upon
-// cancellation, Listen will stop the consumer loop and wait until the messages
-// channel is closed and all messages are delivered.
+// ListenWithContext listens and delivers message to the supplied function.
+// Upon cancellation, Listen will stop the consumer loop and wait until the
+// messages channel is closed and all messages are delivered.
 func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 	l.consume(ctx)
 	var wg sync.WaitGroup
@@ -638,8 +666,10 @@ stop:
 				}()
 				var fnWg sync.WaitGroup
 				fnWg.Add(1)
+				start := time.Now()
 				fn(msg.Value(), &fnWg)
 				fnWg.Wait()
+				l.stats.AddProcessedTime(time.Since(start))
 				l.stats.AddProcessedSample(1)
 				wg.Done()
 			}()

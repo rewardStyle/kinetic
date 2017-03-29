@@ -18,15 +18,22 @@ import (
 )
 
 var (
-	// GetShards errors
+	// ErrNilDescribeStreamResponse is an error returned by GetShards when
+	// the DescribeStream request returns a nil response
 	ErrNilDescribeStreamResponse = errors.New("DescribeStream returned a nil response")
-	ErrNilStreamDescription      = errors.New("DescribeStream returned a nil StreamDescription")
+
+	// ErrNilStreamDescription is an error returned by GetShards when the
+	// DescribeStream request returns a response with a nil
+	// StreamDescription
+	ErrNilStreamDescription = errors.New("DescribeStream returned a nil StreamDescription")
 )
 
 type kineticConfig struct {
 	logLevel aws.LogLevelType
 }
 
+// Kinetic represents a kinesis and firehose client and provides some utility
+// methods for interacting with the AWS services.
 type Kinetic struct {
 	*kineticConfig
 	session *session.Session
@@ -36,6 +43,7 @@ type Kinetic struct {
 	clientMu sync.Mutex
 }
 
+// New creates a new instance of Kientic.
 func New(config *Config) (*Kinetic, error) {
 	session, err := config.GetSession()
 	if err != nil {
@@ -47,6 +55,7 @@ func New(config *Config) (*Kinetic, error) {
 	}, nil
 }
 
+// Log logs a message if LogDebug is set.
 func (k *Kinetic) Log(args ...interface{}) {
 	if k.logLevel.Matches(logging.LogDebug) {
 		k.session.Config.Logger.Log(args...)
@@ -61,6 +70,7 @@ func (k *Kinetic) ensureKinesisClient() {
 	}
 }
 
+// CreateStream creates a new Kinesis stream.
 func (k *Kinetic) CreateStream(stream string, shards int) error {
 	k.ensureKinesisClient()
 	_, err := k.kclient.CreateStream(&kinesis.CreateStreamInput{
@@ -73,6 +83,8 @@ func (k *Kinetic) CreateStream(stream string, shards int) error {
 	return err
 }
 
+// WaitUntilStreamExists is meant to be used after CreateStream to wait until a
+// Kinesis stream is ACTIVE.
 func (k *Kinetic) WaitUntilStreamExists(ctx context.Context, stream string, opts ...request.WaiterOption) error {
 	k.ensureKinesisClient()
 	return k.kclient.WaitUntilStreamExistsWithContext(ctx, &kinesis.DescribeStreamInput{
@@ -80,6 +92,7 @@ func (k *Kinetic) WaitUntilStreamExists(ctx context.Context, stream string, opts
 	}, opts...)
 }
 
+// DeleteStream deletes an existing Kinesis stream.
 func (k *Kinetic) DeleteStream(stream string) error {
 	k.ensureKinesisClient()
 	_, err := k.kclient.DeleteStream(&kinesis.DeleteStreamInput{
@@ -91,6 +104,8 @@ func (k *Kinetic) DeleteStream(stream string) error {
 	return err
 }
 
+// WaitUntilStreamDeleted is meant to be used after DeleteStream to wait until a
+// Kinesis stream no longer exists.
 func (k *Kinetic) WaitUntilStreamDeleted(ctx context.Context, stream string, opts ...request.WaiterOption) error {
 	k.ensureKinesisClient()
 	w := request.Waiter{
@@ -118,6 +133,7 @@ func (k *Kinetic) WaitUntilStreamDeleted(ctx context.Context, stream string, opt
 	return w.WaitWithContext(ctx)
 }
 
+// GetShards returns a list of the shards in a Kinesis stream.
 func (k *Kinetic) GetShards(stream string) ([]string, error) {
 	k.ensureKinesisClient()
 	resp, err := k.kclient.DescribeStream(&kinesis.DescribeStreamInput{
@@ -142,6 +158,7 @@ func (k *Kinetic) GetShards(stream string) ([]string, error) {
 	return shards, nil
 }
 
+// GetSession returns the aws-sdk-go session.Session object.
 func (k *Kinetic) GetSession() *session.Session {
 	return k.session
 }

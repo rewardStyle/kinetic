@@ -24,6 +24,8 @@ func (l *DebugStatsListener) AddGetRecordsCalled(int)                     {}
 func (l *DebugStatsListener) AddProvisionedThroughputExceeded(int)        {}
 func (l *DebugStatsListener) AddGetRecordsTimeout(int)                    {}
 func (l *DebugStatsListener) AddGetRecordsReadTimeout(int)                {}
+func (l *DebugStatsListener) AddProcessedTime(time.Duration)              {}
+func (l *DebugStatsListener) AddGetRecordsTime(time.Duration)             {}
 func (l *DebugStatsListener) AddGetRecordsReadResponseTime(time.Duration) {}
 func (l *DebugStatsListener) AddGetRecordsUnmarshalTime(time.Duration)    {}
 
@@ -117,7 +119,7 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set the http.Client Timeout", func() {
-			config = config.WithHttpClientTimeout(10 * time.Minute)
+			config = config.WithHTTPClientTimeout(10 * time.Minute)
 			So(config.awsConfig.HTTPClient.Timeout, ShouldEqual, 10*time.Minute)
 		})
 

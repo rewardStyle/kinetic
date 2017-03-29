@@ -94,7 +94,7 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set the http.Client Timeout", func() {
-			config = config.WithHttpClientTimeout(10 * time.Minute)
+			config = config.WithHTTPClientTimeout(10 * time.Minute)
 			So(config.awsConfig.HTTPClient.Timeout, ShouldEqual, 10*time.Minute)
 		})
 	})

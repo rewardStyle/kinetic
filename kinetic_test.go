@@ -15,10 +15,16 @@ import (
 func TestKinetic(t *testing.T) {
 	Convey("given a kinetic object", t, func() {
 		k, err := New(NewConfig().
+			WithCredentials("some-access-key", "some-secret-key", "some-security-token").
 			WithRegion("some-region").
 			WithEndpoint("http://127.0.0.1:4567"))
 		So(k, ShouldNotBeNil)
 		So(err, ShouldBeNil)
+
+		Convey("check that we can get the session", func() {
+			sess := k.GetSession()
+			So(sess, ShouldNotBeNil)
+		})
 
 		stream := "some-kinetic-stream"
 

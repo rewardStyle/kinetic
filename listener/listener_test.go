@@ -83,6 +83,7 @@ func TestShardIterator(t *testing.T) {
 func TestListener(t *testing.T) {
 	Convey("given a listener", t, func() {
 		k, err := kinetic.New(kinetic.NewConfig().
+			WithCredentials("some-access-key", "some-secret-key", "some-security-token").
 			WithRegion("some-region").
 			WithEndpoint("http://127.0.0.1:4567"))
 
@@ -163,7 +164,8 @@ func TestListener(t *testing.T) {
 
 		Convey("check that we can use a context to cancel the retrieve", func() {
 			start := time.Now()
-			ctx, _ := context.WithTimeout(context.TODO(), 1*time.Second)
+			ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+			defer cancel()
 			_, err := l.RetrieveWithContext(ctx)
 			elapsed := time.Since(start)
 			Printf("(it blocked %f seconds)\n", elapsed.Seconds())
@@ -174,7 +176,8 @@ func TestListener(t *testing.T) {
 
 		Convey("check that we can use a context to cancel the retrieve (again)", func() {
 			start := time.Now()
-			ctx, _ := context.WithTimeout(context.TODO(), 10*time.Millisecond)
+			ctx, cancel := context.WithTimeout(context.TODO(), 10*time.Millisecond)
+			defer cancel()
 			_, err := l.RetrieveWithContext(ctx)
 			elapsed := time.Since(start)
 			Printf("(it blocked %f seconds)\n", elapsed.Seconds())
@@ -184,7 +187,8 @@ func TestListener(t *testing.T) {
 		})
 
 		Convey("check that retrieve still works with a canceller if a message comes before the deadline", func(c C) {
-			ctx, _ := context.WithTimeout(context.TODO(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(context.TODO(), 5*time.Second)
+			defer cancel()
 
 			data := "goodbye"
 			go func() {
@@ -201,7 +205,8 @@ func TestListener(t *testing.T) {
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
-				ctx, _ := context.WithTimeout(context.TODO(), 1*time.Second)
+				ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+				defer cancel()
 				_, err := l.RetrieveWithContext(ctx)
 				c.So(err, ShouldNotBeNil)
 				c.So(err, ShouldHaveSameTypeAs, context.DeadlineExceeded)
@@ -245,7 +250,7 @@ func TestListener(t *testing.T) {
 
 		Convey("check that listen can deliver messages to fn", func(c C) {
 			planets := []string{"mercury", "venus", "earth", "mars", "jupiter", "saturn", "neptune", "uranus"}
-			var count int64 = 0
+			var count int64
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
@@ -269,7 +274,7 @@ func TestListener(t *testing.T) {
 				_, err := putRecord(l, []byte(fmt.Sprintf("%d", i)))
 				So(err, ShouldBeNil)
 			}
-			var count int64 = 0
+			var count int64
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
