@@ -25,7 +25,9 @@ func TestNewConfig(t *testing.T) {
 		config := NewConfig()
 
 		Convey("check the default values for its non-zero config", func() {
-			So(config.awsConfig.HTTPClient.Timeout, ShouldEqual, 5*time.Minute)
+			So(config.AwsConfig.HTTPClient.Timeout, ShouldEqual, 10*time.Minute)
+			So(config.AwsConfig.LogLevel.Value(), ShouldEqual, aws.LogOff)
+			So(config.logLevel.Value(), ShouldEqual, logging.LogOff)
 		})
 
 		Convey("check that we can retrieve an aws.Session from it ", func() {
@@ -33,7 +35,7 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set credentials", func() {
-			config = config.WithCredentials("access-key", "secret-key", "security-token")
+			config.SetCredentials("access-key", "secret-key", "security-token")
 			sess := getSession(config)
 			creds, err := sess.Config.Credentials.Get()
 			So(err, ShouldBeNil)
@@ -43,13 +45,13 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set the region", func() {
-			config = config.WithRegion("my-region")
+			config.SetRegion("my-region")
 			sess := getSession(config)
 			So(aws.StringValue(sess.Config.Region), ShouldEqual, "my-region")
 		})
 
 		Convey("check that we can set the endpoint", func() {
-			config = config.WithEndpoint("my-endpoint")
+			config.SetEndpoint("my-endpoint")
 			sess := getSession(config)
 			So(aws.StringValue(sess.Config.Endpoint), ShouldEqual, "my-endpoint")
 		})
@@ -59,7 +61,7 @@ func TestNewConfig(t *testing.T) {
 			loggerFn := func(args ...interface{}) {
 				logs = append(logs, fmt.Sprint(args...))
 			}
-			config = config.WithLogger(aws.LoggerFunc(loggerFn))
+			config.SetLogger(aws.LoggerFunc(loggerFn))
 			sess := getSession(config)
 
 			Convey("check that basic logging should work", func() {
@@ -76,17 +78,9 @@ func TestNewConfig(t *testing.T) {
 			})
 		})
 
-		Convey("check that the default log level is off for both the sdk and kinetic", func() {
-			sess := getSession(config)
-			So(sess.Config.LogLevel.Value(), ShouldEqual, aws.LogOff)
-			So(sess.Config.LogLevel.AtLeast(aws.LogDebug), ShouldBeFalse)
-			So(config.logLevel.Value(), ShouldEqual, aws.LogOff)
-			So(config.logLevel.AtLeast(aws.LogDebug), ShouldBeFalse)
-		})
-
 		Convey("check that we can set both the sdk and kinetic log level", func() {
 			ll := aws.LogDebug | aws.LogDebugWithSigning | logging.LogDebug
-			config = config.WithLogLevel(ll)
+			config.SetLogLevel(ll)
 			sess := getSession(config)
 			So(sess.Config.LogLevel.AtLeast(aws.LogDebug), ShouldBeTrue)
 			So(sess.Config.LogLevel.Matches(aws.LogDebugWithSigning), ShouldBeTrue)
@@ -94,8 +88,8 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set the http.Client Timeout", func() {
-			config = config.WithHTTPClientTimeout(10 * time.Minute)
-			So(config.awsConfig.HTTPClient.Timeout, ShouldEqual, 10*time.Minute)
+			config.SetHTTPClientTimeout(10 * time.Minute)
+			So(config.AwsConfig.HTTPClient.Timeout, ShouldEqual, 10*time.Minute)
 		})
 	})
 }

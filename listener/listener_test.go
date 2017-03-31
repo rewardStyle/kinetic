@@ -82,10 +82,11 @@ func TestShardIterator(t *testing.T) {
 
 func TestListener(t *testing.T) {
 	Convey("given a listener", t, func() {
-		k, err := kinetic.New(kinetic.NewConfig().
-			WithCredentials("some-access-key", "some-secret-key", "some-security-token").
-			WithRegion("some-region").
-			WithEndpoint("http://127.0.0.1:4567"))
+		k, err := kinetic.New(func(c *kinetic.Config) {
+			c.SetCredentials("some-access-key", "some-secret-key", "some-security-token")
+			c.SetRegion("some-region")
+			c.SetEndpoint("http://127.0.0.1:4567")
+		})
 
 		stream := "some-listener-stream"
 
@@ -99,9 +100,10 @@ func TestListener(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(shards), ShouldEqual, 1)
 
-		l, err := NewListener(NewConfig(stream, shards[0]).
-			FromKinetic(k).
-			WithConcurrency(10))
+		l, err := NewListener(stream, shards[0], func(c *Config) {
+			c.FromKinetic(k)
+			c.SetConcurrency(10)
+		})
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 

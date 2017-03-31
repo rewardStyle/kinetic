@@ -1,11 +1,9 @@
 package listener
 
 import (
-	"net/http"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 
 	"github.com/rewardStyle/kinetic"
@@ -14,17 +12,15 @@ import (
 
 // Config is used to configure a Listener instance
 type Config struct {
-	awsConfig *aws.Config
-	*listenerConfig
+	*kinetic.AwsOptions
+	*listenerOptions
 }
 
 // NewConfig creates a new instance of Config
 func NewConfig(stream, shard string) *Config {
 	return &Config{
-		awsConfig: aws.NewConfig().WithHTTPClient(&http.Client{
-			Timeout: 5 * time.Minute,
-		}),
-		listenerConfig: &listenerConfig{
+		AwsOptions: kinetic.DefaultAwsOptions(),
+		listenerOptions: &listenerOptions{
 			stream:                stream,
 			shard:                 shard,
 			batchSize:             10000,
@@ -37,93 +33,48 @@ func NewConfig(stream, shard string) *Config {
 	}
 }
 
-// WithCredentials configures AWS credentials.  Leave blank to use environment
-// variables, IAM roles or ~/.aws/credentials.  See aws-sdk-go docs for more
-// details.
-func (c *Config) WithCredentials(accessKey, secretKey, securityToken string) *Config {
-	c.awsConfig.WithCredentials(
-		credentials.NewStaticCredentials(accessKey, secretKey, securityToken),
-	)
-	return c
+// SetLogLevel configures both the SDK and Kinetic log levels.
+func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
+	c.AwsOptions.SetLogLevel(logLevel)
+	c.listenerOptions.logLevel = logLevel & 0xffff0000
 }
 
-// WithRegion configures the AWS region.  Leave blank to use environment
-// variables.  See aws-sdk-go for more details.
-func (c *Config) WithRegion(region string) *Config {
-	c.awsConfig.WithRegion(region)
-	return c
+// SetBatchSize configures the batch size of the GetRecords call.
+func (c *Config) SetBatchSize(batchSize int) {
+	c.batchSize = batchSize
 }
 
-// WithEndpoint sets the endpoint to be used by aws-sdk-go.
-func (c *Config) WithEndpoint(endpoint string) *Config {
-	c.awsConfig.WithEndpoint(endpoint)
-	return c
+// SetConcurrency controls the number of goroutines the Listener will spawn to
+// process messages.
+func (c *Config) SetConcurrency(concurrency int) {
+	c.concurrency = concurrency
 }
 
-// WithLogger configures the logger for Kinetic and the aws-sdk-go.
-func (c *Config) WithLogger(logger aws.Logger) *Config {
-	c.awsConfig.WithLogger(logger)
-	return c
+// SetInitialShardIterator configures the settings used to retrieve initial
+// shard iterator via the GetShardIterator call.
+func (c *Config) SetInitialShardIterator(shardIterator *ShardIterator) {
+	c.shardIterator = shardIterator
 }
 
-// WithLogLevel configures the log levels for Kinetic and the aws-sdk-go.  Note
-// that log levels for the SDK can be found in aws-sdk-go/aws package.  Kinetic
-// log levels are found in the kinetic/logging package.
-func (c *Config) WithLogLevel(logLevel aws.LogLevelType) *Config {
-	c.awsConfig.WithLogLevel(logLevel & 0xffff)
-	c.logLevel = logLevel & 0xffff0000
-	return c
+// SetGetRecordsReadTimeout configures the time to wait for each successive
+// Read operation on the GetRecords response payload.
+func (c *Config) SetGetRecordsReadTimeout(timouet time.Duration) {
+	c.getRecordsReadTimeout = timouet
 }
 
-// WithHTTPClientTimeout configures the HTTP timeout for the SDK.
-func (c *Config) WithHTTPClientTimeout(timeout time.Duration) *Config {
-	c.awsConfig.WithHTTPClient(&http.Client{
-		Timeout: timeout,
-	})
+// SetStatsListener configures a listener to handle metrics.
+func (c *Config) SetStatsListener(stats StatsListener) {
+	c.stats = stats
+}
+
+// FromKinetic configures the session from Kinetic.
+func (c *Config) FromKinetic(k *kinetic.Kinetic) *Config {
+	c.AwsConfig = k.GetSession().Config
 	return c
 }
 
 // GetSession creates an instance of the session.Session to be used when creating service
 // clients in aws-sdk-go.
 func (c *Config) GetSession() (*session.Session, error) {
-	return session.NewSession(c.awsConfig)
-}
-
-// FromKinetic configures the session from Kinetic.
-func (c *Config) FromKinetic(k *kinetic.Kinetic) *Config {
-	c.awsConfig = k.GetSession().Config
-	return c
-}
-
-// WithBatchSize configures the batch size of the GetRecords call.
-func (c *Config) WithBatchSize(batchSize int) *Config {
-	c.batchSize = batchSize
-	return c
-}
-
-// WithConcurrency controls the number of goroutines the Listener will spawn to
-// process messages.
-func (c *Config) WithConcurrency(concurrency int) *Config {
-	c.concurrency = concurrency
-	return c
-}
-
-// WithInitialShardIterator configures the settings used to retrieve initial
-// shard iterator via the GetShardIterator call.
-func (c *Config) WithInitialShardIterator(shardIterator *ShardIterator) *Config {
-	c.shardIterator = shardIterator
-	return c
-}
-
-// WithGetRecordsReadTimeout configures the time to wait for each successive
-// Read operation on the GetRecords response payload.
-func (c *Config) WithGetRecordsReadTimeout(timouet time.Duration) *Config {
-	c.getRecordsReadTimeout = timouet
-	return c
-}
-
-// WithStatsListener configures a listener to handle metrics.
-func (c *Config) WithStatsListener(stats StatsListener) *Config {
-	c.stats = stats
-	return c
+	return session.NewSession(c.AwsConfig)
 }

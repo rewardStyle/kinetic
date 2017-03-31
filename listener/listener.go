@@ -125,7 +125,7 @@ func (it *ShardIterator) getTimestamp() *time.Time {
 	return aws.Time(it.timestamp)
 }
 
-type listenerConfig struct {
+type listenerOptions struct {
 	stream string
 	shard  string
 
@@ -140,7 +140,7 @@ type listenerConfig struct {
 
 // Listener polls the Kinesis stream for messages.
 type Listener struct {
-	*listenerConfig
+	*listenerOptions
 
 	nextShardIterator string
 
@@ -159,17 +159,19 @@ type Listener struct {
 
 // NewListener creates a new listener for listening to message on a Kinesis
 // stream.
-func NewListener(config *Config) (*Listener, error) {
+func NewListener(stream, shard string, fn func(*Config)) (*Listener, error) {
+	config := NewConfig(stream, shard)
+	fn(config)
 	session, err := config.GetSession()
 	if err != nil {
 		return nil, err
 	}
 	return &Listener{
-		listenerConfig: config.listenerConfig,
-		concurrencySem: make(chan Empty, config.concurrency),
-		throttleSem:    make(chan Empty, 5),
-		pipeOfDeath:    make(chan Empty),
-		session:        session,
+		listenerOptions: config.listenerOptions,
+		concurrencySem:  make(chan Empty, config.concurrency),
+		throttleSem:     make(chan Empty, 5),
+		pipeOfDeath:     make(chan Empty),
+		session:         session,
 	}, nil
 }
 

@@ -28,14 +28,14 @@ var (
 	ErrNilStreamDescription = errors.New("DescribeStream returned a nil StreamDescription")
 )
 
-type kineticConfig struct {
+type kineticOptions struct {
 	logLevel aws.LogLevelType
 }
 
 // Kinetic represents a kinesis and firehose client and provides some utility
 // methods for interacting with the AWS services.
 type Kinetic struct {
-	*kineticConfig
+	*kineticOptions
 	session *session.Session
 
 	fclient  firehoseiface.FirehoseAPI
@@ -44,14 +44,16 @@ type Kinetic struct {
 }
 
 // New creates a new instance of Kientic.
-func New(config *Config) (*Kinetic, error) {
+func New(fn func(*Config)) (*Kinetic, error) {
+	config := NewConfig()
+	fn(config)
 	session, err := config.GetSession()
 	if err != nil {
 		return nil, err
 	}
 	return &Kinetic{
-		kineticConfig: config.kineticConfig,
-		session:       session,
+		kineticOptions: config.kineticOptions,
+		session:        session,
 	}, nil
 }
 

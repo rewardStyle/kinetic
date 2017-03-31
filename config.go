@@ -9,72 +9,80 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 )
 
+// AwsOptions helps configure an aws.Config and session.Session
+type AwsOptions struct {
+	AwsConfig *aws.Config
+}
+
+// DefaultAwsOptions initializes the default aws.Config struct
+func DefaultAwsOptions() *AwsOptions {
+	return &AwsOptions{
+		AwsConfig: aws.NewConfig().WithHTTPClient(
+			&http.Client{
+				Timeout: 10 * time.Minute,
+			},
+		),
+	}
+}
+
+// SetCredentials configures AWS credentials.
+func (c *AwsOptions) SetCredentials(accessKey, secretKey, sessionToken string) {
+	c.AwsConfig.WithCredentials(
+		credentials.NewStaticCredentials(accessKey, secretKey, sessionToken),
+	)
+}
+
+// SetRegion configures the AWS region.
+func (c *AwsOptions) SetRegion(region string) {
+	c.AwsConfig.WithRegion(region)
+}
+
+// SetEndpoint sets the endpoint to be used by aws-sdk-go.
+func (c *AwsOptions) SetEndpoint(endpoint string) {
+	c.AwsConfig.WithEndpoint(endpoint)
+}
+
+// SetLogger configures the logger for Kinetic and the aws-sdk-go.
+func (c *AwsOptions) SetLogger(logger aws.Logger) {
+	c.AwsConfig.WithLogger(logger)
+}
+
+// SetLogLevel configures the log levels for the SDK.
+func (c *AwsOptions) SetLogLevel(logLevel aws.LogLevelType) {
+	c.AwsConfig.WithLogLevel(logLevel & 0xffff)
+}
+
+// SetHTTPClientTimeout configures the HTTP timeout for the SDK.
+func (c *AwsOptions) SetHTTPClientTimeout(timeout time.Duration) {
+	c.AwsConfig.WithHTTPClient(&http.Client{
+		Timeout: timeout,
+	})
+}
+
 // Config is used to configure a Kinetic instance
 type Config struct {
-	awsConfig *aws.Config
-	*kineticConfig
+	*AwsOptions
+	*kineticOptions
 }
 
 // NewConfig creates a new instance of Config
 func NewConfig() *Config {
 	return &Config{
-		awsConfig: aws.NewConfig().WithHTTPClient(&http.Client{
-			Timeout: 5 * time.Minute,
-		}),
-		kineticConfig: &kineticConfig{
+		AwsOptions: DefaultAwsOptions(),
+		kineticOptions: &kineticOptions{
 			logLevel: aws.LogOff,
 		},
 	}
 }
 
-// WithCredentials configures AWS credentials.  Leave blank to use environment
-// variables, IAM roles or ~/.aws/credentials.  See aws-sdk-go docs for more
-// details.
-func (c *Config) WithCredentials(accessKey, secretKey, securityToken string) *Config {
-	c.awsConfig.WithCredentials(
-		credentials.NewStaticCredentials(accessKey, secretKey, securityToken),
-	)
-	return c
-}
-
-// WithRegion configures the AWS region.  Leave blank to use environment
-// variables.  See aws-sdk-go for more details.
-func (c *Config) WithRegion(region string) *Config {
-	c.awsConfig.WithRegion(region)
-	return c
-}
-
-// WithEndpoint sets the endpoint to be used by aws-sdk-go.
-func (c *Config) WithEndpoint(endpoint string) *Config {
-	c.awsConfig.WithEndpoint(endpoint)
-	return c
-}
-
-// WithLogger configures the logger for Kinetic and the aws-sdk-go.
-func (c *Config) WithLogger(logger aws.Logger) *Config {
-	c.awsConfig.WithLogger(logger)
-	return c
-}
-
-// WithLogLevel configures the log levels for Kinetic and the aws-sdk-go.  Note
-// that log levels for the SDK can be found in aws-sdk-go/aws package.  Kinetic
-// log levels are found in the kinetic/logging package.
-func (c *Config) WithLogLevel(logLevel aws.LogLevelType) *Config {
-	c.awsConfig.WithLogLevel(logLevel & 0xffff)
-	c.logLevel = logLevel & 0xffff0000
-	return c
-}
-
-// WithHTTPClientTimeout configures the HTTP timeout for the SDK.
-func (c *Config) WithHTTPClientTimeout(timeout time.Duration) *Config {
-	c.awsConfig.WithHTTPClient(&http.Client{
-		Timeout: timeout,
-	})
-	return c
+// SetLogLevel configures both the SDK and Kinetic log levels.
+func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
+	c.AwsOptions.SetLogLevel(logLevel)
+	c.kineticOptions.logLevel = logLevel & 0xffff0000
 }
 
 // GetSession creates an instance of the session.Session to be used when creating service
 // clients in aws-sdk-go.
 func (c *Config) GetSession() (*session.Session, error) {
-	return session.NewSession(c.awsConfig)
+	return session.NewSession(c.AwsConfig)
 }
