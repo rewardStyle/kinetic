@@ -250,7 +250,7 @@ func TestListener(t *testing.T) {
 			So(called, ShouldBeTrue)
 		})
 
-		SkipConvey("check that listen can deliver messages to fn", func(c C) {
+		Convey("check that listen can deliver messages to fn", func(c C) {
 			planets := []string{"mercury", "venus", "earth", "mars", "jupiter", "saturn", "neptune", "uranus"}
 			var count int64
 			var wg sync.WaitGroup
@@ -266,11 +266,30 @@ func TestListener(t *testing.T) {
 				_, err := putRecord(l, []byte(planet))
 				So(err, ShouldBeNil)
 			}
+			timeout := time.After(10 * time.Second)
+			// FIXME: Not too thrilled with this implementation, but
+			// there is probably a race condition between when the
+			// last planet is put onto the Kinesis stream (and
+			// subsequently read by consume) with when closing the
+			// pipeOfDeath (which will shut down the consume loop)
+			// such that we may not see all the planets inside
+			// Listen.
+		stop:
+			for {
+				select {
+				case <-time.After(1 * time.Second):
+					if atomic.LoadInt64(&count) == int64(len(planets)) {
+						break stop
+					}
+				case <-timeout:
+					break stop
+				}
+			}
 			// FIXME: probably a race condition here as consume may
 			// not have grabbed all data from the channel yet.
 			close(l.pipeOfDeath)
 			wg.Wait()
-			So(count, ShouldEqual, len(planets))
+			So(atomic.LoadInt64(&count), ShouldEqual, len(planets))
 		})
 
 		Convey("check that listen can be cancelled by context", func(c C) {
