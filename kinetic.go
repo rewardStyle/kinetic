@@ -29,18 +29,18 @@ var (
 )
 
 type kineticOptions struct {
-	logLevel aws.LogLevelType
+	LogLevel aws.LogLevelType
 }
 
 // Kinetic represents a kinesis and firehose client and provides some utility
 // methods for interacting with the AWS services.
 type Kinetic struct {
 	*kineticOptions
-	session *session.Session
 
+	clientMu sync.Mutex
 	fclient  firehoseiface.FirehoseAPI
 	kclient  kinesisiface.KinesisAPI
-	clientMu sync.Mutex
+	Session  *session.Session
 }
 
 // New creates a new instance of Kientic.
@@ -53,14 +53,14 @@ func New(fn func(*Config)) (*Kinetic, error) {
 	}
 	return &Kinetic{
 		kineticOptions: config.kineticOptions,
-		session:        session,
+		Session:        session,
 	}, nil
 }
 
 // Log logs a message if LogDebug is set.
 func (k *Kinetic) Log(args ...interface{}) {
-	if k.logLevel.Matches(logging.LogDebug) {
-		k.session.Config.Logger.Log(args...)
+	if k.LogLevel.Matches(logging.LogDebug) {
+		k.Session.Config.Logger.Log(args...)
 	}
 }
 
@@ -68,7 +68,7 @@ func (k *Kinetic) ensureKinesisClient() {
 	k.clientMu.Lock()
 	defer k.clientMu.Unlock()
 	if k.kclient == nil {
-		k.kclient = kinesis.New(k.session)
+		k.kclient = kinesis.New(k.Session)
 	}
 }
 
@@ -121,7 +121,7 @@ func (k *Kinetic) WaitUntilStreamDeleted(ctx context.Context, stream string, opt
 				Expected: kinesis.ErrCodeResourceNotFoundException,
 			},
 		},
-		Logger: k.session.Config.Logger,
+		Logger: k.Session.Config.Logger,
 		NewRequest: func(opts []request.Option) (*request.Request, error) {
 			req, _ := k.kclient.DescribeStreamRequest(&kinesis.DescribeStreamInput{
 				StreamName: aws.String(stream), // Required
@@ -159,12 +159,3 @@ func (k *Kinetic) GetShards(stream string) ([]string, error) {
 	}
 	return shards, nil
 }
-
-// GetSession returns the aws-sdk-go session.Session object.
-func (k *Kinetic) GetSession() *session.Session {
-	return k.session
-}
-
-// func (k *Kinetic) NewListener(config *listener.Config) (*listener.Listener, error) {
-// 	return listener.NewListener(config, k, k.session, k.kclient)
-// }

@@ -59,6 +59,12 @@ func (c *AwsOptions) SetHTTPClientTimeout(timeout time.Duration) {
 	})
 }
 
+// GetSession creates an instance of the session.Session to be used when creating service
+// clients in aws-sdk-go.
+func (c *AwsOptions) GetSession() (*session.Session, error) {
+	return session.NewSession(c.AwsConfig)
+}
+
 // Config is used to configure a Kinetic instance
 type Config struct {
 	*AwsOptions
@@ -70,7 +76,7 @@ func NewConfig() *Config {
 	return &Config{
 		AwsOptions: DefaultAwsOptions(),
 		kineticOptions: &kineticOptions{
-			logLevel: aws.LogOff,
+			LogLevel: aws.LogOff,
 		},
 	}
 }
@@ -78,11 +84,5 @@ func NewConfig() *Config {
 // SetLogLevel configures both the SDK and Kinetic log levels.
 func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
 	c.AwsOptions.SetLogLevel(logLevel)
-	c.kineticOptions.logLevel = logLevel & 0xffff0000
-}
-
-// GetSession creates an instance of the session.Session to be used when creating service
-// clients in aws-sdk-go.
-func (c *Config) GetSession() (*session.Session, error) {
-	return session.NewSession(c.AwsConfig)
+	c.LogLevel = logLevel & 0xffff0000
 }

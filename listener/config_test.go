@@ -13,20 +13,20 @@ import (
 	"github.com/rewardStyle/kinetic/logging"
 )
 
-type DebugStatsListener struct{}
+type DebugStatsCollector struct{}
 
-func (l *DebugStatsListener) AddConsumedSample(int)                       {}
-func (l *DebugStatsListener) AddDeliveredSample(int)                      {}
-func (l *DebugStatsListener) AddProcessedSample(int)                      {}
-func (l *DebugStatsListener) AddBatchSizeSample(int)                      {}
-func (l *DebugStatsListener) AddGetRecordsCalled(int)                     {}
-func (l *DebugStatsListener) AddProvisionedThroughputExceeded(int)        {}
-func (l *DebugStatsListener) AddGetRecordsTimeout(int)                    {}
-func (l *DebugStatsListener) AddGetRecordsReadTimeout(int)                {}
-func (l *DebugStatsListener) AddProcessedTime(time.Duration)              {}
-func (l *DebugStatsListener) AddGetRecordsTime(time.Duration)             {}
-func (l *DebugStatsListener) AddGetRecordsReadResponseTime(time.Duration) {}
-func (l *DebugStatsListener) AddGetRecordsUnmarshalTime(time.Duration)    {}
+func (l *DebugStatsCollector) AddConsumedSample(int)                       {}
+func (l *DebugStatsCollector) AddDeliveredSample(int)                      {}
+func (l *DebugStatsCollector) AddProcessedSample(int)                      {}
+func (l *DebugStatsCollector) AddBatchSizeSample(int)                      {}
+func (l *DebugStatsCollector) AddGetRecordsCalled(int)                     {}
+func (l *DebugStatsCollector) AddProvisionedThroughputExceeded(int)        {}
+func (l *DebugStatsCollector) AddGetRecordsTimeout(int)                    {}
+func (l *DebugStatsCollector) AddGetRecordsReadTimeout(int)                {}
+func (l *DebugStatsCollector) AddProcessedTime(time.Duration)              {}
+func (l *DebugStatsCollector) AddGetRecordsTime(time.Duration)             {}
+func (l *DebugStatsCollector) AddGetRecordsReadResponseTime(time.Duration) {}
+func (l *DebugStatsCollector) AddGetRecordsUnmarshalTime(time.Duration)    {}
 
 func getSession(config *Config) *session.Session {
 	sess, err := config.GetSession()
@@ -48,8 +48,8 @@ func TestNewConfig(t *testing.T) {
 			So(config.concurrency, ShouldEqual, 10000)
 			So(config.shardIterator.shardIteratorType, ShouldEqual, "TRIM_HORIZON")
 			So(config.getRecordsReadTimeout, ShouldEqual, 1*time.Second)
-			So(config.stats, ShouldHaveSameTypeAs, &NilStatsListener{})
-			So(config.logLevel.Value(), ShouldEqual, logging.LogOff)
+			So(config.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
+			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
 		})
 
 		Convey("check that we can retrieve an aws.Session from it ", func() {
@@ -62,7 +62,7 @@ func TestNewConfig(t *testing.T) {
 			sess := getSession(config)
 			So(sess.Config.LogLevel.AtLeast(aws.LogDebug), ShouldBeTrue)
 			So(sess.Config.LogLevel.Matches(aws.LogDebugWithSigning), ShouldBeTrue)
-			So(config.logLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
+			So(config.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
 		})
 
 		Convey("check that we can import configuration from kinetic", func() {
@@ -104,9 +104,9 @@ func TestNewConfig(t *testing.T) {
 			So(config.getRecordsReadTimeout, ShouldEqual, 10*time.Second)
 		})
 
-		Convey("check that we can configure a stats listener", func() {
-			config.SetStatsListener(&DebugStatsListener{})
-			So(config.stats, ShouldHaveSameTypeAs, &DebugStatsListener{})
+		Convey("check that we can configure a stats collector", func() {
+			config.SetStatsCollector(&DebugStatsCollector{})
+			So(config.Stats, ShouldHaveSameTypeAs, &DebugStatsCollector{})
 		})
 	})
 }

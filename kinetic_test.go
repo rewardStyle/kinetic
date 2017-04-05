@@ -22,11 +22,6 @@ func TestKinetic(t *testing.T) {
 		So(k, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		Convey("check that we can get the session", func() {
-			sess := k.GetSession()
-			So(sess, ShouldNotBeNil)
-		})
-
 		stream := "some-kinetic-stream"
 
 		Convey("check that calling ensureKinesisClient twice doesn't overwrite existing client", func() {

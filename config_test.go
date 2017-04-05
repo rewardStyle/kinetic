@@ -27,7 +27,7 @@ func TestNewConfig(t *testing.T) {
 		Convey("check the default values for its non-zero config", func() {
 			So(config.AwsConfig.HTTPClient.Timeout, ShouldEqual, 10*time.Minute)
 			So(config.AwsConfig.LogLevel.Value(), ShouldEqual, aws.LogOff)
-			So(config.logLevel.Value(), ShouldEqual, logging.LogOff)
+			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
 		})
 
 		Convey("check that we can retrieve an aws.Session from it ", func() {
@@ -84,7 +84,7 @@ func TestNewConfig(t *testing.T) {
 			sess := getSession(config)
 			So(sess.Config.LogLevel.AtLeast(aws.LogDebug), ShouldBeTrue)
 			So(sess.Config.LogLevel.Matches(aws.LogDebugWithSigning), ShouldBeTrue)
-			So(config.logLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
+			So(config.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
 		})
 
 		Convey("check that we can set the http.Client Timeout", func() {

@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/logging"
@@ -27,16 +26,10 @@ func NewConfig(stream, shard string) *Config {
 			concurrency:           10000,
 			shardIterator:         NewShardIterator(),
 			getRecordsReadTimeout: 1 * time.Second,
-			stats:    &NilStatsListener{},
-			logLevel: logging.LogOff,
+			LogLevel:              logging.LogOff,
+			Stats:                 &NilStatsCollector{},
 		},
 	}
-}
-
-// SetLogLevel configures both the SDK and Kinetic log levels.
-func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
-	c.AwsOptions.SetLogLevel(logLevel)
-	c.listenerOptions.logLevel = logLevel & 0xffff0000
 }
 
 // SetBatchSize configures the batch size of the GetRecords call.
@@ -62,19 +55,19 @@ func (c *Config) SetGetRecordsReadTimeout(timouet time.Duration) {
 	c.getRecordsReadTimeout = timouet
 }
 
-// SetStatsListener configures a listener to handle metrics.
-func (c *Config) SetStatsListener(stats StatsListener) {
-	c.stats = stats
+// SetLogLevel configures both the SDK and Kinetic log levels.
+func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
+	c.AwsOptions.SetLogLevel(logLevel)
+	c.LogLevel = logLevel & 0xffff0000
+}
+
+// SetStatsCollector configures a listener to handle listener metrics.
+func (c *Config) SetStatsCollector(stats StatsCollector) {
+	c.Stats = stats
 }
 
 // FromKinetic configures the session from Kinetic.
 func (c *Config) FromKinetic(k *kinetic.Kinetic) *Config {
-	c.AwsConfig = k.GetSession().Config
+	c.AwsConfig = k.Session.Config
 	return c
-}
-
-// GetSession creates an instance of the session.Session to be used when creating service
-// clients in aws-sdk-go.
-func (c *Config) GetSession() (*session.Session, error) {
-	return session.NewSession(c.AwsConfig)
 }

@@ -133,9 +133,9 @@ type listenerOptions struct {
 	concurrency           int
 	shardIterator         *ShardIterator
 	getRecordsReadTimeout time.Duration
-	stats                 StatsListener
 
-	logLevel aws.LogLevelType
+	LogLevel aws.LogLevelType
+	Stats    StatsCollector
 }
 
 // Listener polls the Kinesis stream for messages.
@@ -152,9 +152,9 @@ type Listener struct {
 	consuming   bool
 	consumingMu sync.Mutex
 
-	session  *session.Session
-	client   kinesisiface.KinesisAPI
 	clientMu sync.Mutex
+	client   kinesisiface.KinesisAPI
+	Session  *session.Session
 }
 
 // NewListener creates a new listener for listening to message on a Kinesis
@@ -171,23 +171,23 @@ func NewListener(stream, shard string, fn func(*Config)) (*Listener, error) {
 		concurrencySem:  make(chan Empty, config.concurrency),
 		throttleSem:     make(chan Empty, 5),
 		pipeOfDeath:     make(chan Empty),
-		session:         session,
+		Session:         session,
 	}, nil
 }
 
 // Log a debug message using the AWS SDK logger.
 func (l *Listener) Log(args ...interface{}) {
-	if l.session.Config.LogLevel.Matches(logging.LogDebug) {
-		l.session.Config.Logger.Log(args...)
+	if l.Session.Config.LogLevel.Matches(logging.LogDebug) {
+		l.Session.Config.Logger.Log(args...)
 	}
 }
 
 // setNextShardIterator sets the nextShardIterator to use when calling
 // GetRecords.
 //
-// Not thread-safe.  Only called from fetchBatch (and ensureShardIterator,
-// which is called from fetchBatch).  Care must be taken to ensure that only
-// one call to Listen and Retrieve/RetrieveFn can be running at a time.
+// Not thread-safe.  Only called from getRecords (and ensureShardIterator, which
+// is called from getRecords).  Care must be taken to ensure that only one call
+// to Listen and Retrieve/RetrieveFn can be running at a time.
 func (l *Listener) setNextShardIterator(shardIterator string) error {
 	if len(shardIterator) == 0 {
 		return ErrEmptyShardIterator
@@ -201,7 +201,7 @@ func (l *Listener) setNextShardIterator(shardIterator string) error {
 // This is only used when we need to call getShardIterator (say, to refresh the
 // shard iterator).
 //
-// Not thread-safe.  Only called from fetchBatch.  Care must be taken to ensure
+// Not thread-safe.  Only called from getRecords.  Care must be taken to ensure
 // that only one call to Listen and Retrieve/RetrieveFn can be running at a
 // time.
 func (l *Listener) setSequenceNumber(sequenceNumber string) error {
@@ -238,7 +238,7 @@ func (l *Listener) ensureClient() {
 	l.clientMu.Lock()
 	defer l.clientMu.Unlock()
 	if l.client == nil {
-		l.client = kinesis.New(l.session)
+		l.client = kinesis.New(l.Session)
 	}
 }
 
@@ -246,7 +246,7 @@ func (l *Listener) ensureClient() {
 // calling the GetShardIterator API with the configured ShardIteratorType (with
 // any applicable StartingSequenceNumber or Timestamp) if necessary.
 //
-// Not thread-safe.  Only called from fetchBatch Care must be taken to ensure
+// Not thread-safe.  Only called from getRecords Care must be taken to ensure
 // that only one call to Listen and Retrieve/RetrieveFn can be running at a
 // time.
 func (l *Listener) ensureShardIterator() error {
@@ -284,7 +284,7 @@ func (l *Listener) throttle(sem chan Empty) {
 	})
 }
 
-// fetchBatch calls GetRecords and delivers each record into the messages
+// getRecords calls GetRecords and delivers each record into the messages
 // channel.
 // TODO: Convert timeout implementation to use context.Context
 // FIXME: Need to investigate that the timeout implementation doesn't result in
@@ -296,7 +296,7 @@ func (l *Listener) throttle(sem chan Empty) {
 // down the TCP connection.  Worst case scenario is that our client Timeout
 // eventually fires and closes the socket, but this can be susceptible to FD
 // exhaustion.
-func (l *Listener) fetchBatch(size int) (int, error) {
+func (l *Listener) getRecords(size int) (int, error) {
 	l.ensureClient()
 	if err := l.ensureShardIterator(); err != nil {
 		return 0, err
@@ -315,7 +315,7 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 	})
 
 	// If debug is turned on, add some handlers for GetRecords logging
-	if l.session.Config.LogLevel.AtLeast(aws.LogDebug) {
+	if l.LogLevel.AtLeast(logging.LogDebug) {
 		req.Handlers.Send.PushBack(func(r *request.Request) {
 			l.Log("Finished GetRecords Send, took", time.Since(start))
 		})
@@ -395,7 +395,7 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 				return
 			},
 			OnCloseFn: func() {
-				l.stats.AddGetRecordsReadResponseTime(time.Since(startReadTime))
+				l.Stats.AddGetRecordsReadResponseTime(time.Since(startReadTime))
 				l.Log("Finished GetRecords body read, took", time.Since(start))
 				startUnmarshalTime = time.Now()
 			},
@@ -403,18 +403,18 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 	})
 
 	req.Handlers.Unmarshal.PushBack(func(r *request.Request) {
-		l.stats.AddGetRecordsUnmarshalTime(time.Since(startUnmarshalTime))
+		l.Stats.AddGetRecordsUnmarshalTime(time.Since(startUnmarshalTime))
 		l.Log("Finished GetRecords Unmarshal, took", time.Since(start))
 	})
 
 	// Send the GetRecords request
-	l.Log("Starting GetRecords build/sign request, took", time.Since(start))
-	l.stats.AddGetRecordsCalled(1)
+	l.Log("Starting GetRecords Build/Sign request, took", time.Since(start))
+	l.Stats.AddGetRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		l.Log("Error getting records:", err)
 		return 0, err
 	}
-	l.stats.AddGetRecordsTime(time.Since(start))
+	l.Stats.AddGetRecordsTime(time.Since(start))
 
 	// Process Records
 	l.Log(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), l.shard, time.Since(start)))
@@ -422,12 +422,12 @@ func (l *Listener) fetchBatch(size int) (int, error) {
 		return 0, ErrNilGetRecordsResponse
 	}
 	delivered := 0
-	l.stats.AddBatchSizeSample(len(resp.Records))
+	l.Stats.AddBatchSizeSample(len(resp.Records))
 	for _, record := range resp.Records {
 		if record != nil {
 			delivered++
 			l.messages <- &message.Message{Record: *record}
-			l.stats.AddConsumedSample(1)
+			l.Stats.AddConsumedSample(1)
 		}
 		if record.SequenceNumber != nil {
 			// We can safely ignore if this call returns
@@ -530,12 +530,12 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 		if !ok {
 			return nil, err
 		}
-		n, err := l.fetchBatch(1)
+		n, err := l.getRecords(1)
 		if err != nil {
 			return nil, err
 		}
 		if n > 0 {
-			l.stats.AddDeliveredSample(1)
+			l.Stats.AddDeliveredSample(1)
 			return <-l.messages, nil
 		}
 	}
@@ -559,8 +559,8 @@ func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageFn) erro
 	start := time.Now()
 	go fn(msg.Value(), &wg)
 	wg.Wait()
-	l.stats.AddProcessedTime(time.Since(start))
-	l.stats.AddProcessedSample(1)
+	l.Stats.AddProcessedTime(time.Since(start))
+	l.Stats.AddProcessedSample(1)
 	return nil
 }
 
@@ -570,7 +570,7 @@ func (l *Listener) RetrieveFn(fn MessageFn) error {
 	return l.RetrieveFnWithContext(context.TODO(), fn)
 }
 
-// consume calls fetchBatch with configured batch size in a loop until the
+// consume calls getRecords with configured batch size in a loop until the
 // listener is stopped.
 func (l *Listener) consume(ctx context.Context) {
 	// We need to run blockConsumers & startConsuming to make sure that we
@@ -589,17 +589,16 @@ func (l *Listener) consume(ctx context.Context) {
 		}()
 	stop:
 		for {
-			ok, err := l.shouldConsume(ctx)
+			ok, _ := l.shouldConsume(ctx)
 			if !ok {
 				break stop
 			}
-			_, err = l.fetchBatch(l.batchSize)
-
+			_, err = l.getRecords(l.batchSize)
 			if err != nil {
 				switch err := err.(type) {
 				case net.Error:
 					if err.Timeout() {
-						l.stats.AddGetRecordsTimeout(1)
+						l.Stats.AddGetRecordsTimeout(1)
 						l.Log("Received net error:", err.Error())
 					} else {
 						l.Log("Received unknown net error:", err.Error())
@@ -607,31 +606,15 @@ func (l *Listener) consume(ctx context.Context) {
 				case error:
 					switch err {
 					case ErrTimeoutReadResponseBody:
-						l.stats.AddGetRecordsReadTimeout(1)
+						l.Stats.AddGetRecordsReadTimeout(1)
 						l.Log("Received error:", err.Error())
-					case ErrEmptySequenceNumber:
-						fallthrough
-					case ErrEmptyShardIterator:
-						fallthrough
-					case ErrNilGetShardIteratorResponse:
-						fallthrough
-					case ErrNilShardIterator:
-						fallthrough
-					case ErrNilGetRecordsResponse:
-						fallthrough
 					default:
 						l.Log("Received error:", err.Error())
 					}
 				case awserr.Error:
 					switch err.Code() {
 					case kinesis.ErrCodeProvisionedThroughputExceededException:
-						l.stats.AddProvisionedThroughputExceeded(1)
-					case kinesis.ErrCodeResourceNotFoundException:
-						fallthrough
-					case kinesis.ErrCodeInvalidArgumentException:
-						fallthrough
-					case kinesis.ErrCodeExpiredIteratorException:
-						fallthrough
+						l.Stats.AddProvisionedThroughputExceeded(1)
 					default:
 						l.Log("Received AWS error:", err.Error())
 					}
@@ -652,7 +635,7 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 	defer wg.Wait()
 
 	for msg := range l.messages {
-		l.stats.AddDeliveredSample(1)
+		l.Stats.AddDeliveredSample(1)
 		l.concurrencySem <- Empty{}
 		wg.Add(1)
 		go func(msg *message.Message) {
@@ -664,8 +647,8 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 			start := time.Now()
 			fn(msg.Value(), &fnWg)
 			fnWg.Wait()
-			l.stats.AddProcessedTime(time.Since(start))
-			l.stats.AddProcessedSample(1)
+			l.Stats.AddProcessedTime(time.Since(start))
+			l.Stats.AddProcessedSample(1)
 			wg.Done()
 		}(msg)
 	}
