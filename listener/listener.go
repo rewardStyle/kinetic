@@ -593,7 +593,7 @@ func (l *Listener) consume(ctx context.Context) {
 			if !ok {
 				break stop
 			}
-			_, err = l.getRecords(l.batchSize)
+			_, err := l.getRecords(l.batchSize)
 			if err != nil {
 				switch err := err.(type) {
 				case net.Error:

@@ -226,7 +226,7 @@ func TestListener(t *testing.T) {
 			secs := []float64{}
 			for i := 1; i <= 6; i++ {
 				start := time.Now()
-				l.fetchBatch(1)
+				l.getRecords(1)
 				secs = append(secs, time.Since(start).Seconds())
 			}
 			elapsed := time.Since(start).Seconds()

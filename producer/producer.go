@@ -227,6 +227,8 @@ func (p *Producer) produce(ctx context.Context) {
 	}()
 }
 
+// SendWithContext sends a message to the stream.  Cancellation supported
+// through contexts.
 func (p *Producer) SendWithContext(ctx context.Context, msg *message.Message) error {
 	select {
 	case p.messages <- msg:
@@ -236,10 +238,15 @@ func (p *Producer) SendWithContext(ctx context.Context, msg *message.Message) er
 	}
 }
 
+// Send a message to the stream, waiting on the message to be put into the
+// channel.
 func (p *Producer) Send(msg *message.Message) error {
 	return p.SendWithContext(context.TODO(), msg)
 }
 
+// TryToSend will attempt to send a message to the stream if the channel has
+// capacity for a message, or will immediately return with an error if the
+// channel is full.
 func (p *Producer) TryToSend(msg *message.Message) error {
 	ctx, cancel := context.WithTimeout(context.TODO(), 0*time.Second)
 	defer cancel()

@@ -9,13 +9,13 @@ import (
 	"github.com/rewardStyle/kinetic/logging"
 )
 
-// Config is used to configure a Producer instance
+// Config is used to configure a Producer instance.
 type Config struct {
 	*kinetic.AwsOptions
 	*producerOptions
 }
 
-// NewConfig creates a new instance of Config
+// NewConfig creates a new instance of Config.
 func NewConfig() *Config {
 	return &Config{
 		AwsOptions: kinetic.DefaultAwsOptions(),
