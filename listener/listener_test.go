@@ -215,7 +215,6 @@ func TestListener(t *testing.T) {
 				wg.Done()
 			}()
 			<-time.After(10 * time.Millisecond)
-			So(l.IsConsuming(), ShouldBeTrue)
 			_, err := l.Retrieve()
 			So(err, ShouldEqual, ErrAlreadyConsuming)
 			wg.Wait()

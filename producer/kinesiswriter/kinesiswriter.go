@@ -86,6 +86,10 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 	var startBuildTime time.Time
 
 	start := time.Now()
+	var records []*kinesis.PutRecordsRequestEntry
+	for _, msg := range messages {
+		records = append(records, msg.MakeRequestEntry())
+	}
 	req, resp := w.client.PutRecordsRequest(&kinesis.PutRecordsInput{})
 
 	req.Handlers.Build.PushFront(func(r *request.Request) {
@@ -111,7 +115,7 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 	w.Log("Starting PutRecords Build/Sign request, took", time.Since(start))
 	w.producer.Stats.AddPutRecordsCalled(1)
 	if err := req.Send(); err != nil {
-		w.Log("Error putting records:", err)
+		w.Log("Error putting records:", err.Error())
 		return nil, err
 	}
 	w.producer.Stats.AddPutRecordsTime(time.Since(start))
@@ -125,9 +129,6 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 	attempted := len(messages)
 	failed := int(aws.Int64Value(resp.FailedRecordCount))
 	sent := attempted - failed
-	w.producer.Stats.AddBatchSizeSample(len(messages))
-	w.producer.Stats.AddSentSample(sent)
-	w.producer.Stats.AddFailedSample(failed)
 	w.Log(fmt.Sprintf("Finished PutRecords request, %d records attempted, %d records successful, %d records failed, took %v\n", attempted, sent, failed, time.Since(start)))
 
 	var retries []*message.Message
@@ -135,8 +136,18 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 	for idx, record := range resp.Records {
 		if record.SequenceNumber != nil && record.ShardId != nil {
 			// TODO: per-shard metrics
+			message[idx].SequenceNumber = record.SequenceNumber
+			message[idx].ShardId = record.ShardId
 		} else {
-			// TODO metrics on failure rates
+			switch record.ErrorCode {
+			case kinesis.ErrCodeProvisionedThroughputExceededException:
+				w.producer.Stats.AddProvisionedThroughputExceeded(1)
+			default:
+				w.Log("PutRecords record failed with error:", aws.StringValue(record.ErrorCode), aws.StringValue(*record.ErrorMessage))
+			}
+			message[idx].ErrorCode = record.ErrorCode
+			message[idx].ErrorMessage = record.ErrorMessage
+			message[idx].FailCount++
 			retries = append(retries, messages[idx])
 		}
 	}

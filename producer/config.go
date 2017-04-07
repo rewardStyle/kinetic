@@ -20,12 +20,13 @@ func NewConfig() *Config {
 	return &Config{
 		AwsOptions: kinetic.DefaultAwsOptions(),
 		producerOptions: &producerOptions{
-			batchSize:    500,
-			batchTimeout: 1 * time.Second,
-			concurrency:  1,
-			queueDepth:   500,
-			LogLevel:     logging.LogOff,
-			Stats:        &NilStatsCollector{},
+			batchSize:        500,
+			batchTimeout:     1 * time.Second,
+			queueDepth:       500,
+			maxRetryAttempts: 10,
+			concurrency:      1,
+			LogLevel:         logging.LogOff,
+			Stats:            &NilStatsCollector{},
 		},
 	}
 }
@@ -42,16 +43,22 @@ func (c *Config) SetBatchTimeout(timeout time.Duration) {
 	c.batchTimeout = timeout
 }
 
-// SetConcurrency controls the number of outstanding PutRecords calls may be
-// active at a time.
-func (c *Config) SetConcurrency(concurrency int) {
-	c.concurrency = concurrency
-}
-
 // SetQueueDepth controls the number of messages that can be in the channel
 // to be processed by produce at a given time.
 func (c *Config) SetQueueDepth(queueDepth int) {
 	c.queueDepth = queueDepth
+}
+
+// SetMaxRetryAttempts controls the number of times a message can be retried
+// before it is discarded.
+func (c *Config) SetMaxRetryAttempts(attempts int) {
+	c.maxRetryAttempts = attempts
+}
+
+// SetConcurrency controls the number of outstanding PutRecords calls may be
+// active at a time.
+func (c *Config) SetConcurrency(concurrency int) {
+	c.concurrency = concurrency
 }
 
 // SetWriter sets the underlying stream writer (Kinesis or Firehose) for the

@@ -38,6 +38,16 @@ var (
 	// with a producer.
 	ErrProducerAlreadyAssociated = errors.New("StreamWriter already associated with a producer")
 
+	// ErrBatchTimeout is returned by getBatch whenever the batchTimeout
+	// elapses prior to receiving batchSize messages.  This is *not* an
+	// error in the sense of a failure, but is used to distinguish the
+	// reason getBatch has exited.
+	ErrBatchTimeout = errors.New("A timeout has occurred before batch has reached optimal size")
+
+	// ErrProducerShutdown is returend by getBatch whenever both the message
+	// and retry channel have been closed.
+	ErrProducerShutdown = errors.New("The producer has shut down")
+
 	// ErrPipeOfDeath returns when the pipe of death is closed.
 	ErrPipeOfDeath = errors.New("Received pipe of death")
 )
@@ -46,11 +56,12 @@ var (
 type Empty struct{}
 
 type producerOptions struct {
-	batchSize    int
-	batchTimeout time.Duration
-	concurrency  int
-	queueDepth   int
-	writer       StreamWriter
+	batchSize        int
+	batchTimeout     time.Duration
+	queueDepth       int
+	maxRetryAttempts int
+	concurrency      int
+	writer           StreamWriter
 
 	LogLevel aws.LogLevelType
 	Stats    StatsCollector
@@ -61,9 +72,13 @@ type Producer struct {
 	*producerOptions
 
 	messages       chan *message.Message
-	retries        chan []*message.Message
+	retries        chan *message.Message
 	concurrencySem chan Empty
 	pipeOfDeath    chan Empty
+	producerWg     sync.WaitGroup
+
+	outstanding int64
+	flushCond   sync.Cond
 
 	producing   bool
 	producingMu sync.Mutex
@@ -99,139 +114,226 @@ func (p *Producer) Log(args ...interface{}) {
 	}
 }
 
-// blockProducers will set producing to true if there is not already another
-// produce loop running.
-func (p *Producer) blockProducers() bool {
+// startConsuming will initialize the producer and set producing to true if
+// there is not already another consume loop running.
+func (p *Producer) startProducing() bool {
 	p.producingMu.Lock()
 	defer p.producingMu.Unlock()
 	if !p.producing {
 		p.producing = true
+		p.messages = make(chan *message.Message, p.queueDepth)
+		p.retries = make(chan *message.Message) // TODO: should we use a buffered channel?
+		p.outstanding = 0
+		p.flushCond = sync.Cond{L: &sync.Mutex{}}
 		return true
 	}
 	return false
 }
 
-// startProducing handles any initialization needed in preparation to start
-// producing.
-func (p *Producer) startProducing() {
-	p.messages = make(chan *message.Message, p.queueDepth)
-}
-
-// shouldProduce is a convenience function that allows functions to break their
-// loops if the context receives a cancellation.
-func (p *Producer) shouldProduce(ctx context.Context) (bool, error) {
-	select {
-	case <-p.pipeOfDeath:
-		return false, ErrPipeOfDeath
-	case <-ctx.Done():
-		return false, ctx.Err()
-	default:
-		return true, nil
-	}
-}
-
 // stopProducing handles any cleanup after a producing has stopped.
 func (p *Producer) stopProducing() {
-	close(p.messages)
-}
-
-// allowProducers allows producing.  Called after blockProducers to release the
-// lock on producing.
-func (p *Producer) allowProducers() {
 	p.producingMu.Lock()
 	defer p.producingMu.Unlock()
+	if p.messages != nil {
+		close(p.messages)
+	}
 	p.producing = false
 }
 
-// IsProducing returns true while producing.
-func (p *Producer) IsProducing() bool {
-	p.producingMu.Lock()
-	defer p.producingMu.Unlock()
-	return p.producing
-}
-
-func (p *Producer) getBatch(ctx context.Context) ([]*message.Message, error) {
-	ctx, cancel := context.WithTimeout(ctx, p.batchTimeout)
-	defer cancel()
-
+// getBatch will retrieve a batch of messages by batchSize and batchTimeout for
+// delivery.
+func (p *Producer) getBatch() ([]*message.Message, error) {
+	var err error
 	var batch []*message.Message
-	select {
-	case batch = <-p.retries:
-	default:
-	}
-
-	for len(batch) < p.batchSize {
+	var timer <-chan time.Time
+stop:
+	for len(batch) <= p.batchSize {
 		select {
-		case msg := <-p.messages:
-			batch = append(batch, msg)
-		case <-ctx.Done():
-			return batch, ctx.Err()
+		// Using the select, retry messages will interleave with new
+		// messages.  This is preferable to putting the messages at the
+		// end of the channel as it minimizes the delay in the delivery
+		// of retry messages.
+		case msg, ok := <-p.retries:
+			if !ok {
+				p.retries = nil
+			} else {
+				batch = append(batch, msg)
+				if timer != nil {
+					timer = time.After(p.batchTimeout)
+				}
+			}
+		case msg, ok := <-p.messages:
+			if !ok {
+				p.messages = nil
+			} else {
+				batch = append(batch, msg)
+				if timer != nil {
+					timer = time.After(p.batchTimeout)
+				}
+			}
+		case <-timer:
+			err = ErrBatchTimeout
+			break stop
+		case <-p.pipeOfDeath:
+			return nil, ErrPipeOfDeath
+		}
+		if p.messages == nil && p.retries == nil {
+			err = ErrProducerShutdown
+			break stop
 		}
 	}
-	return batch, nil
+	p.Stats.AddBatchSizeSample(len(batch))
+	return batch, err
 }
 
-func (p *Producer) produce(ctx context.Context) {
-	if !p.blockProducers() {
+func (p *Producer) dispatchBatch(batch []*message.Message) {
+	defer p.flushCond.Signal()
+stop:
+	for {
+		retries, err := p.writer.PutRecords(batch)
+		failed := len(retries)
+		sent := len(batch) - failed
+		p.Stats.AddSentSample(sent)
+		p.Stats.AddFailedSample(failed)
+		p.decOutstanding(int64(sent))
+		// This frees up another dispatchBatch to run to allow drainage
+		// of the messages / retry queue.  This should improve
+		// throughput as well as prevent a potential deadlock in which
+		// all batches are blocked on sending retries to the retries
+		// channel, and thus no batches are allowed to drain the retry
+		// channel.
+		<-p.concurrencySem
+		if err == nil {
+			break stop
+		}
+		switch err := err.(type) {
+		case net.Error:
+			if err.Timeout() {
+				p.Stats.AddPutRecordsTimeout(1)
+				p.Log("Received net error:", err.Error())
+			} else {
+				p.Log("Received unknown net error:", err.Error())
+			}
+		case error:
+			switch err {
+			case ErrRetryRecords:
+				for _, msg := range retries {
+					if msg.FailCount < p.maxRetryAttempts {
+						msg.FailCount++
+						select {
+						case p.retries <- msg:
+						case <-p.pipeOfDeath:
+							break stop
+						}
+					} else {
+						p.decOutstanding(1)
+						p.Stats.AddDroppedSample(1)
+					}
+				}
+				p.Log("Received error:", err.Error())
+			default:
+				p.Log("Received error:", err.Error())
+			}
+		case awserr.Error:
+			switch err.Code() {
+			case kinesis.ErrCodeProvisionedThroughputExceededException:
+				// FIXME: It is not clear to me whether
+				// PutRecords would ever return a
+				// ProvisionedThroughputExceeded error.  It
+				// seems that it would instead return a valid
+				// response in which some or all the records
+				// within the response will contain an error
+				// code and error message of
+				// ProvisionedThroughputExceeded.  The current
+				// assumption is that if we receive an
+				// ProvisionedThroughputExceeded error, that the
+				// entire batch should be retried.  Note we only
+				// increment the PutRecord stat, instead of the
+				// per-message stat.  Furthermore, we do not
+				// increment the FailCount of the messages (as
+				// the retry mechanism is different).
+				p.Stats.AddPutRecordsProvisionedThroughputExceeded(1)
+			default:
+				p.Log("Received AWS error:", err.Error())
+			}
+		default:
+			p.Log("Received unknown error:", err.Error())
+		}
+	}
+}
+
+// produce calls the underlying writer's PutRecords implementation to deliver
+// batches of messages to the target stream until the producer is stopped.
+func (p *Producer) produce() {
+	if !p.startProducing() {
 		return
 	}
-	p.startProducing()
+	p.producerWg.Add(1)
 	go func() {
 		defer func() {
 			p.stopProducing()
-			p.allowProducers()
+			p.producerWg.Done()
 		}()
 	stop:
 		for {
-			ok, _ := p.shouldProduce(ctx)
-			if !ok {
+			batch, err := p.getBatch()
+			// If getBatch aborted due to pipe of death, we will
+			// immediately exit the loop.
+			if err == ErrPipeOfDeath {
 				break stop
 			}
-			batch, _ := p.getBatch(ctx)
+			// Regardless if getBatch produced an error (as long as
+			// its not the pipe of death), we will send the messages
+			// via PutRecords.
 			if len(batch) > 0 {
 				p.concurrencySem <- Empty{}
-				go func() {
-					retries, err := p.writer.PutRecords(batch)
-					<-p.concurrencySem
-					if err != nil {
-						switch err := err.(type) {
-						case net.Error:
-							if err.Timeout() {
-								p.Stats.AddPutRecordsTimeout(1)
-								p.Log("Received net error:", err.Error())
-							} else {
-								p.Log("Received unknown net error:", err.Error())
-							}
-						case error:
-							switch err {
-							case ErrRetryRecords:
-								p.retries <- retries
-								p.Log("Received error:", err.Error())
-							default:
-								p.Log("Received error:", err.Error())
-							}
-						case awserr.Error:
-							switch err.Code() {
-							case kinesis.ErrCodeProvisionedThroughputExceededException:
-								p.Stats.AddProvisionedThroughputExceeded(1)
-							default:
-								p.Log("Received AWS error:", err.Error())
-							}
-						default:
-							p.Log("Received unknown error:", err.Error())
-						}
-					}
-				}()
+				go p.dispatchBatch(batch)
+			}
+			// If we exited getBatch earlier with a
+			// ErrProducerShutdown we shut down the producer.
+			if err == ErrProducerShutdown {
+				break stop
 			}
 		}
 	}()
 }
 
+// incOutstanding increments the number of outstanding messages that are to be
+// delivered.
+func (p *Producer) incOutstanding(i int64) {
+	p.flushCond.L.Lock()
+	defer p.flushCond.L.Unlock()
+	p.outstanding += i
+}
+
+// decOutstanding decrements the number of outstanding messages that are to be
+// delivered.
+func (p *Producer) decOutstanding(i int64) {
+	p.flushCond.L.Lock()
+	defer p.flushCond.L.Unlock()
+	p.outstanding -= i
+}
+
+// Close shuts down the producer, waiting for all outstanding messages and retries
+// to flush.
+func (p *Producer) Close() {
+	close(p.messages)
+	p.flushCond.L.Lock()
+	for p.outstanding != 0 {
+		p.flushCond.Wait()
+	}
+	close(p.retries)
+	p.flushCond.L.Unlock()
+	p.producerWg.Wait()
+}
+
 // SendWithContext sends a message to the stream.  Cancellation supported
 // through contexts.
 func (p *Producer) SendWithContext(ctx context.Context, msg *message.Message) error {
+	p.produce()
 	select {
 	case p.messages <- msg:
+		p.incOutstanding(1)
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()

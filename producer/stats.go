@@ -12,6 +12,8 @@ type StatsCollector interface {
 	// standard deviation, and variance of the data.  these metrics should
 	// give us the total number (sum) of messages sent, failed, and dropped,
 	// as well as the average (mean) batch size.
+
+	// for producer
 	AddSentSample(int)
 	AddFailedSample(int)
 	AddDroppedSample(int)
@@ -19,9 +21,15 @@ type StatsCollector interface {
 
 	// meters give us the count and rate of the data.  these metrics should
 	// give us the average number of times:
-	//   - PutRecords was called per second
 	//   - ProvisionedThroughputExceeded was received per second
+	//   - PutRecords was called per second
+	//   - PutRecordProvisionedThroughputExceeded was received per second
 	//   - PutRecords timed out per second
+
+	// for producer
+	AddPutRecordsProvisionedThroughputExceeded(int)
+
+	// for kinesiswriter
 	AddPutRecordsCalled(int)
 	AddProvisionedThroughputExceeded(int)
 	AddPutRecordsTimeout(int)
@@ -29,6 +37,8 @@ type StatsCollector interface {
 	// timers give us the count, sum, min, max, mean, percentiles, standard
 	// deviation, variance, as well as the rate of the data.
 	// TODO: describe these metrics better
+
+	// for kinesis writer
 	AddPutRecordsTime(time.Duration)
 	AddPutRecordsBuildTime(time.Duration)
 	AddPutRecordsSendTime(time.Duration)
@@ -53,12 +63,17 @@ func (l *NilStatsCollector) AddDroppedSample(int) {}
 // PutRecords in the producer.
 func (l *NilStatsCollector) AddBatchSizeSample(int) {}
 
+// AddProvisionedThroughputExceeded records the number of times the PutRecords
+// API returned a ErrCodeProvisionedThroughputExceededException by the producer.
+func (l *NilStatsCollector) AddPutRecordsProvisionedThroughputExceeded(int) {}
+
 // AddPutRecordsCalled records the number of times the PutRecords API was called
 // by the producer.
 func (l *NilStatsCollector) AddPutRecordsCalled(int) {}
 
 // AddProvisionedThroughputExceeded records the number of times the PutRecords
-// API returned a ErrCodeProvisionedThroughputExceededException by the producer.
+// API response contained a record which contained an
+// ErrCodeProvisionedThroughputExceededException error.
 func (l *NilStatsCollector) AddProvisionedThroughputExceeded(int) {}
 
 // AddPutRecordsTimeout records the number of times the PutRecords API timed out

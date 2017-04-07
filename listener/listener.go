@@ -286,7 +286,6 @@ func (l *Listener) throttle(sem chan Empty) {
 
 // getRecords calls GetRecords and delivers each record into the messages
 // channel.
-// TODO: Convert timeout implementation to use context.Context
 // FIXME: Need to investigate that the timeout implementation doesn't result in
 // an fd leak.  Since we call Read on the HTTPResonse.Body in a select with a
 // timeout channel, we do prevent ourself from blocking.  Once we timeout, we
@@ -296,7 +295,7 @@ func (l *Listener) throttle(sem chan Empty) {
 // down the TCP connection.  Worst case scenario is that our client Timeout
 // eventually fires and closes the socket, but this can be susceptible to FD
 // exhaustion.
-func (l *Listener) getRecords(size int) (int, error) {
+func (l *Listener) getRecords(batchSize int) (int, error) {
 	l.ensureClient()
 	if err := l.ensureShardIterator(); err != nil {
 		return 0, err
@@ -310,7 +309,7 @@ func (l *Listener) getRecords(size int) (int, error) {
 	var startUnmarshalTime time.Time
 	start := time.Now()
 	req, resp := l.client.GetRecordsRequest(&kinesis.GetRecordsInput{
-		Limit:         aws.Int64(int64(size)),
+		Limit:         aws.Int64(int64(batchSize)),
 		ShardIterator: aws.String(l.nextShardIterator),
 	})
 
@@ -381,7 +380,7 @@ func (l *Listener) getRecords(size int) (int, error) {
 					// the Read()
 					timer.Reset(l.getRecordsReadTimeout)
 					n, err = result.n, result.err
-					l.Log(fmt.Sprintf("DEBUG: read %d bytes, took %v", n, time.Since(readStart)))
+					l.Log(fmt.Sprintf("GetRecords read %d bytes, took %v", n, time.Since(readStart)))
 				case <-timer.C:
 					// If we timeout, we return an error
 					// that will unblock ioutil.ReadAll().
@@ -389,8 +388,13 @@ func (l *Listener) getRecords(size int) (int, error) {
 					// to return an error.  This error will
 					// propogate to the original req.Send()
 					// call (below)
-					l.Log(fmt.Sprintf("DEBUG: read timed out after %v", time.Since(readStart)))
+					l.Log(fmt.Sprintf("GetRecords read timed out after %v", time.Since(readStart)))
 					err = ErrTimeoutReadResponseBody
+				case <-l.pipeOfDeath:
+					// The pipe of death will abort any pending
+					// reads on a GetRecords call.
+					l.Log(fmt.Sprintf("GetRecords received pipe of death after %v", time.Since(readStart)))
+					err = ErrPipeOfDeath
 				}
 				return
 			},
@@ -425,18 +429,28 @@ func (l *Listener) getRecords(size int) (int, error) {
 	l.Stats.AddBatchSizeSample(len(resp.Records))
 	for _, record := range resp.Records {
 		if record != nil {
-			delivered++
-			l.messages <- &message.Message{Record: *record}
-			l.Stats.AddConsumedSample(1)
-		}
-		if record.SequenceNumber != nil {
-			// We can safely ignore if this call returns
-			// error, as if we somehow receive an empty
-			// sequence number from AWS, we will simply not
-			// set it.  At worst, this causes us to
-			// reprocess this record if we happen to refresh
-			// the iterator.
-			l.setSequenceNumber(*record.SequenceNumber)
+			// Allow (only) a pipeOfDeath to trigger an instance
+			// shutdown of the loop to deliver messages.  Otherwise,
+			// a normal cancellation will not prevent getRecords
+			// from completing the delivery of the current batch of
+			// records.
+			select {
+			case l.messages <- message.FromKinesisRecord(record):
+				delivered++
+				l.Stats.AddConsumedSample(1)
+				if record.SequenceNumber != nil {
+					// We can safely ignore if this call returns
+					// error, as if we somehow receive an empty
+					// sequence number from AWS, we will simply not
+					// set it.  At worst, this causes us to
+					// reprocess this record if we happen to refresh
+					// the iterator.
+					l.setSequenceNumber(*record.SequenceNumber)
+				}
+			case <-l.pipeOfDeath:
+				l.Log(fmt.Sprintf("getRecords received pipe of death while delivering messages, %d delivered, ~%d dropped", delivered, len(resp.Records)-delivered))
+				return delivered, ErrPipeOfDeath
+			}
 		}
 	}
 	if resp.NextShardIterator != nil {
@@ -463,22 +477,17 @@ func (l *Listener) getRecords(size int) (int, error) {
 	return delivered, nil
 }
 
-// blockConsumers will set consuming to true if there is not already another
-// consume loop running.
-func (l *Listener) blockConsumers() bool {
+// startConsuming will initialize the consumer and set consuming to true if
+// there is not already another consume loop running.
+func (l *Listener) startConsuming() bool {
 	l.consumingMu.Lock()
 	defer l.consumingMu.Unlock()
 	if !l.consuming {
 		l.consuming = true
+		l.messages = make(chan *message.Message, l.batchSize)
 		return true
 	}
 	return false
-}
-
-// startConsuming handles any initialization needed in preparation to start
-// consuming.
-func (l *Listener) startConsuming() {
-	l.messages = make(chan *message.Message, l.batchSize)
 }
 
 // shouldConsume is a convenience function that allows functions to break their
@@ -496,36 +505,29 @@ func (l *Listener) shouldConsume(ctx context.Context) (bool, error) {
 
 // stopConsuming handles any cleanup after a consuming has stopped.
 func (l *Listener) stopConsuming() {
-	close(l.messages)
-}
-
-// allowConsumers allows consuming.  Called after blockConsumers to release the
-// lock on consuming.
-func (l *Listener) allowConsumers() {
 	l.consumingMu.Lock()
 	defer l.consumingMu.Unlock()
+	if l.messages != nil {
+		close(l.messages)
+	}
 	l.consuming = false
-}
-
-// IsConsuming returns true while consuming.
-func (l *Listener) IsConsuming() bool {
-	l.consumingMu.Lock()
-	defer l.consumingMu.Unlock()
-	return l.consuming
 }
 
 // RetrieveWithContext waits for a message from the stream and return the value.
 // Cancellation supported through contexts.
 func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, error) {
-	if !l.blockConsumers() {
+	if !l.startConsuming() {
 		return nil, ErrAlreadyConsuming
 	}
-	l.startConsuming()
 	defer func() {
 		l.stopConsuming()
-		l.allowConsumers()
 	}()
 	for {
+		// A cancellation or closing the pipe of death will cause
+		// Retrieve (and related functions) to abort in between
+		// getRecord calls.  Note, that this would only occur when there
+		// are no new records to retrieve.  Otherwise, getRecords will
+		// be allowed to run to completion and deliver one record.
 		ok, err := l.shouldConsume(ctx)
 		if !ok {
 			return nil, err
@@ -573,22 +575,29 @@ func (l *Listener) RetrieveFn(fn MessageFn) error {
 // consume calls getRecords with configured batch size in a loop until the
 // listener is stopped.
 func (l *Listener) consume(ctx context.Context) {
-	// We need to run blockConsumers & startConsuming to make sure that we
-	// are okay and ready to start consuming.  This is mainly to avoid a
-	// race condition where Listen() will attempt to read the messages
-	// channel prior to consume() initializing it.  We can then launch a
-	// goroutine to handle the actual consume operation.
-	if !l.blockConsumers() {
+	// We need to run startConsuming to make sure that we are okay and ready
+	// to start consuming.  This is mainly to avoid a race condition where
+	// Listen() will attempt to read the messages channel prior to consume()
+	// initializing it.  We can then launch a goroutine to handle the actual
+	// consume operation.
+	if !l.startConsuming() {
 		return
 	}
-	l.startConsuming()
 	go func() {
 		defer func() {
 			l.stopConsuming()
-			l.allowConsumers()
 		}()
 	stop:
 		for {
+			// The consume loop can be cancelled by a calling the
+			// cancellation function on the context or by closing
+			// the pipe of death.  Note that in the case of context
+			// cancellation, the getRecords call below will be
+			// allowed to complete (as getRecords does not regard
+			// context cancellation).  In the case of cancellation
+			// by pipe of death, however, the getRecords will
+			// immediately abort and allow the consume function to
+			// immediately abort as well.
 			ok, _ := l.shouldConsume(ctx)
 			if !ok {
 				break stop
@@ -634,23 +643,37 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	for msg := range l.messages {
-		l.Stats.AddDeliveredSample(1)
-		l.concurrencySem <- Empty{}
-		wg.Add(1)
-		go func(msg *message.Message) {
-			defer func() {
-				<-l.concurrencySem
-			}()
-			var fnWg sync.WaitGroup
-			fnWg.Add(1)
-			start := time.Now()
-			fn(msg.Value(), &fnWg)
-			fnWg.Wait()
-			l.Stats.AddProcessedTime(time.Since(start))
-			l.Stats.AddProcessedSample(1)
-			wg.Done()
-		}(msg)
+stop:
+	for {
+		select {
+		case msg, ok := <-l.messages:
+			if !ok {
+				break stop
+			}
+			l.Stats.AddDeliveredSample(1)
+			// For simplicity, did not do the pipe of death here.
+			// If POD is received, we may deliver a couple more
+			// messages (especially since select is random in which
+			// channel is read from).
+			l.concurrencySem <- Empty{}
+			wg.Add(1)
+			go func(msg *message.Message) {
+				defer func() {
+					<-l.concurrencySem
+				}()
+				var fnWg sync.WaitGroup
+				fnWg.Add(1)
+				start := time.Now()
+				fn(msg.Value(), &fnWg)
+				fnWg.Wait()
+				l.Stats.AddProcessedTime(time.Since(start))
+				l.Stats.AddProcessedSample(1)
+				wg.Done()
+			}(msg)
+		case <-l.pipeOfDeath:
+			l.Log("ListenWithContext received pipe of death")
+			break stop
+		}
 	}
 }
 
