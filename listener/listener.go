@@ -2,7 +2,6 @@ package listener
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -16,43 +15,9 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 
+	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
-	"github.com/rewardStyle/kinetic/utils"
-)
-
-var (
-	// ErrAlreadyConsuming is returned when attempting to consume when the
-	// Listener is already consuming.  May be returned by
-	// Retrieve/RetrieveFn.
-	ErrAlreadyConsuming = errors.New("Listener already consuming.  Only one Listen, Retrieve, or RetrieveFn may be active at a time")
-
-	// ErrEmptySequenceNumber is returned when attempting to set an empty
-	// sequence number.
-	ErrEmptySequenceNumber = errors.New("Attempted to set sequence number with empty value")
-
-	// ErrEmptyShardIterator is returned when attempting to set an empty
-	// sequence number.
-	ErrEmptyShardIterator = errors.New("Attempted to set shard iterator with empty value")
-
-	// ErrNilGetShardIteratorResponse is returned when the GetShardIterator
-	// call returns a nil response.
-	ErrNilGetShardIteratorResponse = errors.New("GetShardIteratore returned a nil response")
-
-	// ErrNilShardIterator is returned when the GetShardIterator call
-	// returns a nil shard iterator.
-	ErrNilShardIterator = errors.New("GetShardIterator returned a nil ShardIterator")
-
-	// ErrNilGetRecordsResponse is returned when the GetRecords calls
-	// returns a nil response.
-	ErrNilGetRecordsResponse = errors.New("GetRecords returned an nil response")
-
-	// ErrTimeoutReadResponseBody is returned when a timeout occurs while
-	// reading the GetRecords response body.
-	ErrTimeoutReadResponseBody = errors.New("Timeout while reading response body")
-
-	// ErrPipeOfDeath returns when the pipe of death is closed.
-	ErrPipeOfDeath = errors.New("Received pipe of death")
 )
 
 // Empty is used a as a dummy type for counting semaphore channels.
@@ -134,13 +99,13 @@ type listenerOptions struct {
 	shardIterator         *ShardIterator
 	getRecordsReadTimeout time.Duration
 
-	LogLevel aws.LogLevelType
-	Stats    StatsCollector
+	Stats StatsCollector
 }
 
 // Listener polls the Kinesis stream for messages.
 type Listener struct {
 	*listenerOptions
+	*logging.LogHelper
 
 	nextShardIterator string
 
@@ -168,18 +133,15 @@ func NewListener(stream, shard string, fn func(*Config)) (*Listener, error) {
 	}
 	return &Listener{
 		listenerOptions: config.listenerOptions,
-		concurrencySem:  make(chan Empty, config.concurrency),
-		throttleSem:     make(chan Empty, 5),
-		pipeOfDeath:     make(chan Empty),
-		Session:         session,
+		LogHelper: &logging.LogHelper{
+			LogLevel: config.LogLevel,
+			Logger:   session.Config.Logger,
+		},
+		concurrencySem: make(chan Empty, config.concurrency),
+		throttleSem:    make(chan Empty, 5),
+		pipeOfDeath:    make(chan Empty),
+		Session:        session,
 	}, nil
-}
-
-// Log a debug message using the AWS SDK logger.
-func (l *Listener) Log(args ...interface{}) {
-	if l.Session.Config.LogLevel.Matches(logging.LogDebug) {
-		l.Session.Config.Logger.Log(args...)
-	}
 }
 
 // setNextShardIterator sets the nextShardIterator to use when calling
@@ -190,7 +152,7 @@ func (l *Listener) Log(args ...interface{}) {
 // to Listen and Retrieve/RetrieveFn can be running at a time.
 func (l *Listener) setNextShardIterator(shardIterator string) error {
 	if len(shardIterator) == 0 {
-		return ErrEmptyShardIterator
+		return errs.ErrEmptyShardIterator
 	}
 	l.nextShardIterator = shardIterator
 	return nil
@@ -206,7 +168,7 @@ func (l *Listener) setNextShardIterator(shardIterator string) error {
 // time.
 func (l *Listener) setSequenceNumber(sequenceNumber string) error {
 	if len(sequenceNumber) == 0 {
-		return ErrEmptySequenceNumber
+		return errs.ErrEmptySequenceNumber
 	}
 	l.shardIterator.AtSequenceNumber(sequenceNumber)
 	return nil
@@ -263,14 +225,14 @@ func (l *Listener) ensureShardIterator() error {
 		Timestamp:              l.shardIterator.getTimestamp(),
 	})
 	if err != nil {
-		l.Log(err)
+		l.LogError(err)
 		return err
 	}
 	if resp == nil {
-		return ErrNilGetShardIteratorResponse
+		return errs.ErrNilGetShardIteratorResponse
 	}
 	if resp.ShardIterator == nil {
-		return ErrNilShardIterator
+		return errs.ErrNilShardIterator
 	}
 	return l.setNextShardIterator(*resp.ShardIterator)
 }
@@ -283,6 +245,119 @@ func (l *Listener) throttle(sem chan Empty) {
 		<-sem
 	})
 }
+
+/*
+func (l *Listener) newGetRecords(batchSize int) (int, error) {
+	l.ensureClient()
+	if err := l.ensureShardIterator(); err != nil {
+		return 0, err
+	}
+	l.throttle(l.throttleSem)
+
+	var startUnmarshalTime time.Time
+	start := time.Now()
+
+	// We use the GetRecordsRequest method of creating requests to allow for
+	// registering custom handlers for better control over the API request.
+	req, resp := l.client.GetRecordsRequest(&kinesis.GetRecordsInput{
+		Limit:         aws.Int64(int64(batchSize)),
+		ShardIterator: aws.String(l.nextShardIterator),
+	})
+
+	// If debug is turned on, add some handlers for GetRecords logging
+	if l.LogLevel.AtLeast(logging.LogDebug) {
+		req.Handlers.Send.PushBack(func(r *request.Request) {
+			l.LogDebug("Finished GetRecords Send, took", time.Since(start))
+		})
+	}
+
+	// Add some profiling timers for metrics
+	// TODO: Original implementation was able to measure read time and
+	// unmarshal time separately.  Because we no longer hook into the
+	// ReadCloser's Close method, we can no longer measure them separately.
+	// Instead, the UnmarshalDuration will measure the total time to read
+	// and unmarshal the data.  We should delete the corresponding stat for
+	// the read time.
+	req.Handlers.Unmarshal.PushFront(func(r *request.Request) {
+		l.LogDebug("Started GetRecords Unmarshal, took", time.Since(start))
+		startUnmarshalTime = time.Now()
+	})
+
+	req.Handlers.Unmarshal.PushBack(func(r *request.Request) {
+		l.LogDebug("Finished GetRecords Unmarshal, took", time.Since(start))
+		l.Stats.AddGetRecordsUnmarshalDuration(time.Since(startUnmarshalTime))
+	})
+
+	// This should replace any WithResponseReadTimeout calls within the AWS
+	// SDK in customizations.go.
+	req.ApplyOptions(request.WithResponseReadTimeout(l.getRecordsReadTimeout))
+
+	// Send the GetRecords request
+	l.LogDebug("Starting GetRecords Build/Sign request, took", time.Since(start))
+	l.Stats.AddGetRecordsCalled(1)
+	if err := req.Send(); err != nil {
+		l.LogError("Error getting records:", err)
+		return 0, err
+	}
+	l.Stats.AddGetRecordsDuration(time.Since(start))
+
+	// Process Records
+	l.LogDebug(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), l.shard, time.Since(start)))
+	if resp == nil {
+		return 0, errs.ErrNilGetRecordsResponse
+	}
+	delivered := 0
+	l.Stats.AddBatchSize(len(resp.Records))
+	for _, record := range resp.Records {
+		if record != nil {
+			// Allow (only) a pipeOfDeath to trigger an instance
+			// shutdown of the loop to deliver messages.  Otherwise,
+			// a normal cancellation will not prevent getRecords
+			// from completing the delivery of the current batch of
+			// records.
+			select {
+			case l.messages <- message.FromRecord(record):
+				delivered++
+				l.Stats.AddConsumed(1)
+				if record.SequenceNumber != nil {
+					// We can safely ignore if this call returns
+					// error, as if we somehow receive an empty
+					// sequence number from AWS, we will simply not
+					// set it.  At worst, this causes us to
+					// reprocess this record if we happen to refresh
+					// the iterator.
+					l.setSequenceNumber(*record.SequenceNumber)
+				}
+			case <-l.pipeOfDeath:
+				l.LogInfo(fmt.Sprintf("getRecords received pipe of death while delivering messages, %d delivered, ~%d dropped", delivered, len(resp.Records)-delivered))
+				return delivered, errs.ErrPipeOfDeath
+			}
+		}
+	}
+	if resp.NextShardIterator != nil {
+		// TODO: According to AWS docs:
+		// http://docs.aws.amazon.com/sdk-for-go/api/service/kinesis/#GetRecordsOutput
+		//
+		// NextShardIterator: The next position in the shard
+		// from which to start sequentially reading data
+		// records.  If set to null, the shard has been closed
+		// and the requested iterator will not return any more
+		// data.
+		//
+		// When dealing with streams that will merge or split,
+		// we need to detect that the shard has closed and
+		// notify the client library.
+		//
+		// TODO: I don't know if we should be ignoring an error returned
+		// by setShardIterator in case of an empty shard iterator in the
+		// response.  There isn't much we can do, and the best path for
+		// recovery may be simply to reprocess the batch and see if we
+		// get a valid NextShardIterator from AWS the next time around.
+		l.setNextShardIterator(*resp.NextShardIterator)
+	}
+	return delivered, nil
+}
+*/
 
 // getRecords calls GetRecords and delivers each record into the messages
 // channel.
@@ -316,7 +391,7 @@ func (l *Listener) getRecords(batchSize int) (int, error) {
 	// If debug is turned on, add some handlers for GetRecords logging
 	if l.LogLevel.AtLeast(logging.LogDebug) {
 		req.Handlers.Send.PushBack(func(r *request.Request) {
-			l.Log("Finished GetRecords Send, took", time.Since(start))
+			l.LogDebug("Finished GetRecords Send, took", time.Since(start))
 		})
 	}
 
@@ -334,14 +409,14 @@ func (l *Listener) getRecords(batchSize int) (int, error) {
 	// that we can implement a timeout mechanism on the Read() call (which
 	// is called by the ioutil.ReadAll() function)
 	req.Handlers.Unmarshal.PushFront(func(r *request.Request) {
-		l.Log("Started GetRecords Unmarshal, took", time.Since(start))
+		l.LogDebug("Started GetRecords Unmarshal, took", time.Since(start))
 		// Here, we set a timer that the initial Read() call on
 		// HTTPResponse.Body must return by.  Note that the normal
 		// http.Client Timeout is still in effect.
 		startReadTime = time.Now()
 		timer := time.NewTimer(l.getRecordsReadTimeout)
 
-		r.HTTPResponse.Body = &utils.ReadCloserWrapper{
+		r.HTTPResponse.Body = &ReadCloserWrapper{
 			ReadCloser: r.HTTPResponse.Body,
 			OnReadFn: func(stream io.ReadCloser, b []byte) (n int, err error) {
 				// The OnReadFn will be called each time
@@ -380,7 +455,7 @@ func (l *Listener) getRecords(batchSize int) (int, error) {
 					// the Read()
 					timer.Reset(l.getRecordsReadTimeout)
 					n, err = result.n, result.err
-					l.Log(fmt.Sprintf("GetRecords read %d bytes, took %v", n, time.Since(readStart)))
+					l.LogDebug(fmt.Sprintf("GetRecords read %d bytes, took %v", n, time.Since(readStart)))
 				case <-timer.C:
 					// If we timeout, we return an error
 					// that will unblock ioutil.ReadAll().
@@ -388,45 +463,45 @@ func (l *Listener) getRecords(batchSize int) (int, error) {
 					// to return an error.  This error will
 					// propogate to the original req.Send()
 					// call (below)
-					l.Log(fmt.Sprintf("GetRecords read timed out after %v", time.Since(readStart)))
-					err = ErrTimeoutReadResponseBody
+					l.LogDebug(fmt.Sprintf("GetRecords read timed out after %v", time.Since(readStart)))
+					err = errs.ErrTimeoutReadResponseBody
 				case <-l.pipeOfDeath:
 					// The pipe of death will abort any pending
 					// reads on a GetRecords call.
-					l.Log(fmt.Sprintf("GetRecords received pipe of death after %v", time.Since(readStart)))
-					err = ErrPipeOfDeath
+					l.LogDebug(fmt.Sprintf("GetRecords received pipe of death after %v", time.Since(readStart)))
+					err = errs.ErrPipeOfDeath
 				}
 				return
 			},
 			OnCloseFn: func() {
-				l.Stats.AddGetRecordsReadResponseTime(time.Since(startReadTime))
-				l.Log("Finished GetRecords body read, took", time.Since(start))
+				l.Stats.AddGetRecordsReadResponseDuration(time.Since(startReadTime))
+				l.LogDebug("Finished GetRecords body read, took", time.Since(start))
 				startUnmarshalTime = time.Now()
 			},
 		}
 	})
 
 	req.Handlers.Unmarshal.PushBack(func(r *request.Request) {
-		l.Stats.AddGetRecordsUnmarshalTime(time.Since(startUnmarshalTime))
-		l.Log("Finished GetRecords Unmarshal, took", time.Since(start))
+		l.Stats.AddGetRecordsUnmarshalDuration(time.Since(startUnmarshalTime))
+		l.LogDebug("Finished GetRecords Unmarshal, took", time.Since(start))
 	})
 
 	// Send the GetRecords request
-	l.Log("Starting GetRecords Build/Sign request, took", time.Since(start))
+	l.LogDebug("Starting GetRecords Build/Sign request, took", time.Since(start))
 	l.Stats.AddGetRecordsCalled(1)
 	if err := req.Send(); err != nil {
-		l.Log("Error getting records:", err)
+		l.LogError("Error getting records:", err)
 		return 0, err
 	}
-	l.Stats.AddGetRecordsTime(time.Since(start))
+	l.Stats.AddGetRecordsDuration(time.Since(start))
 
 	// Process Records
-	l.Log(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), l.shard, time.Since(start)))
+	l.LogDebug(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), l.shard, time.Since(start)))
 	if resp == nil {
-		return 0, ErrNilGetRecordsResponse
+		return 0, errs.ErrNilGetRecordsResponse
 	}
 	delivered := 0
-	l.Stats.AddBatchSizeSample(len(resp.Records))
+	l.Stats.AddBatchSize(len(resp.Records))
 	for _, record := range resp.Records {
 		if record != nil {
 			// Allow (only) a pipeOfDeath to trigger an instance
@@ -435,9 +510,9 @@ func (l *Listener) getRecords(batchSize int) (int, error) {
 			// from completing the delivery of the current batch of
 			// records.
 			select {
-			case l.messages <- message.FromKinesisRecord(record):
+			case l.messages <- message.FromRecord(record):
 				delivered++
-				l.Stats.AddConsumedSample(1)
+				l.Stats.AddConsumed(1)
 				if record.SequenceNumber != nil {
 					// We can safely ignore if this call returns
 					// error, as if we somehow receive an empty
@@ -448,8 +523,8 @@ func (l *Listener) getRecords(batchSize int) (int, error) {
 					l.setSequenceNumber(*record.SequenceNumber)
 				}
 			case <-l.pipeOfDeath:
-				l.Log(fmt.Sprintf("getRecords received pipe of death while delivering messages, %d delivered, ~%d dropped", delivered, len(resp.Records)-delivered))
-				return delivered, ErrPipeOfDeath
+				l.LogInfo(fmt.Sprintf("getRecords received pipe of death while delivering messages, %d delivered, ~%d dropped", delivered, len(resp.Records)-delivered))
+				return delivered, errs.ErrPipeOfDeath
 			}
 		}
 	}
@@ -495,7 +570,7 @@ func (l *Listener) startConsuming() bool {
 func (l *Listener) shouldConsume(ctx context.Context) (bool, error) {
 	select {
 	case <-l.pipeOfDeath:
-		return false, ErrPipeOfDeath
+		return false, errs.ErrPipeOfDeath
 	case <-ctx.Done():
 		return false, ctx.Err()
 	default:
@@ -517,7 +592,7 @@ func (l *Listener) stopConsuming() {
 // Cancellation supported through contexts.
 func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, error) {
 	if !l.startConsuming() {
-		return nil, ErrAlreadyConsuming
+		return nil, errs.ErrAlreadyConsuming
 	}
 	defer func() {
 		l.stopConsuming()
@@ -537,7 +612,7 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 			return nil, err
 		}
 		if n > 0 {
-			l.Stats.AddDeliveredSample(1)
+			l.Stats.AddDelivered(1)
 			return <-l.messages, nil
 		}
 	}
@@ -559,10 +634,10 @@ func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageFn) erro
 	var wg sync.WaitGroup
 	wg.Add(1)
 	start := time.Now()
-	go fn(msg.Value(), &wg)
+	go fn(msg.Data, &wg)
 	wg.Wait()
-	l.Stats.AddProcessedTime(time.Since(start))
-	l.Stats.AddProcessedSample(1)
+	l.Stats.AddProcessedDuration(time.Since(start))
+	l.Stats.AddProcessed(1)
 	return nil
 }
 
@@ -608,27 +683,27 @@ func (l *Listener) consume(ctx context.Context) {
 				case net.Error:
 					if err.Timeout() {
 						l.Stats.AddGetRecordsTimeout(1)
-						l.Log("Received net error:", err.Error())
+						l.LogError("Received net error:", err.Error())
 					} else {
-						l.Log("Received unknown net error:", err.Error())
+						l.LogError("Received unknown net error:", err.Error())
 					}
 				case error:
 					switch err {
-					case ErrTimeoutReadResponseBody:
+					case errs.ErrTimeoutReadResponseBody:
 						l.Stats.AddGetRecordsReadTimeout(1)
-						l.Log("Received error:", err.Error())
+						l.LogError("Received error:", err.Error())
 					default:
-						l.Log("Received error:", err.Error())
+						l.LogError("Received error:", err.Error())
 					}
 				case awserr.Error:
 					switch err.Code() {
 					case kinesis.ErrCodeProvisionedThroughputExceededException:
 						l.Stats.AddProvisionedThroughputExceeded(1)
 					default:
-						l.Log("Received AWS error:", err.Error())
+						l.LogError("Received AWS error:", err.Error())
 					}
 				default:
-					l.Log("Received unknown error:", err.Error())
+					l.LogError("Received unknown error:", err.Error())
 				}
 			}
 		}
@@ -650,7 +725,7 @@ stop:
 			if !ok {
 				break stop
 			}
-			l.Stats.AddDeliveredSample(1)
+			l.Stats.AddDelivered(1)
 			// For simplicity, did not do the pipe of death here.
 			// If POD is received, we may deliver a couple more
 			// messages (especially since select is random in which
@@ -664,14 +739,14 @@ stop:
 				var fnWg sync.WaitGroup
 				fnWg.Add(1)
 				start := time.Now()
-				fn(msg.Value(), &fnWg)
+				fn(msg.Data, &fnWg)
 				fnWg.Wait()
-				l.Stats.AddProcessedTime(time.Since(start))
-				l.Stats.AddProcessedSample(1)
+				l.Stats.AddProcessedDuration(time.Since(start))
+				l.Stats.AddProcessed(1)
 				wg.Done()
 			}(msg)
 		case <-l.pipeOfDeath:
-			l.Log("ListenWithContext received pipe of death")
+			l.LogInfo("ListenWithContext received pipe of death")
 			break stop
 		}
 	}

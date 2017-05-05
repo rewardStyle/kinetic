@@ -2,7 +2,6 @@ package kinetic
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -14,28 +13,18 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 
+	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/logging"
 )
 
-var (
-	// ErrNilDescribeStreamResponse is an error returned by GetShards when
-	// the DescribeStream request returns a nil response
-	ErrNilDescribeStreamResponse = errors.New("DescribeStream returned a nil response")
-
-	// ErrNilStreamDescription is an error returned by GetShards when the
-	// DescribeStream request returns a response with a nil
-	// StreamDescription
-	ErrNilStreamDescription = errors.New("DescribeStream returned a nil StreamDescription")
-)
-
 type kineticOptions struct {
-	LogLevel aws.LogLevelType
 }
 
 // Kinetic represents a kinesis and firehose client and provides some utility
 // methods for interacting with the AWS services.
 type Kinetic struct {
 	*kineticOptions
+	*logging.LogHelper
 
 	clientMu sync.Mutex
 	fclient  firehoseiface.FirehoseAPI
@@ -53,15 +42,12 @@ func New(fn func(*Config)) (*Kinetic, error) {
 	}
 	return &Kinetic{
 		kineticOptions: config.kineticOptions,
-		Session:        session,
+		LogHelper: &logging.LogHelper{
+			LogLevel: config.LogLevel,
+			Logger:   session.Config.Logger,
+		},
+		Session: session,
 	}, nil
-}
-
-// Log logs a message if LogDebug is set.
-func (k *Kinetic) Log(args ...interface{}) {
-	if k.LogLevel.Matches(logging.LogDebug) {
-		k.Session.Config.Logger.Log(args...)
-	}
 }
 
 func (k *Kinetic) ensureKinesisClient() {
@@ -80,7 +66,7 @@ func (k *Kinetic) CreateStream(stream string, shards int) error {
 		ShardCount: aws.Int64(int64(shards)),
 	})
 	if err != nil {
-		k.Log("Error creating kinesis stream:", err)
+		k.LogError("Error creating kinesis stream:", err)
 	}
 	return err
 }
@@ -101,7 +87,7 @@ func (k *Kinetic) DeleteStream(stream string) error {
 		StreamName: aws.String(stream),
 	})
 	if err != nil {
-		k.Log("Error deleting kinesis stream:", err)
+		k.LogError("Error deleting kinesis stream:", err)
 	}
 	return err
 }
@@ -142,14 +128,14 @@ func (k *Kinetic) GetShards(stream string) ([]string, error) {
 		StreamName: aws.String(stream),
 	})
 	if err != nil {
-		k.Log("Error describing kinesis stream:", err)
+		k.LogError("Error describing kinesis stream:", err)
 		return nil, err
 	}
 	if resp == nil {
-		return nil, ErrNilDescribeStreamResponse
+		return nil, errs.ErrNilDescribeStreamResponse
 	}
 	if resp.StreamDescription == nil {
-		return nil, ErrNilStreamDescription
+		return nil, errs.ErrNilStreamDescription
 	}
 	var shards []string
 	for _, shard := range resp.StreamDescription.Shards {

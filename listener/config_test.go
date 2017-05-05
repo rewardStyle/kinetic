@@ -15,18 +15,18 @@ import (
 
 type DebugStatsCollector struct{}
 
-func (l *DebugStatsCollector) AddConsumedSample(int)                       {}
-func (l *DebugStatsCollector) AddDeliveredSample(int)                      {}
-func (l *DebugStatsCollector) AddProcessedSample(int)                      {}
-func (l *DebugStatsCollector) AddBatchSizeSample(int)                      {}
-func (l *DebugStatsCollector) AddGetRecordsCalled(int)                     {}
-func (l *DebugStatsCollector) AddProvisionedThroughputExceeded(int)        {}
-func (l *DebugStatsCollector) AddGetRecordsTimeout(int)                    {}
-func (l *DebugStatsCollector) AddGetRecordsReadTimeout(int)                {}
-func (l *DebugStatsCollector) AddProcessedTime(time.Duration)              {}
-func (l *DebugStatsCollector) AddGetRecordsTime(time.Duration)             {}
-func (l *DebugStatsCollector) AddGetRecordsReadResponseTime(time.Duration) {}
-func (l *DebugStatsCollector) AddGetRecordsUnmarshalTime(time.Duration)    {}
+func (l *DebugStatsCollector) AddConsumed(int)                                 {}
+func (l *DebugStatsCollector) AddDelivered(int)                                {}
+func (l *DebugStatsCollector) AddProcessed(int)                                {}
+func (l *DebugStatsCollector) AddBatchSize(int)                                {}
+func (l *DebugStatsCollector) AddGetRecordsCalled(int)                         {}
+func (l *DebugStatsCollector) AddProvisionedThroughputExceeded(int)            {}
+func (l *DebugStatsCollector) AddGetRecordsTimeout(int)                        {}
+func (l *DebugStatsCollector) AddGetRecordsReadTimeout(int)                    {}
+func (l *DebugStatsCollector) AddProcessedDuration(time.Duration)              {}
+func (l *DebugStatsCollector) AddGetRecordsDuration(time.Duration)             {}
+func (l *DebugStatsCollector) AddGetRecordsReadResponseDuration(time.Duration) {}
+func (l *DebugStatsCollector) AddGetRecordsUnmarshalDuration(time.Duration)    {}
 
 func getSession(config *Config) *session.Session {
 	sess, err := config.GetSession()
@@ -65,12 +65,12 @@ func TestNewConfig(t *testing.T) {
 			So(config.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
 		})
 
-		Convey("check that we can import configuration from kinetic", func() {
+		Convey("check that we can set the AWS configuration", func() {
 			k, err := kinetic.New(func(c *kinetic.Config) {
 				c.SetEndpoint("bogus-endpoint")
 			})
 			So(err, ShouldBeNil)
-			config = config.FromKinetic(k)
+			config.SetAwsConfig(k.Session.Config)
 			sess := getSession(config)
 			So(aws.StringValue(sess.Config.Endpoint), ShouldEqual, "bogus-endpoint")
 		})

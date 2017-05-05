@@ -1,0 +1,76 @@
+package errs
+
+import (
+	"errors"
+)
+
+var (
+	// ErrNilDescribeStreamResponse is an error returned by GetShards when
+	// the DescribeStream request returns a nil response
+	ErrNilDescribeStreamResponse = errors.New("DescribeStream returned a nil response")
+
+	// ErrNilStreamDescription is an error returned by GetShards when the
+	// DescribeStream request returns a response with a nil
+	// StreamDescription
+	ErrNilStreamDescription = errors.New("DescribeStream returned a nil StreamDescription")
+
+	// ErrPipeOfDeath returns when the pipe of death is closed.
+	ErrPipeOfDeath = errors.New("Received pipe of death")
+)
+
+var (
+	// ErrAlreadyConsuming is returned when attempting to consume when the
+	// Listener is already consuming.  May be returned by
+	// Retrieve/RetrieveFn.
+	ErrAlreadyConsuming = errors.New("Listener already consuming.  Only one Listen, Retrieve, or RetrieveFn may be active at a time")
+
+	// ErrEmptySequenceNumber is returned when attempting to set an empty
+	// sequence number.
+	ErrEmptySequenceNumber = errors.New("Attempted to set sequence number with empty value")
+
+	// ErrEmptyShardIterator is returned when attempting to set an empty
+	// sequence number.
+	ErrEmptyShardIterator = errors.New("Attempted to set shard iterator with empty value")
+
+	// ErrNilGetShardIteratorResponse is returned when the GetShardIterator
+	// call returns a nil response.
+	ErrNilGetShardIteratorResponse = errors.New("GetShardIteratore returned a nil response")
+
+	// ErrNilShardIterator is returned when the GetShardIterator call
+	// returns a nil shard iterator.
+	ErrNilShardIterator = errors.New("GetShardIterator returned a nil ShardIterator")
+
+	// ErrNilGetRecordsResponse is returned when the GetRecords calls
+	// returns a nil response.
+	ErrNilGetRecordsResponse = errors.New("GetRecords returned an nil response")
+
+	// ErrTimeoutReadResponseBody is returned when a timeout occurs while
+	// reading the GetRecords response body.
+	ErrTimeoutReadResponseBody = errors.New("Timeout while reading response body")
+)
+
+var (
+	// ErrRetryRecords is returned when the PutRecords calls requires some
+	// records of the batch to be retried.  This failure is considered part
+	// of normal behavior of the Kinesis stream.
+	ErrRetryRecords = errors.New("PutRecords requires retry of some records in batch")
+
+	// ErrNilProducer is returned by a StreamWriter when it has not been
+	// correctly associated with a Producer.
+	ErrNilProducer = errors.New("StreamWriter not associated with a producer")
+
+	// ErrProducerAlreadyAssociated is returned by a StreamWriter attempting
+	// to associate it with a Producer when it already has an association
+	// with a producer.
+	ErrProducerAlreadyAssociated = errors.New("StreamWriter already associated with a producer")
+)
+
+var (
+	// ErrNilPutRecordsResponse is returned when the PutRecords call returns
+	// a nil response.
+	ErrNilPutRecordsResponse = errors.New("PutRecords returned a nil response")
+
+	// ErrNilFailedRecordCount is returned when the PutRecords call returns
+	// a nil FailedRecordCount.
+	ErrNilFailedRecordCount = errors.New("GetFailedRecordCount returned a nil FailedRecordCount")
+)

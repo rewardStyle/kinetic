@@ -5,20 +5,21 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	"github.com/rewardStyle/kinetic"
+	"github.com/rewardStyle/kinetic/config"
 	"github.com/rewardStyle/kinetic/logging"
 )
 
 // Config is used to configure a Listener instance
 type Config struct {
-	*kinetic.AwsOptions
+	*config.AwsOptions
 	*listenerOptions
+	LogLevel aws.LogLevelType
 }
 
 // NewConfig creates a new instance of Config
 func NewConfig(stream, shard string) *Config {
 	return &Config{
-		AwsOptions: kinetic.DefaultAwsOptions(),
+		AwsOptions: config.DefaultAwsOptions(),
 		listenerOptions: &listenerOptions{
 			stream:                stream,
 			shard:                 shard,
@@ -26,10 +27,16 @@ func NewConfig(stream, shard string) *Config {
 			concurrency:           10000,
 			shardIterator:         NewShardIterator(),
 			getRecordsReadTimeout: 1 * time.Second,
-			LogLevel:              logging.LogOff,
-			Stats:                 &NilStatsCollector{},
+			Stats: &NilStatsCollector{},
 		},
+		LogLevel: logging.LogOff,
 	}
+}
+
+// SetAwsConfig configures the AWS Config used to create Sessions (and therefore
+// kinesis clients).
+func (c *Config) SetAwsConfig(config *aws.Config) {
+	c.AwsConfig = config
 }
 
 // SetBatchSize configures the batch size of the GetRecords call.
@@ -64,10 +71,4 @@ func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
 // SetStatsCollector configures a listener to handle listener metrics.
 func (c *Config) SetStatsCollector(stats StatsCollector) {
 	c.Stats = stats
-}
-
-// FromKinetic configures the session from Kinetic.
-func (c *Config) FromKinetic(k *kinetic.Kinetic) *Config {
-	c.AwsConfig = k.Session.Config
-	return c
 }

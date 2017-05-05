@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 
 	"github.com/rewardStyle/kinetic"
+	"github.com/rewardStyle/kinetic/errs"
 )
 
 func putRecord(l *Listener, b []byte) (*string, error) {
@@ -101,7 +102,7 @@ func TestListener(t *testing.T) {
 		So(len(shards), ShouldEqual, 1)
 
 		l, err := NewListener(stream, shards[0], func(c *Config) {
-			c.FromKinetic(k)
+			c.SetAwsConfig(k.Session.Config)
 			c.SetConcurrency(10)
 		})
 		So(l, ShouldNotBeNil)
@@ -118,12 +119,12 @@ func TestListener(t *testing.T) {
 
 		Convey("check that setting an empty shard iterator returns an error", func() {
 			err := l.setNextShardIterator("")
-			So(err, ShouldEqual, ErrEmptyShardIterator)
+			So(err, ShouldEqual, errs.ErrEmptyShardIterator)
 		})
 
 		Convey("check that setting an empty sequence number returns an error", func() {
 			err := l.setSequenceNumber("")
-			So(err, ShouldEqual, ErrEmptySequenceNumber)
+			So(err, ShouldEqual, errs.ErrEmptySequenceNumber)
 		})
 
 		Convey("check that we can get the TRIM_HORIZON shard iterator", func() {
@@ -140,7 +141,7 @@ func TestListener(t *testing.T) {
 				So(seq, ShouldNotBeNil)
 				msg, err := l.Retrieve()
 				So(err, ShouldBeNil)
-				So(string(msg.Value()), ShouldEqual, datum)
+				So(string(msg.Data), ShouldEqual, datum)
 				Convey(fmt.Sprintf("check that iteration %d properly advanced the shard iterator", n), func() {
 					So(l.shardIterator.shardIteratorType, ShouldEqual, "AT_SEQUENCE_NUMBER")
 					So(l.shardIterator.sequenceNumber, ShouldEqual, *seq)
@@ -160,7 +161,7 @@ func TestListener(t *testing.T) {
 			elapsed := time.Since(start)
 			Printf("(it blocked %f seconds)\n", elapsed.Seconds())
 			So(err, ShouldBeNil)
-			So(string(msg.Value()), ShouldEqual, data)
+			So(string(msg.Data), ShouldEqual, data)
 			So(elapsed.Seconds(), ShouldBeGreaterThan, 1)
 		})
 
@@ -200,7 +201,7 @@ func TestListener(t *testing.T) {
 			}()
 			msg, err := l.RetrieveWithContext(ctx)
 			So(err, ShouldBeNil)
-			So(string(msg.Value()), ShouldEqual, data)
+			So(string(msg.Data), ShouldEqual, data)
 		})
 
 		Convey("check that retrieve properly blocks other retrieves and attempts to set the shard id", func(c C) {
@@ -216,7 +217,7 @@ func TestListener(t *testing.T) {
 			}()
 			<-time.After(10 * time.Millisecond)
 			_, err := l.Retrieve()
-			So(err, ShouldEqual, ErrAlreadyConsuming)
+			So(err, ShouldEqual, errs.ErrAlreadyConsuming)
 			wg.Wait()
 		})
 
@@ -319,10 +320,11 @@ func TestListener(t *testing.T) {
 			Printf("(count was %d)", atomic.LoadInt64(&count))
 		})
 
+		// TODO: test get records read timeout
+
 		Reset(func() {
 			k.DeleteStream(stream)
 			k.WaitUntilStreamDeleted(context.TODO(), stream, request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
 		})
-
 	})
 }

@@ -5,30 +5,37 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	"github.com/rewardStyle/kinetic"
+	"github.com/rewardStyle/kinetic/config"
 	"github.com/rewardStyle/kinetic/logging"
 )
 
 // Config is used to configure a Producer instance.
 type Config struct {
-	*kinetic.AwsOptions
+	*config.AwsOptions
 	*producerOptions
+	LogLevel aws.LogLevelType
 }
 
 // NewConfig creates a new instance of Config.
 func NewConfig() *Config {
 	return &Config{
-		AwsOptions: kinetic.DefaultAwsOptions(),
+		AwsOptions: config.DefaultAwsOptions(),
 		producerOptions: &producerOptions{
 			batchSize:        500,
 			batchTimeout:     1 * time.Second,
 			queueDepth:       500,
 			maxRetryAttempts: 10,
 			concurrency:      1,
-			LogLevel:         logging.LogOff,
 			Stats:            &NilStatsCollector{},
 		},
+		LogLevel: logging.LogOff,
 	}
+}
+
+// SetAwsConfig configures the AWS Config used to create Sessions (and therefore
+// kinesis clients).
+func (c *Config) SetAwsConfig(config *aws.Config) {
+	c.AwsConfig = config
 }
 
 // SetBatchSize configures the batch size to flush pending records to the
@@ -61,14 +68,15 @@ func (c *Config) SetConcurrency(concurrency int) {
 	c.concurrency = concurrency
 }
 
-// SetWriter sets the underlying stream writer (Kinesis or Firehose) for the
-// producer.  There can only be a single writer associated with a producer (as
-// various retry logic/state is not easily shared between multiple writers).  If
-// multiple streams are desired, create two different producers and write to
-// both.
-func (c *Config) SetWriter(writer StreamWriter) {
-	c.writer = writer
+// SetKinesisStream sets the producer to write to the given Kinesis stream.
+func (c *Config) SetKinesisStream(stream string) {
+	c.writer = NewKinesisWriter(stream)
 }
+
+// SetFirehoseStream sets the producer to write to the given Firehose stream.
+// func (c *Config) SetFirehoseStream(stream string) {
+// 	c.writer = NewFirehoseWriter(stream)
+// }
 
 // SetLogLevel configures both the SDK and Kinetic log levels.
 func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
@@ -79,10 +87,4 @@ func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
 // SetStatsCollector configures a listener to handle producer metrics.
 func (c *Config) SetStatsCollector(stats StatsCollector) {
 	c.Stats = stats
-}
-
-// FromKinetic configures the session from Kinetic.
-func (c *Config) FromKinetic(k *kinetic.Kinetic) *Config {
-	c.AwsConfig = k.Session.Config
-	return c
 }

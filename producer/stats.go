@@ -8,62 +8,40 @@ import (
 // the Kinetic producer library.  This was really built with rcrowley/go-metrics
 // in mind.
 type StatsCollector interface {
-	// histograms give us the count, sum, min, max, mean, percentiles,
-	// standard deviation, and variance of the data.  these metrics should
-	// give us the total number (sum) of messages sent, failed, and dropped,
-	// as well as the average (mean) batch size.
-
-	// for producer
-	AddSentSample(int)
-	AddFailedSample(int)
-	AddDroppedSample(int)
-	AddBatchSizeSample(int)
-
-	// meters give us the count and rate of the data.  these metrics should
-	// give us the average number of times:
-	//   - ProvisionedThroughputExceeded was received per second
-	//   - PutRecords was called per second
-	//   - PutRecordProvisionedThroughputExceeded was received per second
-	//   - PutRecords timed out per second
-
-	// for producer
+	AddSent(int)
+	AddFailed(int)
+	AddDropped(int)
+	AddBatchSize(int)
 	AddPutRecordsProvisionedThroughputExceeded(int)
-
-	// for kinesiswriter
 	AddPutRecordsCalled(int)
 	AddProvisionedThroughputExceeded(int)
 	AddPutRecordsTimeout(int)
 
-	// timers give us the count, sum, min, max, mean, percentiles, standard
-	// deviation, variance, as well as the rate of the data.
-	// TODO: describe these metrics better
-
-	// for kinesis writer
-	AddPutRecordsTime(time.Duration)
-	AddPutRecordsBuildTime(time.Duration)
-	AddPutRecordsSendTime(time.Duration)
+	AddPutRecordsDuration(time.Duration)
+	AddPutRecordsBuildDuration(time.Duration)
+	AddPutRecordsSendDuration(time.Duration)
 }
 
 // NilStatsCollector is a stats listener that ignores all metrics.
 type NilStatsCollector struct{}
 
-// AddSentSample records a count of the number of messages sent to AWS Kinesis
-// by the producer.
-func (l *NilStatsCollector) AddSentSample(int) {}
+// AddSent records a count of the number of messages sent to AWS Kinesis by the
+// producer.
+func (l *NilStatsCollector) AddSent(int) {}
 
-// AddFailedSample records a count of the number of messages that failed to be
-// sent to AWS Kinesis by the producer.
-func (l *NilStatsCollector) AddFailedSample(int) {}
+// AddFailed records a count of the number of messages that failed to be sent to
+// AWS Kinesis by the producer.
+func (l *NilStatsCollector) AddFailed(int) {}
 
-// AddDroppedSample records a count of the number of messages dropped by the
+// AddDropped records a count of the number of messages dropped by the
 // application after multiple failures.
-func (l *NilStatsCollector) AddDroppedSample(int) {}
+func (l *NilStatsCollector) AddDropped(int) {}
 
-// AddBatchSizeSample records a count of the number of messages attempted by
+// AddBatchSize records a count of the number of messages attempted by
 // PutRecords in the producer.
-func (l *NilStatsCollector) AddBatchSizeSample(int) {}
+func (l *NilStatsCollector) AddBatchSize(int) {}
 
-// AddProvisionedThroughputExceeded records the number of times the PutRecords
+// AddPutRecordsProvisionedThroughputExceeded records the number of times the PutRecords
 // API returned a ErrCodeProvisionedThroughputExceededException by the producer.
 func (l *NilStatsCollector) AddPutRecordsProvisionedThroughputExceeded(int) {}
 
@@ -81,14 +59,14 @@ func (l *NilStatsCollector) AddProvisionedThroughputExceeded(int) {}
 // configuration.
 func (l *NilStatsCollector) AddPutRecordsTimeout(int) {}
 
-// AddPutRecordsTime records the duration that the PutRecords API request took.
-// Only the times of successful calls are measured.
-func (l *NilStatsCollector) AddPutRecordsTime(time.Duration) {}
+// AddPutRecordsDuration records the duration that the PutRecords API request
+// took.  Only the times of successful calls are measured.
+func (l *NilStatsCollector) AddPutRecordsDuration(time.Duration) {}
 
-// AddPutRecordsBuildTime records the duration that it took to build the
+// AddPutRecordsBuildDuration records the duration that it took to build the
 // PutRecords API request payload.
-func (l *NilStatsCollector) AddPutRecordsBuildTime(time.Duration) {}
+func (l *NilStatsCollector) AddPutRecordsBuildDuration(time.Duration) {}
 
-// AddPutRecordsSendTime records the duration that it took to send the
+// AddPutRecordsSendDuration records the duration that it took to send the
 // PutRecords API request payload.
-func (l *NilStatsCollector) AddPutRecordsSendTime(time.Duration) {}
+func (l *NilStatsCollector) AddPutRecordsSendDuration(time.Duration) {}

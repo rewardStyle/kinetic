@@ -8,55 +8,41 @@ import (
 // the Kinetic Listener library.  This was really built with rcrowley/go-metrics
 // in mind.
 type StatsCollector interface {
-	// histograms give us the count, sum, min, max, mean, percentiles,
-	// standard deviation, and variance of the data.  these metrics should
-	// give us the total number (sum) of messages consumed, delivered, and
-	// processed, as well as the average (mean) batch size.
-	AddConsumedSample(int)
-	AddDeliveredSample(int)
-	AddProcessedSample(int)
-	AddBatchSizeSample(int)
-
-	// meters give us the count and rate of the data.  these metrics should
-	// give us the average number of times:
-	//   - GetRecords was called per second
-	//   - ProvisionedThroughputExceeded was received per second
-	//   - GetRecords timed out per second
-	//   - GetRecords read timed out per second
+	AddConsumed(int)
+	AddDelivered(int)
+	AddProcessed(int)
+	AddBatchSize(int)
 	AddGetRecordsCalled(int)
 	AddProvisionedThroughputExceeded(int)
 	AddGetRecordsTimeout(int)
 	AddGetRecordsReadTimeout(int)
 
-	// timers give us the count, sum, min, max, mean, percentiles, standard
-	// deviation, variance, as well as the rate of the data.
-	// TODO: describe these metrics better
-	AddProcessedTime(time.Duration)
-	AddGetRecordsTime(time.Duration)
-	AddGetRecordsReadResponseTime(time.Duration)
-	AddGetRecordsUnmarshalTime(time.Duration)
+	AddProcessedDuration(time.Duration)
+	AddGetRecordsDuration(time.Duration)
+	AddGetRecordsReadResponseDuration(time.Duration)
+	AddGetRecordsUnmarshalDuration(time.Duration)
 }
 
 // NilStatsCollector is a stats listener that ignores all metrics.
 type NilStatsCollector struct{}
 
-// AddConsumedSample records a count of the number of messages received from AWS
+// AddConsumed records a count of the number of messages received from AWS
 // Kinesis by the listener.
-func (l *NilStatsCollector) AddConsumedSample(int) {}
+func (l *NilStatsCollector) AddConsumed(int) {}
 
-// AddDeliveredSample records a count of the number of messages delivered to the
+// AddDelivered records a count of the number of messages delivered to the
 // application by the listener.
-func (l *NilStatsCollector) AddDeliveredSample(int) {}
+func (l *NilStatsCollector) AddDelivered(int) {}
 
-// AddProcessedSample records a count of the number of messages processed by the
+// AddProcessed records a count of the number of messages processed by the
 // application by the listener.  This is based on a WaitGroup that is sent to
 // the RetrieveFn and Listen functions.  Retrieve does not count processed
 // messages.
-func (l *NilStatsCollector) AddProcessedSample(int) {}
+func (l *NilStatsCollector) AddProcessed(int) {}
 
-// AddBatchSizeSample records a count of the number of messages returned by
+// AddBatchSize records a count of the number of messages returned by
 // GetRecords in the listener.
-func (l *NilStatsCollector) AddBatchSizeSample(int) {}
+func (l *NilStatsCollector) AddBatchSize(int) {}
 
 // AddGetRecordsCalled records the number of times the GetRecords API was called
 // by the listener.
@@ -76,18 +62,18 @@ func (l *NilStatsCollector) AddGetRecordsTimeout(int) {}
 // WithGetRecordsReadTimeout configuration.
 func (l *NilStatsCollector) AddGetRecordsReadTimeout(int) {}
 
-// AddProcessedTime records the duration to process a record.  See notes on
-// AddProcessedSample.
-func (l *NilStatsCollector) AddProcessedTime(time.Duration) {}
+// AddProcessedDuration records the duration to process a record.  See notes on
+// AddProcessed.
+func (l *NilStatsCollector) AddProcessedDuration(time.Duration) {}
 
-// AddGetRecordsTime records the duration that the GetRecords API request took.
-// Only the times of successful calls are measured.
-func (l *NilStatsCollector) AddGetRecordsTime(time.Duration) {}
+// AddGetRecordsDuration records the duration that the GetRecords API request
+// took.  Only the times of successful calls are measured.
+func (l *NilStatsCollector) AddGetRecordsDuration(time.Duration) {}
 
-// AddGetRecordsReadResponseTime records the duration that it took to read the
-// response body of a GetRecords API request.
-func (l *NilStatsCollector) AddGetRecordsReadResponseTime(time.Duration) {}
+// AddGetRecordsReadResponseDuration records the duration that it took to read
+// the response body of a GetRecords API request.
+func (l *NilStatsCollector) AddGetRecordsReadResponseDuration(time.Duration) {}
 
-// AddGetRecordsUnmarshalTime records the duration that it took to unmarshal the
-// response body of a GetRecords API request.
-func (l *NilStatsCollector) AddGetRecordsUnmarshalTime(time.Duration) {}
+// AddGetRecordsUnmarshalDuration records the duration that it took to unmarshal
+// the response body of a GetRecords API request.
+func (l *NilStatsCollector) AddGetRecordsUnmarshalDuration(time.Duration) {}

@@ -3,6 +3,7 @@ package message
 import (
 	"time"
 
+	"github.com/aws/aws-sdk-go/service/firehose"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 )
 
@@ -20,11 +21,15 @@ type Message struct {
 	// For kinesis.PutRecordResultEntry
 	ErrorCode    *string
 	ErrorMessage *string
-	ShardId      *string
+	ShardID      *string
+
+	// For firehose.PutRecordBatchResponseEntry
+	RecordID *string
 
 	FailCount int
 }
 
+// FromRecord creates a message from the kinesis.Record returned from GetRecords
 func FromRecord(record *kinesis.Record) *Message {
 	return &Message{
 		ApproximateArrivalTimestamp: record.ApproximateArrivalTimestamp,
@@ -34,10 +39,20 @@ func FromRecord(record *kinesis.Record) *Message {
 	}
 }
 
+// MakeRequestEntry creates a kinesis.PutRecordsRequestEntry to be used in the
+// kinesis.PutRecords API call.
 func (m *Message) MakeRequestEntry() *kinesis.PutRecordsRequestEntry {
 	return &kinesis.PutRecordsRequestEntry{
 		Data:            m.Data,
 		ExplicitHashKey: m.ExplicitHashKey,
 		PartitionKey:    m.PartitionKey,
+	}
+}
+
+// MakeFirehoseRecord creates a firehose.Record to be used in the
+// firehose.PutRecordBatch API call.
+func (m *Message) MakeFirehoseRecord() *firehose.Record {
+	return &firehose.Record{
+		Data: m.Data,
 	}
 }
