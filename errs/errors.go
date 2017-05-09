@@ -19,6 +19,15 @@ var (
 )
 
 var (
+	// ErrNilProducer is returned by a StreamWriter when it has not been
+	// correctly associated with a Producer.
+	ErrNilListener = errors.New("StreamReader not associated with a listener")
+
+	// ErrProducerAlreadyAssociated is returned by a StreamWriter attempting
+	// to associate it with a Producer when it already has an association
+	// with a producer.
+	ErrListenerAlreadyAssociated = errors.New("StreamReader already associated with a listener")
+
 	// ErrAlreadyConsuming is returned when attempting to consume when the
 	// Listener is already consuming.  May be returned by
 	// Retrieve/RetrieveFn.
@@ -50,11 +59,6 @@ var (
 )
 
 var (
-	// ErrRetryRecords is returned when the PutRecords calls requires some
-	// records of the batch to be retried.  This failure is considered part
-	// of normal behavior of the Kinesis stream.
-	ErrRetryRecords = errors.New("PutRecords requires retry of some records in batch")
-
 	// ErrNilProducer is returned by a StreamWriter when it has not been
 	// correctly associated with a Producer.
 	ErrNilProducer = errors.New("StreamWriter not associated with a producer")
@@ -63,9 +67,7 @@ var (
 	// to associate it with a Producer when it already has an association
 	// with a producer.
 	ErrProducerAlreadyAssociated = errors.New("StreamWriter already associated with a producer")
-)
 
-var (
 	// ErrNilPutRecordsResponse is returned when the PutRecords call returns
 	// a nil response.
 	ErrNilPutRecordsResponse = errors.New("PutRecords returned a nil response")
@@ -73,4 +75,9 @@ var (
 	// ErrNilFailedRecordCount is returned when the PutRecords call returns
 	// a nil FailedRecordCount.
 	ErrNilFailedRecordCount = errors.New("GetFailedRecordCount returned a nil FailedRecordCount")
+
+	// ErrRetryRecords is returned when the PutRecords calls requires some
+	// records of the batch to be retried.  This failure is considered part
+	// of normal behavior of the Kinesis stream.
+	ErrRetryRecords = errors.New("PutRecords requires retry of some records in batch")
 )
