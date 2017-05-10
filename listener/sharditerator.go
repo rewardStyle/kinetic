@@ -2,6 +2,8 @@ package listener
 
 import (
 	"time"
+
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 // ShardIterator represents the settings used to retrieve a shard iterator from

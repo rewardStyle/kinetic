@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
@@ -172,7 +173,7 @@ func (r *KinesisReader) throttle(sem chan Empty) {
 // down the TCP connection.  Worst case scenario is that our client Timeout
 // eventually fires and closes the socket, but this can be susceptible to FD
 // exhaustion.
-func (r *KinesisReader) GetRecords(batchSize int) (int, error) {
+func (r *KinesisReader) GetRecords() (int, error) {
 	if err := r.ensureClient(); err != nil {
 		return 0, err
 	}
@@ -187,8 +188,9 @@ func (r *KinesisReader) GetRecords(batchSize int) (int, error) {
 	var startReadTime time.Time
 	var startUnmarshalTime time.Time
 	start := time.Now()
+
 	req, resp := r.client.GetRecordsRequest(&kinesis.GetRecordsInput{
-		Limit:         aws.Int64(int64(batchSize)),
+		Limit:         aws.Int64(int64(r.batchSize)),
 		ShardIterator: aws.String(r.nextShardIterator),
 	})
 
@@ -295,6 +297,12 @@ func (r *KinesisReader) GetRecords(batchSize int) (int, error) {
 	r.listener.Stats.AddGetRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		r.listener.LogError("Error getting records:", err)
+		switch err.(awserr.Error).Code() {
+		case kinesis.ErrCodeProvisionedThroughputExceededException:
+			r.listener.Stats.AddProvisionedThroughputExceeded(1)
+		default:
+			r.listener.LogDebug("Received AWS error:", err.Error())
+		}
 		return 0, err
 	}
 	r.listener.Stats.AddGetRecordsDuration(time.Since(start))
@@ -354,4 +362,8 @@ func (r *KinesisReader) GetRecords(batchSize int) (int, error) {
 		r.setNextShardIterator(*resp.NextShardIterator)
 	}
 	return delivered, nil
+}
+
+func (r *KinesisReader) getBatchSize() int {
+	return r.batchSize
 }

@@ -45,7 +45,7 @@ func TestProducer(t *testing.T) {
 		So(p, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		l, err := listener.NewListener(stream, shards[0], func(c *listener.Config) {
+		l, err := listener.NewListener(func(c *listener.Config) {
 			c.SetAwsConfig(k.Session.Config)
 			c.SetConcurrency(10)
 		})

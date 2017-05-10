@@ -6,10 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/kinesis"
-
 	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
@@ -19,6 +15,7 @@ type StreamReader interface {
 	AssociateListener(listener *Listener) error
 	GetRecords(batchSize int) (int, error)
 	ensureClient() error
+	getBatchSize() int
 }
 
 // Empty is used a as a dummy type for counting semaphore channels.
@@ -36,7 +33,7 @@ type listenerOptions struct {
 	Stats StatsCollector
 }
 
-// Listener polls the Kinesis stream for messages.
+// Listener polls the StreamReader for messages.
 type Listener struct {
 	*listenerOptions
 	*logging.LogHelper
@@ -47,12 +44,9 @@ type Listener struct {
 
 	consuming   bool
 	consumingMu sync.Mutex
-
-	Session *session.Session
 }
 
-// NewListener creates a new listener for listening to message on a Kinesis
-// stream.
+// NewListener creates a new listener for listening to message on a StreamReader.
 func NewListener(fn func(*Config)) (*Listener, error) {
 	config := NewConfig()
 	fn(config)
@@ -68,7 +62,6 @@ func NewListener(fn func(*Config)) (*Listener, error) {
 		},
 		concurrencySem: make(chan Empty, config.concurrency),
 		pipeOfDeath:    make(chan Empty),
-		Session:        session,
 	}
 	if err := l.reader.AssociateListener(l); err != nil {
 		return nil, err
@@ -83,7 +76,7 @@ func (l *Listener) startConsuming() bool {
 	defer l.consumingMu.Unlock()
 	if !l.consuming {
 		l.consuming = true
-		l.messages = make(chan *message.Message, l.batchSize)
+		l.messages = make(chan *message.Message, l.reader.getBatchSize())
 		return true
 	}
 	return false
@@ -131,7 +124,7 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 		if !ok {
 			return nil, err
 		}
-		n, err := l.getRecords(1)
+		n, err := l.reader.GetRecords(1)
 		if err != nil {
 			return nil, err
 		}
@@ -201,7 +194,7 @@ func (l *Listener) consume(ctx context.Context) {
 			if !ok {
 				break stop
 			}
-			_, err := l.getRecords(l.batchSize)
+			_, err := l.reader.GetRecords(l.reader.getBatchSize())
 			if err != nil {
 				switch err := err.(type) {
 				case net.Error:
@@ -218,13 +211,6 @@ func (l *Listener) consume(ctx context.Context) {
 						l.LogError("Received error:", err.Error())
 					default:
 						l.LogError("Received error:", err.Error())
-					}
-				case awserr.Error:
-					switch err.Code() {
-					case kinesis.ErrCodeProvisionedThroughputExceededException:
-						l.Stats.AddProvisionedThroughputExceeded(1)
-					default:
-						l.LogError("Received AWS error:", err.Error())
 					}
 				default:
 					l.LogError("Received unknown error:", err.Error())
