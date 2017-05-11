@@ -48,8 +48,8 @@ type Producer struct {
 	concurrencySem chan Empty
 	pipeOfDeath    chan Empty
 	outstanding    int
-	shutdownCond   sync.Cond
-	producerWg     sync.WaitGroup
+	shutdownCond   *sync.Cond
+	producerWg     *sync.WaitGroup
 
 	producing   bool
 	producingMu sync.Mutex
@@ -91,7 +91,7 @@ func (p *Producer) startProducing() bool {
 		p.producing = true
 		p.messages = make(chan *message.Message, p.queueDepth)
 		p.retries = make(chan *message.Message) // TODO: should we use a buffered channel?
-		p.shutdownCond = sync.Cond{L: &sync.Mutex{}}
+		p.shutdownCond = &sync.Cond{L: &sync.Mutex{}}
 		p.outstanding = 0
 		return true
 	}

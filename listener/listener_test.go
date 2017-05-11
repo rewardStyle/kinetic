@@ -21,12 +21,11 @@ import (
 )
 
 func putRecord(l *Listener, b []byte) (*string, error) {
-	kReader := l.reader.(*KinesisReader)
 	l.reader.ensureClient()
-	resp, err := kReader.client.PutRecord(&kinesis.PutRecordInput{
+	resp, err := l.reader.(*KinesisReader).client.PutRecord(&kinesis.PutRecordInput{
 		Data:         b,
 		PartitionKey: aws.String("dummy"),
-		StreamName:   aws.String(kReader.stream),
+		StreamName:   aws.String(l.reader.(*KinesisReader).stream),
 	})
 	if err != nil {
 		return nil, err

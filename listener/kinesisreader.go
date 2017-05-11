@@ -25,6 +25,7 @@ type kinesisReaderOptions struct {
 	shardIterator *ShardIterator
 }
 
+// KinesisReader handles the API to read records from Kinesis.
 type KinesisReader struct {
 	*kinesisReaderOptions
 
@@ -36,6 +37,7 @@ type KinesisReader struct {
 	clientMu sync.Mutex
 }
 
+// NewKinesisReader creates a new stream reader to read records from Kinesis.
 func (r *KinesisReader) NewKinesisReader(stream, shard string, fn func(*KinesisReaderConfig)) (*KinesisReader, error) {
 	config := NewKinesisReaderConfig(stream, shard)
 	fn(config)
@@ -162,7 +164,13 @@ func (r *KinesisReader) throttle(sem chan Empty) {
 	})
 }
 
-// GetRecords calls GetRecords and delivers each record into the messages
+// GetRecords calls GetNRecords and delivers each record into the messages
+// channel.
+func (r *KinesisReader) GetRecords() (int, error) {
+	return r.GetNRecords(r.batchSize)
+}
+
+// GetNRecords calls GetRecords and delivers each record into the messages
 // channel.
 // FIXME: Need to investigate that the timeout implementation doesn't result in
 // an fd leak.  Since we call Read on the HTTPResonse.Body in a select with a
@@ -173,7 +181,7 @@ func (r *KinesisReader) throttle(sem chan Empty) {
 // down the TCP connection.  Worst case scenario is that our client Timeout
 // eventually fires and closes the socket, but this can be susceptible to FD
 // exhaustion.
-func (r *KinesisReader) GetRecords() (int, error) {
+func (r *KinesisReader) GetNRecords(batchSize int) (int, error) {
 	if err := r.ensureClient(); err != nil {
 		return 0, err
 	}
@@ -362,8 +370,4 @@ func (r *KinesisReader) GetRecords() (int, error) {
 		r.setNextShardIterator(*resp.NextShardIterator)
 	}
 	return delivered, nil
-}
-
-func (r *KinesisReader) getBatchSize() int {
-	return r.batchSize
 }

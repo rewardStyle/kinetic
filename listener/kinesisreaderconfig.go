@@ -1,9 +1,11 @@
 package listener
 
+// KinesisReaderConfig is used to configure a KinesisReader
 type KinesisReaderConfig struct {
 	*kinesisReaderOptions
 }
 
+// NewKinesisReaderConfig creates a new instance of KinesisReaderConfig
 func NewKinesisReaderConfig(stream, shard string) *KinesisReaderConfig {
 	return &KinesisReaderConfig{
 		kinesisReaderOptions: &kinesisReaderOptions{

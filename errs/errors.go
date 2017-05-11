@@ -19,13 +19,13 @@ var (
 )
 
 var (
-	// ErrNilProducer is returned by a StreamWriter when it has not been
-	// correctly associated with a Producer.
+	// ErrNilListener is returned when the Listener is nil when it is not
+	// supposed to be
 	ErrNilListener = errors.New("StreamReader not associated with a listener")
 
-	// ErrProducerAlreadyAssociated is returned by a StreamWriter attempting
-	// to associate it with a Producer when it already has an association
-	// with a producer.
+	// ErrListenerAlreadyAssociated is returned by a StreamReader attempting
+	// to associate it with a Listener when it already has an association
+	// with a listener
 	ErrListenerAlreadyAssociated = errors.New("StreamReader already associated with a listener")
 
 	// ErrAlreadyConsuming is returned when attempting to consume when the
@@ -43,7 +43,7 @@ var (
 
 	// ErrNilGetShardIteratorResponse is returned when the GetShardIterator
 	// call returns a nil response.
-	ErrNilGetShardIteratorResponse = errors.New("GetShardIteratore returned a nil response")
+	ErrNilGetShardIteratorResponse = errors.New("GetShardIterator returned a nil response")
 
 	// ErrNilShardIterator is returned when the GetShardIterator call
 	// returns a nil shard iterator.

@@ -6,16 +6,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws/session"
+
 	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
 )
 
+// StreamReader is an interface that abstracts out a stream reader
 type StreamReader interface {
 	AssociateListener(listener *Listener) error
-	GetRecords(batchSize int) (int, error)
+	GetRecords() (int, error)
+	GetNRecords(batchSize int) (int, error)
 	ensureClient() error
-	getBatchSize() int
 }
 
 // Empty is used a as a dummy type for counting semaphore channels.
@@ -26,11 +29,11 @@ type Empty struct{}
 type MessageFn func([]byte, *sync.WaitGroup)
 
 type listenerOptions struct {
+	queueDepth            int
 	concurrency           int
 	getRecordsReadTimeout time.Duration
 	reader                StreamReader
-
-	Stats StatsCollector
+	Stats 		      StatsCollector
 }
 
 // Listener polls the StreamReader for messages.
@@ -42,8 +45,10 @@ type Listener struct {
 	concurrencySem chan Empty
 	pipeOfDeath    chan Empty
 
-	consuming   bool
-	consumingMu sync.Mutex
+	consuming      bool
+	consumingMu    sync.Mutex
+
+	Session        session.Session
 }
 
 // NewListener creates a new listener for listening to message on a StreamReader.
@@ -62,6 +67,7 @@ func NewListener(fn func(*Config)) (*Listener, error) {
 		},
 		concurrencySem: make(chan Empty, config.concurrency),
 		pipeOfDeath:    make(chan Empty),
+		Session: session,
 	}
 	if err := l.reader.AssociateListener(l); err != nil {
 		return nil, err
@@ -76,7 +82,7 @@ func (l *Listener) startConsuming() bool {
 	defer l.consumingMu.Unlock()
 	if !l.consuming {
 		l.consuming = true
-		l.messages = make(chan *message.Message, l.reader.getBatchSize())
+		l.messages = make(chan *message.Message, l.queueDepth)
 		return true
 	}
 	return false
@@ -124,7 +130,7 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 		if !ok {
 			return nil, err
 		}
-		n, err := l.reader.GetRecords(1)
+		n, err := l.reader.GetNRecords(1)
 		if err != nil {
 			return nil, err
 		}
@@ -194,7 +200,7 @@ func (l *Listener) consume(ctx context.Context) {
 			if !ok {
 				break stop
 			}
-			_, err := l.reader.GetRecords(l.reader.getBatchSize())
+			_, err := l.reader.GetRecords()
 			if err != nil {
 				switch err := err.(type) {
 				case net.Error:
