@@ -78,7 +78,7 @@ func (r *KinesisReader) ensureClient() error {
 	// are trying to ensure the client at the same time.
 	//
 	// As we don't expose any methods (or in fact, even the Listener object
-	// itself) to the client through the API, I don't forsee needing to add
+	// itself) to the client through the API, I don't foresee needing to add
 	// this lock unless something dramatically changes about the design of
 	// this library.
 	r.clientMu.Lock()

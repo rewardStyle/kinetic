@@ -48,7 +48,7 @@ type Listener struct {
 	consuming      bool
 	consumingMu    sync.Mutex
 
-	Session        session.Session
+	Session        *session.Session
 }
 
 // NewListener creates a new listener for listening to message on a StreamReader.

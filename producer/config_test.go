@@ -41,7 +41,7 @@ func (w *DebugStreamWriter) PutRecords(batch []*message.Message) ([]*message.Mes
 	return nil, nil
 }
 
-func (w *DebugStreamWriter) AssociateProducer(producer Producer) error {
+func (w *DebugStreamWriter) AssociateProducer(producer *Producer) error {
 	return nil
 }
 
