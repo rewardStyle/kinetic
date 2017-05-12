@@ -38,13 +38,15 @@ type KinesisReader struct {
 }
 
 // NewKinesisReader creates a new stream reader to read records from Kinesis.
-func (r *KinesisReader) NewKinesisReader(stream, shard string, fn func(*KinesisReaderConfig)) (*KinesisReader, error) {
+func NewKinesisReader(stream, shard string, fn ...func(*KinesisReaderConfig)) *KinesisReader {
 	config := NewKinesisReaderConfig(stream, shard)
-	fn(config)
+	for _, f := range fn {
+		f(config)
+	}
 	return &KinesisReader{
 		kinesisReaderOptions: config.kinesisReaderOptions,
 		throttleSem:          make(chan Empty, 5),
-	}, nil
+	}
 }
 
 // AssociateListener associates the Kinesis stream writer to a producer.
@@ -164,13 +166,7 @@ func (r *KinesisReader) throttle(sem chan Empty) {
 	})
 }
 
-// GetRecords calls GetNRecords and delivers each record into the messages
-// channel.
-func (r *KinesisReader) GetRecords() (int, error) {
-	return r.GetNRecords(r.batchSize)
-}
-
-// GetNRecords calls GetRecords and delivers each record into the messages
+// GetRecords calls GetRecords and delivers each record into the messages
 // channel.
 // FIXME: Need to investigate that the timeout implementation doesn't result in
 // an fd leak.  Since we call Read on the HTTPResonse.Body in a select with a
@@ -181,7 +177,7 @@ func (r *KinesisReader) GetRecords() (int, error) {
 // down the TCP connection.  Worst case scenario is that our client Timeout
 // eventually fires and closes the socket, but this can be susceptible to FD
 // exhaustion.
-func (r *KinesisReader) GetNRecords(batchSize int) (int, error) {
+func (r *KinesisReader) GetRecords(batchSize ...int) (int, error) {
 	if err := r.ensureClient(); err != nil {
 		return 0, err
 	}
@@ -197,8 +193,14 @@ func (r *KinesisReader) GetNRecords(batchSize int) (int, error) {
 	var startUnmarshalTime time.Time
 	start := time.Now()
 
+	getRecordsBatchSize := r.batchSize
+	for _, size := range batchSize {
+		getRecordsBatchSize = size
+		break
+	}
+
 	req, resp := r.client.GetRecordsRequest(&kinesis.GetRecordsInput{
-		Limit:         aws.Int64(int64(r.batchSize)),
+		Limit:         aws.Int64(int64(getRecordsBatchSize)),
 		ShardIterator: aws.String(r.nextShardIterator),
 	})
 

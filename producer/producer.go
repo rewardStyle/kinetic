@@ -92,6 +92,7 @@ func (p *Producer) startProducing() bool {
 		p.messages = make(chan *message.Message, p.queueDepth)
 		p.retries = make(chan *message.Message) // TODO: should we use a buffered channel?
 		p.shutdownCond = &sync.Cond{L: &sync.Mutex{}}
+		p.producerWg = new(sync.WaitGroup)
 		p.outstanding = 0
 		return true
 	}
@@ -123,7 +124,7 @@ stop:
 		failed := len(retries)
 		p.Stats.AddSent(len(batch) - failed)
 		p.Stats.AddFailed(failed)
-		if err == nil {
+		if err == nil && failed == 0 {
 			break stop
 		}
 		switch err := err.(type) {

@@ -40,14 +40,15 @@ func TestProducer(t *testing.T) {
 			c.SetKinesisStream(stream)
 			c.SetBatchSize(5)
 			c.SetBatchTimeout(1 * time.Second)
-			So(err, ShouldBeNil)
 		})
 		So(p, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		l, err := listener.NewListener(func(c *listener.Config) {
 			c.SetAwsConfig(k.Session.Config)
+			c.SetKinesisStream(stream, shards[0])
 			c.SetConcurrency(10)
+			c.SetGetRecordsReadTimeout(1 * time.Second)
 		})
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)

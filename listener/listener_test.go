@@ -18,6 +18,7 @@ import (
 
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/errs"
+	"github.com/rewardStyle/kinetic/producer"
 )
 
 func putRecord(l *Listener, b []byte) (*string, error) {
@@ -53,20 +54,42 @@ func TestListener(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(shards), ShouldEqual, 1)
 
+		p, err := producer.NewProducer(func(c *producer.Config) {
+			c.SetAwsConfig(k.Session.Config)
+			c.SetKinesisStream(stream)
+			c.SetBatchSize(5)
+			c.SetBatchTimeout(1 * time.Second)
+		})
+		So(p, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
 		l, err := NewListener(func(c *Config) {
 			c.SetAwsConfig(k.Session.Config)
+			c.SetKinesisStream(stream, shards[0])
 			c.SetConcurrency(10)
 		})
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		Convey("check that calling ensureClient twice doesn't overwrite existing client", func() {
-			So(l.reader.(*KinesisReader).client, ShouldBeNil)
-			l.reader.ensureClient()
-			So(l.reader.(*KinesisReader).client, ShouldNotBeNil)
-			client := l.reader.(*KinesisReader).client
-			l.reader.ensureClient()
-			So(l.reader.(*KinesisReader).client, ShouldEqual, client)
+		Convey("given a kinesis reader", func() {
+			r := l.reader.(*KinesisReader)
+
+			Convey("check that the reader was initialized with the correct stream name", func() {
+				So(r.stream, ShouldEqual, stream)
+			})
+
+			Convey("check that the reader has a valid reference to the listener", func() {
+				So(r.listener, ShouldEqual, l)
+			})
+
+			Convey("check that calling ensureClient twice doesn't overwrite existing client", func() {
+				So(r.client, ShouldBeNil)
+				r.ensureClient()
+				So(r.client, ShouldNotBeNil)
+				client := r.client
+				r.ensureClient()
+				So(r.client, ShouldEqual, client)
+			})
 		})
 
 		Convey("check that setting an empty shard iterator returns an error", func() {
@@ -178,7 +201,7 @@ func TestListener(t *testing.T) {
 			secs := []float64{}
 			for i := 1; i <= 6; i++ {
 				start := time.Now()
-				l.reader.GetNRecords(1)
+				l.reader.GetRecords(1)
 				secs = append(secs, time.Since(start).Seconds())
 			}
 			elapsed := time.Since(start).Seconds()

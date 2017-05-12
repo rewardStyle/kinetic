@@ -47,6 +47,11 @@ func (c *Config) SetGetRecordsReadTimeout(timouet time.Duration) {
 	c.getRecordsReadTimeout = timouet
 }
 
+// SetKinesisStream sets the listener to read to the given Kinesis stream.
+func (c *Config) SetKinesisStream(stream string, shard string, fn ...func(*KinesisReaderConfig)) {
+	c.reader = NewKinesisReader(stream, shard, fn...)
+}
+
 // SetLogLevel configures both the SDK and Kinetic log levels.
 func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
 	c.AwsOptions.SetLogLevel(logLevel)
