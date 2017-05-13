@@ -47,6 +47,7 @@ func TestProducer(t *testing.T) {
 		l, err := listener.NewListener(func(c *listener.Config) {
 			c.SetAwsConfig(k.Session.Config)
 			c.SetKinesisStream(stream, shards[0])
+			c.SetQueueDepth(10)
 			c.SetConcurrency(10)
 			c.SetGetRecordsReadTimeout(1 * time.Second)
 		})
@@ -72,6 +73,21 @@ func TestProducer(t *testing.T) {
 				w.ensureClient()
 				So(w.client, ShouldEqual, client)
 			})
+		})
+
+		Convey("check that we can send and receive a single message", func(){
+			start := time.Now()
+			data := "hello"
+			p.Send(&message.Message{
+				PartitionKey: aws.String("key"),
+				Data: []byte(data),
+			})
+			msg, err := l.RetrieveWithContext(context.TODO())
+			elapsed := time.Since(start)
+			So(err, ShouldBeNil)
+			So(string(msg.Data), ShouldEqual, data)
+			So(elapsed.Seconds(), ShouldBeGreaterThan, 1)
+
 		})
 
 		Convey("check that we can send a single message after batch timeout elapses", func() {

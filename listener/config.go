@@ -21,6 +21,7 @@ func NewConfig() *Config {
 	return &Config{
 		AwsOptions: config.DefaultAwsOptions(),
 		listenerOptions: &listenerOptions{
+			queueDepth:            10000,
 			concurrency:           10000,
 			getRecordsReadTimeout: 1 * time.Second,
 			Stats: &NilStatsCollector{},
@@ -33,6 +34,11 @@ func NewConfig() *Config {
 // kinesis clients).
 func (c *Config) SetAwsConfig(config *aws.Config) {
 	c.AwsConfig = config
+}
+
+// SetQueueDepth controls the depth of the listener queue
+func (c *Config) SetQueueDepth(queueDepth int) {
+	c.queueDepth = queueDepth
 }
 
 // SetConcurrency controls the number of goroutines the Listener will spawn to
