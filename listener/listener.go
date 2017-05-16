@@ -16,7 +16,8 @@ import (
 // StreamReader is an interface that abstracts out a stream reader
 type StreamReader interface {
 	AssociateListener(listener *Listener) error
-	GetRecords(batchSize ...int) (int, error)
+	GetRecord() (int, error)
+	GetRecords() (int, error)
 	ensureClient() error
 }
 
@@ -129,12 +130,12 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 		if !ok {
 			return nil, err
 		}
-		n, err := l.reader.GetRecords(1)
+		n, err := l.reader.GetRecord()
 		if err != nil {
 			return nil, err
 		}
 		if n > 0 {
-			l.Stats.AddDelivered(1)
+			l.Stats.AddDelivered(n)
 			return <-l.messages, nil
 		}
 	}

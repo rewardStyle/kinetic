@@ -166,8 +166,18 @@ func (r *KinesisReader) throttle(sem chan Empty) {
 	})
 }
 
-// GetRecords calls GetRecords and delivers each record into the messages
+// GetRecord calls getRecords and delivers one record into the messages
 // channel.
+func (r *KinesisReader) GetRecord() (int, error) {
+	return r.getRecords(1)
+}
+
+// GetRecords calls getRecords and delivers each record into the messages
+// channel.
+func (r *KinesisReader) GetRecords() (int, error) {
+	return r.getRecords(r.batchSize)
+}
+
 // FIXME: Need to investigate that the timeout implementation doesn't result in
 // an fd leak.  Since we call Read on the HTTPResonse.Body in a select with a
 // timeout channel, we do prevent ourself from blocking.  Once we timeout, we
@@ -177,7 +187,7 @@ func (r *KinesisReader) throttle(sem chan Empty) {
 // down the TCP connection.  Worst case scenario is that our client Timeout
 // eventually fires and closes the socket, but this can be susceptible to FD
 // exhaustion.
-func (r *KinesisReader) GetRecords(batchSize ...int) (int, error) {
+func (r *KinesisReader) getRecords(batchSize int) (int, error) {
 	if err := r.ensureClient(); err != nil {
 		return 0, err
 	}
@@ -193,14 +203,8 @@ func (r *KinesisReader) GetRecords(batchSize ...int) (int, error) {
 	var startUnmarshalTime time.Time
 	start := time.Now()
 
-	getRecordsBatchSize := r.batchSize
-	for _, size := range batchSize {
-		getRecordsBatchSize = size
-		break
-	}
-
 	req, resp := r.client.GetRecordsRequest(&kinesis.GetRecordsInput{
-		Limit:         aws.Int64(int64(getRecordsBatchSize)),
+		Limit:         aws.Int64(int64(batchSize)),
 		ShardIterator: aws.String(r.nextShardIterator),
 	})
 

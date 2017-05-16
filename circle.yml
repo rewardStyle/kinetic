@@ -13,7 +13,7 @@ dependencies:
     - go get honnef.co/go/tools/cmd/staticcheck
     - go get honnef.co/go/tools/cmd/gosimple
     - go get -u github.com/golang/lint/golint
-    - docker run -d -t -p 4567:4567 instructure/kinesalite:latest
+    - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
     - mkdir -p "$GOPATH/src/$IMPORT_PATH"
     - rsync -azvrC --delete $HOME/$CIRCLE_PROJECT_REPONAME "$GOPATH/src/github.com/$CIRCLE_PROJECT_USERNAME/"
