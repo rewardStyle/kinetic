@@ -18,7 +18,7 @@ type kclReaderOptions struct {
 	onShutdownCallbackFn   func() error
 }
 
-// KclReader
+// KclReader handles the KCL Multilang Protocol to read records from KCL
 type KclReader struct {
 	*kclReaderOptions
 	throttleSem chan Empty
@@ -29,6 +29,7 @@ type KclReader struct {
 	ackPending  bool
 }
 
+// NewKclReader creates a new stream reader to read records from KCL
 func NewKclReader(fn ...func(*KclReaderConfig)) *KclReader {
 	config := NewKclReaderConfig()
 	for _, f := range fn {
@@ -42,7 +43,7 @@ func NewKclReader(fn ...func(*KclReaderConfig)) *KclReader {
 	}
 }
 
-// AssociateListener
+// AssociateListener associates the KCL stream reader to a listener
 func (r *KclReader) AssociateListener(l *Listener) error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -66,16 +67,22 @@ func (r *KclReader) ensureClient() error {
 	return nil
 }
 
-// GetRecord
+// GetRecord calls processRecords to attempt to put one message from message buffer to the listener's message
+// channel
 func (r *KclReader) GetRecord() (int, error) {
 	return r.processRecords(1)
 }
 
-// GetRecords
+// GetRecords calls processRecords to attempt to put all messages on the message buffer on the listener's
+// message channel
 func (r *KclReader) GetRecords() (int, error) {
 	return r.processRecords(-1)
 }
 
+// processRecords is a helper method which loops through the message buffer and puts messages on the listener's
+// message channel.  After all the messages on the message buffer have been moved to the listener's message
+// channel, a message is sent (following the Multilang protocol) to acknowledge that the processRecords message
+// has been received / processed
 func (r *KclReader) processRecords(numRecords int) (int, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -98,7 +105,10 @@ func (r *KclReader) processRecords(numRecords int) (int, error) {
 
 	// Send an acknowledgement that the 'ProcessRecords' message was received/processed
 	if len(r.msgBuffer) == 0 && r.ackPending {
-		r.sendMessage(multilang.NewStatusMessage(multilang.ProcessRecords))
+		err := r.sendMessage(multilang.NewStatusMessage(multilang.ProcessRecords))
+		if err != nil {
+			// TODO:  What to do if the ack status message fails?
+		}
 	}
 
 	return batchSize, nil
@@ -147,7 +157,14 @@ func (r *KclReader) processAction() error {
 }
 
 func (r *KclReader) sendMessage(msg *multilang.ActionMessage) error {
-	json.Marshal(msg)
+	b, err := json.Marshal(msg)
+	if err != nil {
+		// TODO:
+	}
+	_, err = os.Stdout.Write(b)
+	if err != nil {
+		// TODO:
+	}
 
 	return nil
 }

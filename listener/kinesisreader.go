@@ -49,7 +49,7 @@ func NewKinesisReader(stream, shard string, fn ...func(*KinesisReaderConfig)) *K
 	}
 }
 
-// AssociateListener associates the Kinesis stream writer to a producer.
+// AssociateListener associates the Kinesis stream reader to a listener.
 func (r *KinesisReader) AssociateListener(l *Listener) error {
 	r.clientMu.Lock()
 	defer r.clientMu.Unlock()
