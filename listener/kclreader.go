@@ -2,7 +2,9 @@ package listener
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"math"
 	"os"
 	"sync"
@@ -54,6 +56,7 @@ func (r *KclReader) AssociateListener(l *Listener) error {
 	return nil
 }
 
+// ensureClient will lazily ensure that we are reading from STDIN.
 func (r *KclReader) ensureClient() error {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
@@ -62,7 +65,13 @@ func (r *KclReader) ensureClient() error {
 			return errs.ErrNilListener
 		}
 		r.scanner = bufio.NewScanner(os.Stdin)
-		bufio.NewReader(os.Stdin)
+		go func() error {
+			err := r.processAction()
+			if err != nil {
+				return err
+			}
+			return nil
+		}()
 	}
 	return nil
 }
@@ -84,6 +93,10 @@ func (r *KclReader) GetRecords() (int, error) {
 // channel, a message is sent (following the Multilang protocol) to acknowledge that the processRecords message
 // has been received / processed
 func (r *KclReader) processRecords(numRecords int) (int, error) {
+	if err := r.ensureClient(); err != nil {
+		return 0, err
+	}
+
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
@@ -107,20 +120,18 @@ func (r *KclReader) processRecords(numRecords int) (int, error) {
 	if len(r.msgBuffer) == 0 && r.ackPending {
 		err := r.sendMessage(multilang.NewStatusMessage(multilang.ProcessRecords))
 		if err != nil {
-			// TODO:  What to do if the ack status message fails?
+			r.listener.LogError(err)
+			return batchSize, err
 		}
 	}
 
 	return batchSize, nil
 }
 
+// processAction listens to STDIN and processes action messages based on the Multilanguage protocol from KCL
 func (r *KclReader) processAction() error {
-	if err := r.ensureClient(); err != nil {
-		return err
-	}
-
-	actionMessage := &multilang.ActionMessage{}
 	for r.scanner.Scan() {
+		actionMessage := &multilang.ActionMessage{}
 		err := json.Unmarshal(r.scanner.Bytes(), actionMessage)
 		if err != nil {
 			return err
@@ -137,17 +148,34 @@ func (r *KclReader) processAction() error {
 			r.onShutdown()
 			r.sendMessage(multilang.NewStatusMessage(multilang.Shutdown))
 		case multilang.ProcessRecords:
-			go func(){
+			go func() error {
 				r.mutex.Lock()
 				defer r.mutex.Unlock()
 
 				if r.ackPending {
-					// TODO: error out
-					// This is an error according to the Multilang protocol
+					return errors.New("Receieved a processRecords action message from KCL " +
+						"unexpectedly")
 				}
 
-				r.msgBuffer = append(r.msgBuffer, actionMessage.Records...)
+				// Decode the base64 encoded message
+				decodedMsg, err := base64.StdEncoding.DecodeString(actionMessage.Records)
+				if err != nil {
+					r.listener.LogError(err)
+					return err
+				}
+
+				// Unmarshall the decoded message
+				msgs := []message.Message{}
+				err = json.Unmarshal(decodedMsg, msgs)
+				if err != nil {
+					r.listener.LogError(err)
+					return err
+				}
+
+				r.msgBuffer = append(r.msgBuffer, msgs...)
 				r.ackPending = true;
+
+				return nil
 			}()
 		default:
 		}
@@ -159,11 +187,13 @@ func (r *KclReader) processAction() error {
 func (r *KclReader) sendMessage(msg *multilang.ActionMessage) error {
 	b, err := json.Marshal(msg)
 	if err != nil {
-		// TODO:
+		r.listener.LogError(err)
+		return err
 	}
 	_, err = os.Stdout.Write(b)
 	if err != nil {
-		// TODO:
+		r.listener.LogError(err)
+		return err
 	}
 
 	return nil
@@ -173,7 +203,8 @@ func (r *KclReader) onInit() error {
 	if r.onInitCallbackFn != nil {
 		err := r.onInitCallbackFn()
 		if err != nil {
-			// TODO:
+			r.listener.LogError(err)
+			return err
 		}
 	}
 	return nil
@@ -183,7 +214,8 @@ func (r *KclReader) onCheckpoint() error {
 	if r.onCheckpointCallbackFn != nil {
 		err := r.onCheckpointCallbackFn()
 		if err != nil {
-			// TODO:
+			r.listener.LogError(err)
+			return err
 		}
 	}
 	return nil
@@ -193,7 +225,8 @@ func (r *KclReader) onShutdown() error {
 	if r.onShutdownCallbackFn != nil {
 		err := r.onShutdownCallbackFn()
 		if err != nil {
-			// TODO:
+			r.listener.LogError(err)
+			return err
 		}
 	}
 	return nil

@@ -1,7 +1,5 @@
 package multilang
 
-import "github.com/rewardStyle/kinetic/message"
-
 // ActionType is used as an enum for KCL Multilang protocol action message types
 type ActionType string
 
@@ -18,7 +16,7 @@ const (
 type ActionMessage struct {
 	Action      ActionType `json:"action"`
 	ShardID     string `json:"shardId,omitempty"`
-	Records     []message.Message `json:"records,omitempty"`
+	Records     string `json:"records,omitempty"`
 	Checkpoint  int `json:"checkpoint,omitempty"`
 	Error       string `json:"error,omitempty"`
 	Reason      string `json:"reason,omitempty"`
