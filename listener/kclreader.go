@@ -66,11 +66,7 @@ func (r *KclReader) ensureClient() error {
 		}
 		r.scanner = bufio.NewScanner(os.Stdin)
 		go func() error {
-			err := r.processAction()
-			if err != nil {
-				return err
-			}
-			return nil
+			return r.processAction()
 		}()
 	}
 	return nil
