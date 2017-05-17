@@ -1,24 +1,26 @@
 machine:
   environment:
-    GOPATH: "$HOME/.go_workspace"
+    GOPATH: "$HOME/go"
     IMPORT_PATH: "github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
+    COVERALLS_TOKEN: 69lPIvkLNM8MEDmGT8pBfJ0FECfSAvbjT
   services:
     - docker
 
 dependencies:
   pre:
-    - go get github.com/tools/godep
+    - go get -u github.com/Masterminds/glide
     - go get -u github.com/golang/lint/golint
+    - go get -u github.com/mattn/goveralls
     - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
     - mkdir -p "$GOPATH/src/$IMPORT_PATH"
     - rsync -azvrC --delete ./ "$GOPATH/src/$IMPORT_PATH/"
-    - rsync -azvrC --delete $HOME/$CIRCLE_PROJECT_REPONAME "$GOPATH/src/$IMPORT_PATH/"
 
 test:
   pre:
-    - go vet ./...
-    - golint -set_exit_status
-
+    - cd $GOPATH/src/$IMPORT_PATH && go vet $($GOPATH/bin/glide novendor)
+    - cd $GOPATH/src/$IMPORT_PATH && golint -set_exit_status
   override:
-    - godep go test -v -race -cover
+    - cd $GOPATH/src/$IMPORT_PATH && go test -v -parallel 4 -cover -race -coverprofile=coverage.out $(glide novendor)
+  post:
+    - cd $GOPATH/src/$IMPORT_PATH && goveralls -coverprofile=coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN

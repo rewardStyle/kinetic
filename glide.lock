@@ -1,0 +1,24 @@
+hash: 62620eb2742d8f41cac63faec52e8463b470779540b93a516d3a25ff07d8e0aa
+updated: 2017-05-17T11:07:49.916714273-05:00
+imports:
+- name: github.com/jtolds/gls
+  version: f1ac7f4f24f50328e6bc838ca4437d1612a0243c
+- name: github.com/rewardStyle/go-kinesis
+  version: f093eb44122ca89eccc698fa06df0aa63373aeff
+- name: github.com/smartystreets/assertions
+  version: ac6b6f68ca3d6ac00a360d0fad0c844859ad131b
+  subpackages:
+  - internal/oglematchers
+- name: github.com/smartystreets/goconvey
+  version: bf05a3a16dad006e63e899124a2c6125028f6b31
+  subpackages:
+  - convey
+  - convey/gotest
+  - convey/reporting
+- name: gopkg.in/gcfg.v1
+  version: a3bc0742e3bbfd16123e6cee742cadec9a3301d2
+  subpackages:
+  - scanner
+  - token
+  - types
+testImports: []
