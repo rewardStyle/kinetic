@@ -1,8 +1,9 @@
 package kinetic
 
 import (
-	. "github.com/smartystreets/goconvey/convey"
 	"testing"
+
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 // TestKineticCreation tests to make sure that the Kinetic creation doesn't return early or return a nil.

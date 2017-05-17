@@ -70,11 +70,9 @@ func getConfig() *config {
 		case *os.PathError:
 			log.Println("Failed to parse config. Loading default configuration.")
 			file = []byte(defaultConfig)
-			break
 		default:
 			log.Println("Missing config: " + configPath + ". Loading default configuration.")
 			file = []byte(defaultConfig)
-			break
 		}
 	}
 
