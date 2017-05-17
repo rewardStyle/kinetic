@@ -1,0 +1,14 @@
+package: github.com/rewardStyle/kinetic
+import:
+- package: github.com/jtolds/gls
+  version: f1ac7f4f24f50328e6bc838ca4437d1612a0243c
+- package: github.com/rewardStyle/go-kinesis
+  version: f093eb44122ca89eccc698fa06df0aa63373aeff
+- package: github.com/smartystreets/assertions
+  version: ac6b6f68ca3d6ac00a360d0fad0c844859ad131b
+- package: github.com/smartystreets/goconvey
+  version: bf05a3a16dad006e63e899124a2c6125028f6b31
+  subpackages:
+  - convey
+- package: gopkg.in/gcfg.v1
+  version: a3bc0742e3bbfd16123e6cee742cadec9a3301d2
