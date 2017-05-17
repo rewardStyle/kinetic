@@ -46,6 +46,14 @@ func TestListenerSyncStop(t *testing.T) {
 
 		Convey("It should stop listening if sent an interrupt signal", func() {
 			err := listener.CloseSync()
+
+			runtime.Gosched()
+
+			// Let it finish stopping
+			<-time.After(3 * time.Second)
+
+			runtime.Gosched()
+
 			So(err, ShouldBeNil)
 			So(listener.IsListening(), ShouldEqual, false)
 		})
