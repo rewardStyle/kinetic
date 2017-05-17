@@ -18,7 +18,7 @@ dependencies:
 
 test:
   pre:
-    - cd $GOPATH/src/$IMPORT_PATH && go vet ./...
+    - cd $GOPATH/src/$IMPORT_PATH && go vet $($GOPATH/bin/glide novendor)
     - cd $GOPATH/src/$IMPORT_PATH && golint -set_exit_status
   override:
     - cd $GOPATH/src/$IMPORT_PATH && go test -v -parallel 4 -cover -race -coverprofile=coverage.out $(glide novendor)
