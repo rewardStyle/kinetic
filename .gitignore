@@ -1,5 +1,6 @@
 # Compiled Object files, Static and Dynamic libs (Shared Objects)
 kinetic.conf
+coverage.out
 *.o
 *.a
 *.so

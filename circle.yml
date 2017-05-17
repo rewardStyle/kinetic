@@ -2,6 +2,7 @@ machine:
   environment:
     GOPATH: "$HOME/.go_workspace"
     IMPORT_PATH: "github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
+    COVERALLS_TOKEN: 69lPIvkLNM8MEDmGT8pBfJ0FECfSAvbjT
   services:
     - docker
 
@@ -9,6 +10,7 @@ dependencies:
   pre:
     - go get github.com/tools/godep
     - go get -u github.com/golang/lint/golint
+    - go get -u github.com/mattn/goveralls
     - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
     - mkdir -p "$GOPATH/src/$IMPORT_PATH"
@@ -21,4 +23,7 @@ test:
     - golint -set_exit_status
 
   override:
-    - godep go test -v -race -cover
+    - godep go test -v -race -cover -coverprofile=/home/ubuntu/.go_workspace/coverage.out
+
+  post:
+    - goveralls -coverprofile=/home/ubuntu/.go_workspace/coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
