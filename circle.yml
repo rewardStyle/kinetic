@@ -23,4 +23,4 @@ test:
   override:
     - cd $GOPATH/src/$IMPORT_PATH && go test -v -parallel 4 -cover -race -coverprofile=coverage.out $(glide novendor)
   post:
-    - cd $GOPATH/src/$IMPORT_PATH && goveralls -coverprofile=coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
+    - cd $GOPATH/src/$IMPORT_PATH && $GOPATH/bin/goveralls -coverprofile=coverage.out -service=circle-ci -repotoken=$COVERALLS_TOKEN
