@@ -105,7 +105,7 @@ func (r *Record) ToMessage() *message.Message {
 }
 
 // NewCheckpointMessage is used to create a new checkpoint message
-func NewCheckpointMessage(seqNum int) *ActionMessage {
+func NewCheckpointMessage(seqNum string) *ActionMessage {
 	return &ActionMessage{
 		Action: Checkpoint,
 		Checkpoint: seqNum,
