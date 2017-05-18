@@ -2,7 +2,6 @@ package listener
 
 import (
 	"bufio"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"math"
@@ -149,26 +148,13 @@ func (r *KclReader) processAction() error {
 				defer r.mutex.Unlock()
 
 				if r.ackPending {
-					return errors.New("Receieved a processRecords action message from KCL " +
+					return errors.New("Received a processRecords action message from KCL " +
 						"unexpectedly")
 				}
 
-				// Decode the base64 encoded message
-				decodedMsg, err := base64.StdEncoding.DecodeString(actionMessage.Records)
-				if err != nil {
-					r.listener.LogError(err)
-					return err
+				for _, msg := range actionMessage.Records {
+					r.msgBuffer = append(r.msgBuffer, *msg.ToMessage())
 				}
-
-				// Unmarshall the decoded message
-				msgs := []message.Message{}
-				err = json.Unmarshal(decodedMsg, msgs)
-				if err != nil {
-					r.listener.LogError(err)
-					return err
-				}
-
-				r.msgBuffer = append(r.msgBuffer, msgs...)
 				r.ackPending = true;
 
 				return nil
