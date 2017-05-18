@@ -25,7 +25,7 @@ type ActionMessage struct {
 	Action      ActionType `json:"action"`
 	ShardID     string `json:"shardId,omitempty"`
 	Records     []Record `json:"records,omitempty"`
-	Checkpoint  int `json:"checkpoint,omitempty"`
+	Checkpoint  string `json:"checkpoint,omitempty"`
 	Error       string `json:"error,omitempty"`
 	Reason      string `json:"reason,omitempty"`
 	ResponseFor ActionType `json:"responseFor,omitempty"`
@@ -39,6 +39,31 @@ type Record struct {
 	SequenceNumber              string `json:"sequenceNumber,omitempty"`
 }
 
+// UnmarshalJSON is used as a custom unmarshaller to unmarshal the KCL Multilang ActionMessage
+func (a *ActionMessage) UnmarshalJSON(data []byte) error {
+	am := &ActionMessage{}
+	if err := json.Unmarshal(data, am); err != nil {
+		return err
+	}
+
+	a.Action = am.Action
+	a.ShardID = am.ShardID
+	a.Records = am.Records
+	if len(am.Checkpoint) > 2 {
+		a.Checkpoint = am.Checkpoint[1:len(am.Checkpoint)-1]
+	}
+
+	if len(am.Error) > 2 {
+		a.Error = am.Error[1:len(am.Error)-1]
+	}
+
+	if len(am.Reason) > 2 {
+		a.Reason = am.Reason[1:len(am.Reason)-1]
+	}
+
+	return nil
+}
+
 // UnmarshalJSON is used as a custom unmarshaller to base64 decode the data field of the KCL Multilang
 // processRecord message
 func (r *Record) UnmarshalJSON(data []byte) error {
@@ -47,11 +72,24 @@ func (r *Record) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	decodedMsg, err := base64.StdEncoding.DecodeString(record.Data)
-	if err != nil {
-		return err
+	r.ApproximateArrivalTimestamp = record.ApproximateArrivalTimestamp
+
+	if len(record.Data) > 2 {
+		encodedString := string(record.Data[1:len(record.Data)-1])
+		decodedMsg, err := base64.StdEncoding.DecodeString(encodedString)
+		if err != nil {
+			return err
+		}
+		r.Data = decodedMsg
 	}
-	r.Data = decodedMsg
+
+	if len(record.PartitionKey) > 2 {
+		r.PartitionKey = record.PartitionKey[1:len(record.PartitionKey)-1]
+	}
+
+	if len(record.SequenceNumber) > 2 {
+		r.SequenceNumber = record.SequenceNumber[1:len(record.SequenceNumber)-1]
+	}
 
 	return nil
 }
