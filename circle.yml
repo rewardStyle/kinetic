@@ -1,6 +1,6 @@
 machine:
   environment:
-    GOPATH: "$HOME/go"
+    GOPATH: "$HOME/kinetic/go"
     IMPORT_PATH: "github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
     COVERALLS_TOKEN: 69lPIvkLNM8MEDmGT8pBfJ0FECfSAvbjT
     CODECOV_TOKEN: dcedb2f9-c70a-4883-8d8b-e8abf76d12b6
