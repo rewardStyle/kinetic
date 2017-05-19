@@ -19,6 +19,7 @@ dependencies:
 
 test:
   pre:
+    - git fetch -av
     - cd $GOPATH/src/$IMPORT_PATH && go vet $($GOPATH/bin/glide novendor)
     - cd $GOPATH/src/$IMPORT_PATH && golint -set_exit_status
   override:
