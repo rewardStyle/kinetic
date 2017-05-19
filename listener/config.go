@@ -17,15 +17,12 @@ type Config struct {
 }
 
 // NewConfig creates a new instance of Config
-func NewConfig(stream, shard string) *Config {
+func NewConfig() *Config {
 	return &Config{
 		AwsOptions: config.DefaultAwsOptions(),
 		listenerOptions: &listenerOptions{
-			stream:                stream,
-			shard:                 shard,
-			batchSize:             10000,
+			queueDepth:            10000,
 			concurrency:           10000,
-			shardIterator:         NewShardIterator(),
 			getRecordsReadTimeout: 1 * time.Second,
 			Stats: &NilStatsCollector{},
 		},
@@ -39,9 +36,9 @@ func (c *Config) SetAwsConfig(config *aws.Config) {
 	c.AwsConfig = config
 }
 
-// SetBatchSize configures the batch size of the GetRecords call.
-func (c *Config) SetBatchSize(batchSize int) {
-	c.batchSize = batchSize
+// SetQueueDepth controls the depth of the listener queue
+func (c *Config) SetQueueDepth(queueDepth int) {
+	c.queueDepth = queueDepth
 }
 
 // SetConcurrency controls the number of goroutines the Listener will spawn to
@@ -50,16 +47,15 @@ func (c *Config) SetConcurrency(concurrency int) {
 	c.concurrency = concurrency
 }
 
-// SetInitialShardIterator configures the settings used to retrieve initial
-// shard iterator via the GetShardIterator call.
-func (c *Config) SetInitialShardIterator(shardIterator *ShardIterator) {
-	c.shardIterator = shardIterator
-}
-
 // SetGetRecordsReadTimeout configures the time to wait for each successive
 // Read operation on the GetRecords response payload.
 func (c *Config) SetGetRecordsReadTimeout(timouet time.Duration) {
 	c.getRecordsReadTimeout = timouet
+}
+
+// SetKinesisStream sets the listener to read to the given Kinesis stream.
+func (c *Config) SetKinesisStream(stream string, shard string, fn ...func(*KinesisReaderConfig)) {
+	c.reader = NewKinesisReader(stream, shard, fn...)
 }
 
 // SetLogLevel configures both the SDK and Kinetic log levels.

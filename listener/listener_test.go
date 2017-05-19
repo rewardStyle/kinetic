@@ -21,64 +21,16 @@ import (
 )
 
 func putRecord(l *Listener, b []byte) (*string, error) {
-	l.ensureClient()
-	resp, err := l.client.PutRecord(&kinesis.PutRecordInput{
+	l.reader.ensureClient()
+	resp, err := l.reader.(*KinesisReader).client.PutRecord(&kinesis.PutRecordInput{
 		Data:         b,
 		PartitionKey: aws.String("dummy"),
-		StreamName:   aws.String(l.stream),
+		StreamName:   aws.String(l.reader.(*KinesisReader).stream),
 	})
 	if err != nil {
 		return nil, err
 	}
 	return resp.SequenceNumber, nil
-}
-
-func TestShardIterator(t *testing.T) {
-	Convey("given a new shard iterator", t, func() {
-		it := NewShardIterator()
-
-		Convey("check that the default shard iterator type is TRIM_HORIZON", func() {
-			So(it.shardIteratorType, ShouldEqual, "TRIM_HORIZON")
-			So(it.getStartingSequenceNumber(), ShouldBeNil)
-			So(it.getTimestamp(), ShouldBeNil)
-		})
-
-		Convey("check that we can explicitly set it to TRIM_HORIZON", func() {
-			it = it.TrimHorizon()
-			So(it.shardIteratorType, ShouldEqual, "TRIM_HORIZON")
-			So(it.getStartingSequenceNumber(), ShouldBeNil)
-			So(it.getTimestamp(), ShouldBeNil)
-		})
-
-		Convey("check that we can explicitly set it to LATEST", func() {
-			it = it.Latest()
-			So(it.shardIteratorType, ShouldEqual, "LATEST")
-			So(it.getStartingSequenceNumber(), ShouldBeNil)
-			So(it.getTimestamp(), ShouldBeNil)
-		})
-
-		Convey("check that we can explicitly set it to AT_SEQEUENCE_NUMBER", func() {
-			it = it.AtSequenceNumber("some-sequence")
-			So(it.shardIteratorType, ShouldEqual, "AT_SEQUENCE_NUMBER")
-			So(aws.StringValue(it.getStartingSequenceNumber()), ShouldEqual, "some-sequence")
-			So(it.getTimestamp(), ShouldBeNil)
-		})
-
-		Convey("check that we can explicitly set it to AFTER_SEQEUENCE_NUMBER", func() {
-			it = it.AfterSequenceNumber("some-sequence")
-			So(it.shardIteratorType, ShouldEqual, "AFTER_SEQUENCE_NUMBER")
-			So(aws.StringValue(it.getStartingSequenceNumber()), ShouldEqual, "some-sequence")
-			So(it.getTimestamp(), ShouldBeNil)
-		})
-
-		Convey("check that we can explicitly set it to AT_TIMESTAMP", func() {
-			n := time.Now()
-			it = it.AtTimestamp(n)
-			So(it.shardIteratorType, ShouldEqual, "AT_TIMESTAMP")
-			So(aws.TimeValue(it.getTimestamp()).Equal(n), ShouldBeTrue)
-			So(it.getStartingSequenceNumber(), ShouldBeNil)
-		})
-	})
 }
 
 func TestListener(t *testing.T) {
@@ -101,36 +53,49 @@ func TestListener(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(len(shards), ShouldEqual, 1)
 
-		l, err := NewListener(stream, shards[0], func(c *Config) {
+		l, err := NewListener(func(c *Config) {
 			c.SetAwsConfig(k.Session.Config)
+			c.SetKinesisStream(stream, shards[0])
 			c.SetConcurrency(10)
 		})
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		Convey("check that calling ensureClient twice doesn't overwrite existing client", func() {
-			So(l.client, ShouldBeNil)
-			l.ensureClient()
-			So(l.client, ShouldNotBeNil)
-			client := l.client
-			l.ensureClient()
-			So(l.client, ShouldEqual, client)
+		Convey("given a kinesis reader", func() {
+			r := l.reader.(*KinesisReader)
+
+			Convey("check that the reader was initialized with the correct stream name", func() {
+				So(r.stream, ShouldEqual, stream)
+			})
+
+			Convey("check that the reader has a valid reference to the listener", func() {
+				So(r.listener, ShouldEqual, l)
+			})
+
+			Convey("check that calling ensureClient twice doesn't overwrite existing client", func() {
+				So(r.client, ShouldBeNil)
+				r.ensureClient()
+				So(r.client, ShouldNotBeNil)
+				client := r.client
+				r.ensureClient()
+				So(r.client, ShouldEqual, client)
+			})
 		})
 
 		Convey("check that setting an empty shard iterator returns an error", func() {
-			err := l.setNextShardIterator("")
+			err := l.reader.(*KinesisReader).setNextShardIterator("")
 			So(err, ShouldEqual, errs.ErrEmptyShardIterator)
 		})
 
 		Convey("check that setting an empty sequence number returns an error", func() {
-			err := l.setSequenceNumber("")
+			err := l.reader.(*KinesisReader).setSequenceNumber("")
 			So(err, ShouldEqual, errs.ErrEmptySequenceNumber)
 		})
 
 		Convey("check that we can get the TRIM_HORIZON shard iterator", func() {
-			err := l.ensureShardIterator()
+			err := l.reader.(*KinesisReader).ensureShardIterator()
 			So(err, ShouldBeNil)
-			So(l.nextShardIterator, ShouldNotBeEmpty)
+			So(l.reader.(*KinesisReader).nextShardIterator, ShouldNotBeEmpty)
 		})
 
 		Convey("check that we can retrieve records one by one", func() {
@@ -143,8 +108,8 @@ func TestListener(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(string(msg.Data), ShouldEqual, datum)
 				Convey(fmt.Sprintf("check that iteration %d properly advanced the shard iterator", n), func() {
-					So(l.shardIterator.shardIteratorType, ShouldEqual, "AT_SEQUENCE_NUMBER")
-					So(l.shardIterator.sequenceNumber, ShouldEqual, *seq)
+					So(l.reader.(*KinesisReader).shardIterator.shardIteratorType, ShouldEqual, "AT_SEQUENCE_NUMBER")
+					So(l.reader.(*KinesisReader).shardIterator.sequenceNumber, ShouldEqual, *seq)
 				})
 			}
 		})
@@ -226,7 +191,7 @@ func TestListener(t *testing.T) {
 			secs := []float64{}
 			for i := 1; i <= 6; i++ {
 				start := time.Now()
-				l.getRecords(1)
+				l.reader.GetRecord()
 				secs = append(secs, time.Since(start).Seconds())
 			}
 			elapsed := time.Since(start).Seconds()

@@ -26,6 +26,7 @@ const (
 	LogPlaceholder aws.LogLevelType = LogDebug | (1 << (16 + iota))
 )
 
+// ILogHelper is an interface for LogHelper
 type ILogHelper interface {
 	Log(aws.LogLevelType, ...interface{})
 	LogBug(...interface{})
@@ -34,12 +35,13 @@ type ILogHelper interface {
 	LogDebug(...interface{})
 }
 
+// LogHelper is used for defining log configuration
 type LogHelper struct {
 	LogLevel aws.LogLevelType
 	Logger   aws.Logger
 }
 
-// log handles levelled logging
+// Log handles levelled logging
 func (l *LogHelper) Log(level aws.LogLevelType, args ...interface{}) {
 	if l.LogLevel.Matches(level) {
 		l.Logger.Log(args...)
@@ -51,7 +53,7 @@ func (l *LogHelper) LogBug(args ...interface{}) {
 	l.Log(LogBug, args...)
 }
 
-// LogBug logs an error.
+// LogError logs an error.
 func (l *LogHelper) LogError(args ...interface{}) {
 	l.Log(LogError, args...)
 }
@@ -61,7 +63,7 @@ func (l *LogHelper) LogInfo(args ...interface{}) {
 	l.Log(LogInfo, args...)
 }
 
-// Log a debug message using the AWS SDK logger.
+// LogDebug a debug message using the AWS SDK logger.
 func (l *LogHelper) LogDebug(args ...interface{}) {
 	l.Log(LogDebug, args...)
 }

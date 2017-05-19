@@ -37,16 +37,10 @@ func getSession(config *Config) *session.Session {
 
 func TestNewConfig(t *testing.T) {
 	Convey("given a new listener config", t, func() {
-		stream := "some-stream"
-		shard := "some-shard"
-		config := NewConfig(stream, shard)
+		config := NewConfig()
 
 		Convey("check the default values for its non-zero config", func() {
-			So(config.stream, ShouldEqual, stream)
-			So(config.shard, ShouldEqual, shard)
-			So(config.batchSize, ShouldEqual, 10000)
 			So(config.concurrency, ShouldEqual, 10000)
-			So(config.shardIterator.shardIteratorType, ShouldEqual, "TRIM_HORIZON")
 			So(config.getRecordsReadTimeout, ShouldEqual, 1*time.Second)
 			So(config.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
 			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
@@ -75,28 +69,9 @@ func TestNewConfig(t *testing.T) {
 			So(aws.StringValue(sess.Config.Endpoint), ShouldEqual, "bogus-endpoint")
 		})
 
-		Convey("check that we can set the batch size", func() {
-			config.SetBatchSize(1000)
-			So(config.batchSize, ShouldEqual, 1000)
-		})
-
 		Convey("check that we can set the concurrency limit", func() {
 			config.SetConcurrency(50)
 			So(config.concurrency, ShouldEqual, 50)
-		})
-
-		Convey("check that the default shard iterator is TRIM_HORIZON", func() {
-			config.SetInitialShardIterator(NewShardIterator())
-			So(config.shardIterator.shardIteratorType, ShouldEqual, "TRIM_HORIZON")
-			So(config.shardIterator.getStartingSequenceNumber(), ShouldBeNil)
-			So(config.shardIterator.getTimestamp(), ShouldBeNil)
-		})
-
-		Convey("check that we can set the initial shard iterator (to LATEST)", func() {
-			config.SetInitialShardIterator(NewShardIterator().Latest())
-			So(config.shardIterator.shardIteratorType, ShouldEqual, "LATEST")
-			So(config.shardIterator.getStartingSequenceNumber(), ShouldBeNil)
-			So(config.shardIterator.getTimestamp(), ShouldBeNil)
 		})
 
 		Convey("check that we can set the read timeout for the GetRecords request", func() {

@@ -35,3 +35,5 @@ tags
 # custom
 # external packages folder
 vendor/
+.idea/*
+kinetic.iml

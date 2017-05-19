@@ -74,9 +74,9 @@ func (c *Config) SetKinesisStream(stream string) {
 }
 
 // SetFirehoseStream sets the producer to write to the given Firehose stream.
-// func (c *Config) SetFirehoseStream(stream string) {
-// 	c.writer = NewFirehoseWriter(stream)
-// }
+func (c *Config) SetFirehoseStream(stream string) {
+	c.writer = NewFirehoseWriter(stream)
+}
 
 // SetLogLevel configures both the SDK and Kinetic log levels.
 func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
