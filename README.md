@@ -1,6 +1,6 @@
 [![GoDoc](https://godoc.org/github.com/rewardStyle/kinetic?status.svg)](https://godoc.org/github.com/rewardStyle/kinetic)
 [![Circle CI](https://circleci.com/gh/rewardStyle/kinetic/tree/master.svg?style=svg&circle-token=8c8b6e0cca0f0fde6ec41b4e02329c406f74a446)](https://circleci.com/gh/rewardStyle/kinetic/tree/master)
-[![Coverage Status](https://coveralls.io/repos/github/rewardStyle/kinetic/badge.svg?branch=master)](https://coveralls.io/github/rewardStyle/kinetic?branch=master)
+[![Coverage Status](https://coveralls.io/repos/github/rewardStyle/kinetic/badge.svg)](https://coveralls.io/github/rewardStyle/kinetic?branch=master)
 
 # kinetic
 Kinetic is an MIT-licensed high-performance AWS Kinesis Client for Go
