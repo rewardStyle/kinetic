@@ -49,13 +49,13 @@ func (c *Config) SetConcurrency(concurrency int) {
 
 // SetGetRecordsReadTimeout configures the time to wait for each successive
 // Read operation on the GetRecords response payload.
-func (c *Config) SetGetRecordsReadTimeout(timouet time.Duration) {
-	c.getRecordsReadTimeout = timouet
+func (c *Config) SetGetRecordsReadTimeout(timeout time.Duration) {
+	c.getRecordsReadTimeout = timeout
 }
 
-// SetKinesisStream sets the listener to read to the given Kinesis stream.
-func (c *Config) SetKinesisStream(stream string, shard string, fn ...func(*KinesisReaderConfig)) {
-	c.reader = NewKinesisReader(stream, shard, fn...)
+// SetReader sets the listener's stream reader
+func (c *Config) SetReader(reader StreamReader) {
+	c.reader = reader
 }
 
 // SetLogLevel configures both the SDK and Kinetic log levels.

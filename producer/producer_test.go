@@ -46,7 +46,7 @@ func TestProducer(t *testing.T) {
 
 		l, err := listener.NewListener(func(c *listener.Config) {
 			c.SetAwsConfig(k.Session.Config)
-			c.SetKinesisStream(stream, shards[0])
+			c.SetReader(listener.NewKinesisReader(stream, shards[0]))
 			c.SetQueueDepth(10)
 			c.SetConcurrency(10)
 			c.SetGetRecordsReadTimeout(1 * time.Second)
