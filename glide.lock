@@ -1,5 +1,5 @@
-hash: 9f381497df21cd2b2e97a96a4526bb2f48443a7d63baaf81e306f4b6c3cdad98
-updated: 2017-03-23T00:24:46.690555736-05:00
+hash: c70e5dd0bac15fcbacf3d07e58cad9df3b23ba556bc583f3a850f79f60ea2bae
+updated: 2017-05-25T11:30:54.735250056-05:00
 imports:
 - name: github.com/aws/aws-sdk-go
   version: 72df63b404d3f9820db08c73176c1b277d9f614f
@@ -54,6 +54,10 @@ imports:
   - convey
   - convey/gotest
   - convey/reporting
+- name: github.com/stretchr/testify
+  version: 69483b4bd14f5845b5a1e55bca19e954e827f1d0
+  subpackages:
+  - assert
 - name: gopkg.in/gcfg.v1
   version: 27e4946190b4a327b539185f2b5b1f7c84730728
   subpackages:
@@ -62,4 +66,12 @@ imports:
   - types
 - name: gopkg.in/warnings.v0
   version: 8a331561fe74dadba6edfc59f3be66c22c3b065d
-testImports: []
+testImports:
+- name: github.com/davecgh/go-spew
+  version: 6d212800a42e8ab5c146b8ace3490ee17e5225f9
+  subpackages:
+  - spew
+- name: github.com/pmezard/go-difflib
+  version: d8ed2627bdf02c080bf22230dbb337003b7aba2d
+  subpackages:
+  - difflib

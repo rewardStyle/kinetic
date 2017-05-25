@@ -19,7 +19,7 @@ import (
 )
 
 type Message struct {
-	Id      int    `json:"id"`
+	ID      int    `json:"id"`
 	Message string `json:"message"`
 }
 
@@ -159,7 +159,7 @@ func TestKineticIntegration(t *testing.T) {
 	go func(sent *int) {
 		for i := 0; i < numMsg; i++ {
 			msg := &Message{
-				Id: i,
+				ID: i,
 				Message: "hello_" + strconv.Itoa(i),
 			}
 			jsonStr, _ := json.Marshal(msg)
@@ -179,13 +179,13 @@ func TestKineticIntegration(t *testing.T) {
 			msg := &Message{}
 			json.Unmarshal(b, msg)
 
-			if !streamData.exists(msg.Id) {
+			if !streamData.exists(msg.ID) {
 				wg.Done()
 			} else {
 				log.Printf("WARNING: Duplicate message: %v\n", msg)
 			}
 
-			streamData.put(msg.Id, msg.Message)
+			streamData.put(msg.ID, msg.Message)
 			fnwg.Done()
 		})
 	}()

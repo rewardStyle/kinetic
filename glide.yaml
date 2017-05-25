@@ -61,3 +61,5 @@ import:
   - types
 - package: gopkg.in/warnings.v0
   version: 8a331561fe74dadba6edfc59f3be66c22c3b065d
+- package: github.com/stretchr/testify/assert
+  version: v1.1.4
