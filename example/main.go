@@ -32,14 +32,21 @@ func main() {
 		c.SetEndpoint("http://127.0.0.1:4567")
 	})
 	if err != nil {
-		// TODO: process error
+		log.Fatalf("Unable to create new kinetic object due to: %v\n", err)
 	}
 
 	// Create a kinetic stream
 	stream := "some-stream-" + strconv.Itoa(rand.Int())
 	err = k.CreateStream(stream, 1)
 	if err != nil {
-		// TODO: process error
+		log.Fatalf("Unable to create new stream %s due to: %v\n", stream, err)
+	}
+
+	// Wait until the stream is ready to go
+	err = k.WaitUntilStreamExists(context.TODO(), stream,
+		request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
+	if err != nil {
+		log.Fatalf("Unable to wait until stream %s exists due to: %v\n", stream, err)
 	}
 
 	// Delete the kinetic stream if no dups were found (this is for debugging the kinetic stream)
@@ -51,17 +58,10 @@ func main() {
 		}
 	}(streamData)
 
-	// Wait until the stream is ready to go
-	err = k.WaitUntilStreamExists(context.TODO(), stream,
-		request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
-	if err != nil {
-		// TODO: process error
-	}
-
 	// Determine the shard name
 	shards, err := k.GetShards(stream)
 	if err != nil {
-		// TODO: process error
+		log.Fatalf("Unable to get shards for stream %s due to: %v\n", stream, err)
 	}
 
 	log.Printf("Stream Name: %s\n", stream)
@@ -75,7 +75,7 @@ func main() {
 		c.SetBatchTimeout(1000 * time.Millisecond)
 	})
 	if err != nil {
-		// TODO: process error
+		log.Fatalf("Unable to create a new producer due to: %v\n", err)
 	}
 
 	// Create a new kinetic listener
@@ -88,15 +88,15 @@ func main() {
 		//c.SetLogLevel(aws.LogDebug)
 	})
 	if err != nil {
-		// TODO: process error
+		log.Fatalf("Unable to create a new listener due to: %v\n", err)
 	}
 
 	numMsg := 1000000
-	numSent := 0
 
 	// Use the producer to write messages to the kinetic stream
 	wg := sync.WaitGroup{}
 	wg.Add(numMsg + 1)
+	numSent := 0
 	go func(sent *int) {
 		for i := 0; i < numMsg; i++ {
 			jsonStr, _ := json.Marshal(NewMessage())
@@ -132,5 +132,6 @@ func main() {
 
 	wg.Wait()
 
+	streamData.setMsgCount(numSent)
 	streamData.printSummary()
 }

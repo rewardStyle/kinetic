@@ -107,6 +107,11 @@ func TestKineticIntegration(t *testing.T) {
 	err = k.CreateStream(stream, 1)
 	assert.Nil(t, err)
 
+	// Wait until the stream is ready to go
+	err = k.WaitUntilStreamExists(context.TODO(), stream,
+		request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
+	assert.Nil(t, err)
+
 	// Delete the kinetic stream if no dups were found (this is for debugging the kinetic stream)
 	defer func(s *StreamData) {
 		if !s.hasDuplicates() {
@@ -115,11 +120,6 @@ func TestKineticIntegration(t *testing.T) {
 				request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
 		}
 	}(streamData)
-
-	// Wait until the stream is ready to go
-	err = k.WaitUntilStreamExists(context.TODO(), stream,
-		request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
-	assert.Nil(t, err)
 
 	// Determine the shard name
 	shards, err := k.GetShards(stream)

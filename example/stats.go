@@ -8,6 +8,7 @@ import (
 // StreamData is used to collect stream stats
 type StreamData struct {
 	mutex       sync.Mutex
+	MsgCount    int
 	Frequencies map[int]int
 	Messages    map[int][]string
 }
@@ -19,6 +20,13 @@ func NewStreamData() *StreamData {
 		Frequencies: make(map[int]int),
 		Messages: make(map[int][]string),
 	}
+}
+
+func (m *StreamData) setMsgCount(i int) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	m.MsgCount = i
 }
 
 func (m *StreamData) put(key int, value string) {
@@ -59,12 +67,15 @@ func (m *StreamData) printSummary() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
+	log.Println()
 	log.Println("***** Stream Data Summary *****")
-	log.Printf("Total messages sent/received: [%d]\n", len(m.Messages))
+	log.Printf("Total messages sent: [%d]\n", m.MsgCount)
+	log.Printf("Total messages received: [%d]\n", len(m.Messages))
 	for index, freq := range m.Frequencies {
 		if freq > 1 {
 			log.Printf("Message [%d] was received [%d] times\n", index, freq)
 		}
 	}
 	log.Println("***** Stream Data Summary *****")
+	log.Println()
 }
