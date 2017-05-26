@@ -56,6 +56,7 @@ func TestListener(t *testing.T) {
 		l, err := NewListener(func(c *Config) {
 			c.SetAwsConfig(k.Session.Config)
 			c.SetReader(NewKinesisReader(stream, shards[0]))
+			c.SetQueueDepth(10)
 			c.SetConcurrency(10)
 		})
 		So(l, ShouldNotBeNil)
