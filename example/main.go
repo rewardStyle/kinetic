@@ -91,7 +91,7 @@ func main() {
 		// TODO: process error
 	}
 
-	numMsg := 100
+	numMsg := 1000000
 	numSent := 0
 
 	// Use the producer to write messages to the kinetic stream
@@ -118,14 +118,14 @@ func main() {
 			json.Unmarshal(b, msg)
 
 			// Only mark "done" if the message isn't a duplicate
-			if !streamData.exists(msg.Id) {
+			if !streamData.exists(msg.ID) {
 				wg.Done()
 			} else {
 				log.Printf("WARNING: Duplicate message: %v\n", msg)
 			}
 
 			// Record message regardless if it is a duplicate
-			streamData.put(msg.Id, msg.Message)
+			streamData.put(msg.ID, msg.Message)
 			fnwg.Done()
 		})
 	}()

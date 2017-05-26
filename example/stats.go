@@ -5,12 +5,14 @@ import (
 	"sync"
 )
 
+// StreamData is used to collect stream stats
 type StreamData struct {
 	mutex       sync.Mutex
 	Frequencies map[int]int
 	Messages    map[int][]string
 }
 
+// NewStreamData instantiates a new StreamData struct
 func NewStreamData() *StreamData {
 	return &StreamData{
 		mutex: sync.Mutex{},
