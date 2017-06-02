@@ -31,45 +31,49 @@ Kinetic can be used to interface with kinesis like so:
 
 
 ```go
-import "github.com/rewardStyle/kinetic"
+import (
+	"github.com/rewardStyle/kinetic"
+	"github.com/rewardStyle/kinetic/listener"
+	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic/producer"
+	"sync"
+)
 
-// Use configuration in /etc/kinetic.conf
-listener, _ := new(kinetic.Listener).Init()
-
-// Use custom configuration
-producer, _ := new(kinetic.Producer).InitC("your-stream", "0", "shard-type", "accesskey", "secretkey", "region", 10)
-
-producer.Send(new(kinetic.Message).Init([]byte(`{"foo":"bar"}`), "test"))
-
-// Using Retrieve
-msg, err := listener.Retrieve()
-if err != nil {
-    println(err)
-}
-
-println(string(msg))
-
-// Using Listen - will block unless sent in goroutine
-go listener.Listen(func(msg []byte, wg *sync.WaitGroup) {
-    println(string(msg))
-    wg.Done()
+// Create a kinetic object associated with a local kinesalite stream
+k, _ := kinetic.New(func(c *kinetic.Config) {
+    c.SetCredentials("some-access-key", "some-secret-key", "some-security-token")
+    c.SetRegion("some-region")
+    c.SetEndpoint("http://127.0.0.1:4567")
 })
 
-producer.Send(new(KinesisMessage).Init([]byte(`{"foo":"bar"}`), "test"))
+// Create a kinetic producer
+p, _ := producer.NewProducer(func(c *producer.Config) {
+    c.SetAwsConfig(k.Session.Config)
+    c.SetKinesisStream("stream-name")
+})
 
-listener.Close()
-producer.Close()
+// Create a kinetic listener
+l, _ := listener.NewListener(func(c *listener.Config) {
+    c.SetAwsConfig(k.Session.Config)
+    c.SetReader(listener.NewKinesisReader("stream-name", "shard-name"))
+})
 
-// Or with Kinesis Firehose
-firehose, err := new(kinetic.Producer).Firehose()
+msg, err := l.Retrieve()
 if err != nil {
     println(err)
 }
 
-firehose.Send(new(KinesisMessage).Init([]byte(`{"foo":"bar"}`), "test"))
+// Using Listen - will block unless sent in goroutine
+go l.Listen(func(b []byte, fnwg *sync.WaitGroup){
+    println(string(b))
+    fnwg.Done()
+})
 
-firehose.Close()
+// Send a message using the producer 
+p.Send(&message.Message{
+    Data: []byte(`{"foo":"bar"}`),
+})
 
 ```
 
-For more examples take a look at the tests. API documentation can be found [here](https://godoc.org/github.com/rewardStyle/kinetic).
+For more examples take a look at the tests or the test program in the `testexec` directory.  API documentation can be found [here](https://godoc.org/github.com/rewardStyle/kinetic).

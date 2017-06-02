@@ -3,7 +3,7 @@ testexec is an executable CLI program to test the kinetic producer / lister.
 
 The executable program creates a kinetic object connecting to either a local kinesalte instance or to AWS Kinesis using local AWS credentials/config.  
 
-A new stream will be created (with a random stream name) unless a stream name is provided (See useage).
+A new stream will be created (with a random stream name) unless a stream name is provided (See usage).
 
 A kinetic producer will stream dummy data to the kinesis stream and a kinetic listener will stream from the kinesis stream.
 
