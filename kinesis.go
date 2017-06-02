@@ -6,7 +6,12 @@ import (
 	"sync/atomic"
 	"time"
 
-	gokinesis "github.com/rewardStyle/go-kinesis"
+	"github.com/aws/aws-sdk-go/aws"
+
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 )
 
 const (
@@ -22,10 +27,18 @@ const (
 
 	kinesisWritesPerSec int = 1000
 	kinesisReadsPerSec  int = 5
-
 	// Timeout TODO
 	Timeout = 60
 )
+
+// ErrNilShardIterator is an error for when we get back a nil shard iterator
+var ErrNilShardIterator = errors.New("Nil shard iterator")
+
+// ErrNilShardStatus is an error for when we get back a nil stream status
+var ErrNilShardStatus = errors.New("Nil stream status")
+
+// Empty is an empty struct.  It is mostly used for counting semaphore purposes
+type Empty struct{}
 
 var (
 	conf = getConfig()
@@ -58,7 +71,7 @@ type kinesis struct {
 	sequenceNumber    string
 	sequenceNumberMu  sync.Mutex
 
-	client gokinesis.KinesisClient
+	client kinesisiface.KinesisAPI
 
 	msgCount int64
 	errCount int64
@@ -66,12 +79,14 @@ type kinesis struct {
 
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
 
-	auth, err := authenticate(accessKey, secretKey)
+	sess, err := authenticate(accessKey, secretKey)
+	client := awsKinesis.New(sess)
+
 	k = &kinesis{
 		stream:            stream,
 		shard:             shard,
 		shardIteratorType: shardIteratorType,
-		client:            gokinesis.New(auth, region),
+		client:            client,
 	}
 	if err != nil {
 		return k, err
@@ -85,29 +100,37 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 	return k, nil
 }
 
-func (k *kinesis) args() *gokinesis.RequestArgs {
-	args := gokinesis.NewArgs()
-	args.Add("StreamName", k.stream)
-	args.Add("ShardId", k.shard)
-	args.Add("ShardIterator", k.shardIterator)
-
-	if k.sequenceNumber != "" {
-		args.Add("StartingSequenceNumber", k.sequenceNumber)
-		args.Add("ShardIteratorType", ShardIterTypes[atSequenceNumber])
-	} else {
-		args.Add("ShardIteratorType", k.shardIteratorType)
-	}
-
-	return args
-}
+// func (k *kinesis) args() *awsKinesis. {
+// 	args := gokinesis.NewArgs()
+// 	args.Add("StreamName", k.stream)
+// 	args.Add("ShardId", k.shard)
+// 	args.Add("ShardIterator", k.shardIterator)
+//
+// 	if k.sequenceNumber != "" {
+// 		args.Add("StartingSequenceNumber", k.sequenceNumber)
+// 		args.Add("ShardIteratorType", ShardIterTypes[atSequenceNumber])
+// 	} else {
+// 		args.Add("ShardIteratorType", k.shardIteratorType)
+// 	}
+//
+// 	return args
+// }
 
 func (k *kinesis) initShardIterator() error {
-	resp, err := k.client.GetShardIterator(k.args())
+	resp, err := k.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
+		ShardId:                aws.String(k.shard),             // Required
+		ShardIteratorType:      aws.String(k.shardIteratorType), // Required
+		StreamName:             aws.String(k.stream),            // Required
+		StartingSequenceNumber: aws.String(k.sequenceNumber),
+		Timestamp:              aws.Time(time.Now()),
+	})
 	if err != nil {
 		return err
 	}
-
-	return k.setShardIterator(resp.ShardIterator)
+	if resp.ShardIterator != nil {
+		return k.setShardIterator(*resp.ShardIterator)
+	}
+	return ErrNilShardIterator
 }
 
 func (k *kinesis) setSequenceNumber(sequenceNum string) {
@@ -131,33 +154,62 @@ func (k *kinesis) setShardIterator(shardIter string) error {
 }
 
 func (k *kinesis) checkActive() (bool, error) {
-	status, err := k.client.DescribeStream(k.args())
+	status, err := k.client.DescribeStream(&awsKinesis.DescribeStreamInput{
+		StreamName:            aws.String("StreamName"), // Required
+		ExclusiveStartShardId: aws.String("ShardId"),
+		Limit: aws.Int64(1),
+	})
 	if err != nil {
 		return false, err
 	}
-
-	if streamStatuses[statusActive] == status.StreamDescription.StreamStatus {
+	if status.StreamDescription.StreamStatus == nil {
+		return false, ErrNilShardStatus
+	}
+	if streamStatuses[statusActive] == *status.StreamDescription.StreamStatus {
 		return true, nil
 	}
 	return false, nil
 }
 
-func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
-	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"), conf.AWS.Region, endpoint)
-	client.CreateStream(stream, 1)
+// func (k *kinesis) newClient(endpoint, stream string) gokinesis.KinesisClient {
+// 	client := gokinesis.NewWithEndpoint(gokinesis.NewAuth("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"), conf.AWS.Region, endpoint)
+// 	client.CreateStream(stream, 1)
+//
+// 	// Wait for stream to create
+// 	k.client.WaitUntilStreamExists(*kinesis.DescribeStreamInput)
+//
+// 	return client
+// }
 
-	// Wait for stream to create
-	<-time.After(1 * time.Second)
+func (k *kinesis) newClient(endpoint, stream string) (*awsKinesis.Kinesis, error) {
+	// if accessKey == "" || secretKey == "" {
+	// 	if sess, err = session.NewSession(); err != nil {
+	// 		return nil, ErrMetaAuthentication
+	// 	}
+	// } else {
+	// 	conf := &aws.Config{}
+	// 	conf = conf.WithCredentials(credentials.NewStaticCredentials(accessKey, secretKey, ""))
+	// 	sess, err = session.NewSessionWithOptions(session.Options{Config: *conf})
+	// }
+	// return
+	//
+	//
 
-	return client
+	conf := &aws.Config{}
+	conf = conf.WithCredentials(
+		credentials.NewStaticCredentials("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"))
+	conf = conf.WithEndpoint(endpoint)
+
+	sess, err := session.NewSessionWithOptions(session.Options{Config: *conf})
+	return awsKinesis.New(sess), err
 }
 
 func (k *kinesis) refreshClient(accessKey, secretKey, region string) error {
-	credentials, err := authenticate(accessKey, secretKey)
+	sess, err := authenticate(accessKey, secretKey)
 	if err != nil {
 		return err
 	}
-	k.client = gokinesis.New(credentials, region)
+	k.client = awsKinesis.New(sess)
 	return nil
 }
 
@@ -185,6 +237,6 @@ func (k *kinesis) getErrCount() int64 {
 	return atomic.LoadInt64(&k.errCount)
 }
 
-func getLock(sem chan bool) {
-	sem <- true
+func getLock(sem chan Empty) {
+	sem <- Empty{}
 }

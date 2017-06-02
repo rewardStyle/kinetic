@@ -1,35 +1,37 @@
 package kinetic
 
-import (
-	gokinesis "github.com/rewardStyle/go-kinesis"
-)
+import awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 
 // Message represents an item on the Kinesis stream
 type Message struct {
-	gokinesis.GetRecordsRecords
+	awsKinesis.Record
 }
 
 // Init initializes a Message
-func (k *Message) Init(msg []byte, key string) *Message {
+func (k *Message) Init(msg []byte, key string, sequenceNumber *string) *Message {
 	return &Message{
-		gokinesis.GetRecordsRecords{
-			Data:         msg,
-			PartitionKey: key,
+		awsKinesis.Record{
+			Data:           msg,
+			PartitionKey:   &key,
+			SequenceNumber: sequenceNumber,
 		},
 	}
 }
 
 // SetValue sets the underlying value of the gokinesis record
 func (k *Message) SetValue(value []byte) {
-	k.GetRecordsRecords.Data = value
+	k.Record.Data = value
 }
 
 // Value gets the underlying value of the gokinesis record
 func (k *Message) Value() []byte {
-	return k.GetData()
+	return k.Record.Data
 }
 
 // Key gets the partion key of the message
 func (k *Message) Key() []byte {
-	return []byte(k.PartitionKey)
+	if k.Record.PartitionKey != nil {
+		return []byte(*k.PartitionKey)
+	}
+	return nil
 }
