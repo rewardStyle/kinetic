@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-
 	"github.com/rewardStyle/kinetic/config"
 	"github.com/rewardStyle/kinetic/logging"
 )

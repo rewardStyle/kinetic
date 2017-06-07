@@ -20,7 +20,7 @@ func parseCommandLineArgs() *Config {
 	// Define command line flags
 	locationPtr := flag.String("location", "local", "used to specify the location of the kinesis stream.  " +
 		"Accepted values are (local|aws).  For local, run kinesalite on http://127.0.0.1:4567. For aws, your " +
-		"aws credentials and configuration needs to be defined at ~/.aws")
+		"aws credentials and configuration need to be defined at ~/.aws")
 	streamNamePtr := flag.String("stream-name", "", "used to specify a pre-existing stream to be used for " +
 		"testing.  A new stream will be created if not defined.")
 	numMsgsPtr := flag.Int("num-msgs", 0, "used to specify the number of messages to (attempt to) send / " +
