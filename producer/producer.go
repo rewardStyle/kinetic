@@ -35,7 +35,7 @@ type producerOptions struct {
 	concurrency      int
 	writer           StreamWriter
 
-	Stats StatsCollector
+	Stats 		 StatsCollector
 }
 
 // Producer sends records to Kinesis or Firehose.
@@ -51,10 +51,10 @@ type Producer struct {
 	shutdownCond   *sync.Cond
 	producerWg     *sync.WaitGroup
 
-	producing   bool
-	producingMu sync.Mutex
+	producing      bool
+	producingMu    sync.Mutex
 
-	Session *session.Session
+	Session        *session.Session
 }
 
 // NewProducer creates a new producer for writing records to a Kinesis or
@@ -62,7 +62,7 @@ type Producer struct {
 func NewProducer(fn func(*Config)) (*Producer, error) {
 	config := NewConfig()
 	fn(config)
-	session, err := config.GetSession()
+	sess, err := config.GetSession()
 	if err != nil {
 		return nil, err
 	}
@@ -70,11 +70,11 @@ func NewProducer(fn func(*Config)) (*Producer, error) {
 		producerOptions: config.producerOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: config.LogLevel,
-			Logger:   session.Config.Logger,
+			Logger:   sess.Config.Logger,
 		},
 		concurrencySem: make(chan Empty, config.concurrency),
 		pipeOfDeath:    make(chan Empty),
-		Session:        session,
+		Session:        sess,
 	}
 	if err := p.writer.AssociateProducer(p); err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (p *Producer) startProducing() bool {
 	if !p.producing {
 		p.producing = true
 		p.messages = make(chan *message.Message, p.queueDepth)
-		p.retries = make(chan *message.Message) // TODO: should we use a buffered channel?
+		p.retries = make(chan *message.Message, p.queueDepth)
 		p.shutdownCond = &sync.Cond{L: &sync.Mutex{}}
 		p.producerWg = new(sync.WaitGroup)
 		p.outstanding = 0
@@ -115,6 +115,7 @@ func (p *Producer) sendBatch(batch []*message.Message) {
 		p.outstanding--
 		p.shutdownCond.L.Unlock()
 	}()
+
 	attempts := 0
 	var retries []*message.Message
 	var err error
@@ -179,6 +180,9 @@ stop:
 			p.Stats.AddDropped(len(batch))
 			break stop
 		}
+
+		// Apply an exponential back-off before retrying
+		time.Sleep(time.Duration(attempts * attempts) * time.Second)
 	}
 	// This frees up another sendBatch to run to allow drainage of the
 	// messages / retry queue.  This should improve throughput as well as
@@ -212,7 +216,7 @@ func (p *Producer) produce() {
 			p.stopProducing()
 			p.producerWg.Done()
 		}()
-	stop:
+
 		for {
 			var batch []*message.Message
 			timer := time.After(p.batchTimeout)
@@ -235,7 +239,7 @@ func (p *Producer) produce() {
 				case <-timer:
 					break batch
 				case <-p.pipeOfDeath:
-					break stop
+					return
 				}
 			}
 			p.shutdownCond.L.Lock()
@@ -256,8 +260,9 @@ func (p *Producer) produce() {
 				//   - The retry channel is empty
 				if p.messages == nil && p.outstanding == 0 && len(p.retries) == 0 {
 					close(p.retries)
-					p.shutdownCond.Signal()
-					break stop
+					p.shutdownCond.Broadcast()
+					p.shutdownCond.L.Unlock()
+					return
 				}
 			}
 			p.shutdownCond.L.Unlock()
@@ -269,8 +274,8 @@ func (p *Producer) produce() {
 // messages and retries to flush.  Cancellation supported through contexts.
 func (p *Producer) CloseWithContext(ctx context.Context) {
 	c := make(chan Empty, 1)
+	close(p.messages)
 	go func() {
-		close(p.messages)
 		p.shutdownCond.L.Lock()
 		for p.outstanding != 0 {
 			p.shutdownCond.Wait()
@@ -314,7 +319,11 @@ func (p *Producer) Send(msg *message.Message) error {
 // capacity for a message, or will immediately return with an error if the
 // channel is full.
 func (p *Producer) TryToSend(msg *message.Message) error {
-	ctx, cancel := context.WithTimeout(context.TODO(), 0*time.Second)
-	defer cancel()
-	return p.SendWithContext(ctx, msg)
+	select {
+	case p.messages <- msg:
+		return nil
+	default:
+		p.Stats.AddDropped(1)
+		return errs.ErrDroppedMessage
+	}
 }

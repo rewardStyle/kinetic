@@ -80,4 +80,7 @@ var (
 	// records of the batch to be retried.  This failure is considered part
 	// of normal behavior of the Kinesis stream.
 	ErrRetryRecords = errors.New("PutRecords requires retry of some records in batch")
+
+	// ErrDroppedMessage is returned when the message channel is full and messages are being dropped
+	ErrDroppedMessage = errors.New("Channel is full, dropped message")
 )
