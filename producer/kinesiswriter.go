@@ -2,7 +2,6 @@ package producer
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -11,56 +10,46 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 
 	"github.com/rewardStyle/kinetic/errs"
+	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
 )
 
+type kinesisWriterOptions struct {
+	Stats  StatsCollector
+}
+
 // KinesisWriter handles the API to send records to Kinesis.
 type KinesisWriter struct {
-	stream string
+	*kinesisWriterOptions
+	*logging.LogHelper
 
-	producer *Producer
-	client   kinesisiface.KinesisAPI
-	clientMu sync.Mutex
+	stream string
+	client  kinesisiface.KinesisAPI
 }
 
 // NewKinesisWriter creates a new stream writer to write records to a Kinesis.
-func NewKinesisWriter(stream string) *KinesisWriter {
-	return &KinesisWriter{
-		stream: stream,
+func NewKinesisWriter(c *aws.Config, stream string, fn ...func(*KinesisWriterConfig)) (*KinesisWriter, error) {
+	cfg := NewKinesisWriterConfig(c)
+	for _, f := range fn {
+		f(cfg)
 	}
-}
-
-// ensureClient will lazily make sure we have an AWS Kinesis client.
-func (w *KinesisWriter) ensureClient() error {
-	w.clientMu.Lock()
-	defer w.clientMu.Unlock()
-	if w.client == nil {
-		if w.producer == nil {
-			return errs.ErrNilProducer
-		}
-		w.client = kinesis.New(w.producer.Session)
-	}
-	return nil
-}
-
-// AssociateProducer associates the Kinesis stream writer to a producer.
-func (w *KinesisWriter) AssociateProducer(p *Producer) error {
-	w.clientMu.Lock()
-	defer w.clientMu.Unlock()
-	if w.producer != nil {
-		return errs.ErrProducerAlreadyAssociated
-	}
-	w.producer = p
-	return nil
-}
-
-// PutRecords sends a batch of records to Kinesis and returns a list of records
-// that need to be retried.
-func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Message, error) {
-	if err := w.ensureClient(); err != nil {
+	sess, err := cfg.GetSession()
+	if err != nil {
 		return nil, err
 	}
+	return &KinesisWriter{
+		kinesisWriterOptions: cfg.kinesisWriterOptions,
+		LogHelper: &logging.LogHelper{
+			LogLevel: cfg.LogLevel,
+			Logger:  cfg.AwsConfig.Logger,
+		},
+		stream: stream,
+		client: kinesis.New(sess),
+	}, nil
+}
 
+// PutRecords sends a batch of records to Kinesis and returns a list of records that need to be retried.
+func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Message, error) {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
@@ -76,31 +65,31 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 
 	req.Handlers.Build.PushFront(func(r *request.Request) {
 		startBuildTime = time.Now()
-		w.producer.LogDebug("Start PutRecords Build, took", time.Since(start))
+		w.LogDebug("Start PutRecords Build, took", time.Since(start))
 	})
 
 	req.Handlers.Build.PushBack(func(r *request.Request) {
-		w.producer.Stats.AddPutRecordsBuildDuration(time.Since(startBuildTime))
-		w.producer.LogDebug("Finished PutRecords Build, took", time.Since(start))
+		w.Stats.AddPutRecordsBuildDuration(time.Since(startBuildTime))
+		w.LogDebug("Finished PutRecords Build, took", time.Since(start))
 	})
 
 	req.Handlers.Send.PushFront(func(r *request.Request) {
 		startSendTime = time.Now()
-		w.producer.LogDebug("Start PutRecords Send took", time.Since(start))
+		w.LogDebug("Start PutRecords Send took", time.Since(start))
 	})
 
-	req.Handlers.Build.PushBack(func(r *request.Request) {
-		w.producer.Stats.AddPutRecordsSendDuration(time.Since(startSendTime))
-		w.producer.LogDebug("Finished PutRecords Send, took", time.Since(start))
+	req.Handlers.Send.PushBack(func(r *request.Request) {
+		w.Stats.AddPutRecordsSendDuration(time.Since(startSendTime))
+		w.LogDebug("Finished PutRecords Send, took", time.Since(start))
 	})
 
-	w.producer.LogDebug("Starting PutRecords Build/Sign request, took", time.Since(start))
-	w.producer.Stats.AddPutRecordsCalled(1)
+	w.LogDebug("Starting PutRecords Build/Sign request, took", time.Since(start))
+	w.Stats.AddPutRecordsCalled(1)
 	if err := req.Send(); err != nil {
-		w.producer.LogError("Error putting records:", err.Error())
+		w.LogError("Error putting records:", err.Error())
 		return nil, err
 	}
-	w.producer.Stats.AddPutRecordsDuration(time.Since(start))
+	w.Stats.AddPutRecordsDuration(time.Since(start))
 
 	if resp == nil {
 		return nil, errs.ErrNilPutRecordsResponse
@@ -111,7 +100,7 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 	attempted := len(messages)
 	failed := int(aws.Int64Value(resp.FailedRecordCount))
 	sent := attempted - failed
-	w.producer.LogDebug(fmt.Sprintf("Finished PutRecords request, %d records attempted, %d records successful, %d records failed, took %v\n", attempted, sent, failed, time.Since(start)))
+	w.LogDebug(fmt.Sprintf("Finished PutRecords request, %d records attempted, %d records successful, %d records failed, took %v\n", attempted, sent, failed, time.Since(start)))
 
 	var retries []*message.Message
 	var err error
@@ -123,9 +112,9 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 		} else {
 			switch aws.StringValue(record.ErrorCode) {
 			case kinesis.ErrCodeProvisionedThroughputExceededException:
-				w.producer.Stats.AddProvisionedThroughputExceeded(1)
+				w.Stats.AddProvisionedThroughputExceeded(1)
 			default:
-				w.producer.LogDebug("PutRecords record failed with error:", aws.StringValue(record.ErrorCode), aws.StringValue(record.ErrorMessage))
+				w.LogDebug("PutRecords record failed with error:", aws.StringValue(record.ErrorCode), aws.StringValue(record.ErrorMessage))
 			}
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage

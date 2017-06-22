@@ -8,7 +8,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/logging"
 )
@@ -37,11 +36,16 @@ func getSession(config *Config) *session.Session {
 
 func TestNewConfig(t *testing.T) {
 	Convey("given a new listener config", t, func() {
-		config := NewConfig()
+		k, err := kinetic.New(func(c *kinetic.Config) {
+			c.SetEndpoint("bogus-endpoint")
+		})
+		So(k, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		config := NewConfig(k.Session.Config)
 
 		Convey("check the default values for its non-zero config", func() {
+			So(config.queueDepth, ShouldEqual, 10000)
 			So(config.concurrency, ShouldEqual, 10000)
-			So(config.getRecordsReadTimeout, ShouldEqual, 1*time.Second)
 			So(config.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
 			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
 		})
@@ -59,25 +63,16 @@ func TestNewConfig(t *testing.T) {
 			So(config.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
 		})
 
-		Convey("check that we can set the AWS configuration", func() {
-			k, err := kinetic.New(func(c *kinetic.Config) {
-				c.SetEndpoint("bogus-endpoint")
-			})
-			So(err, ShouldBeNil)
-			config.SetAwsConfig(k.Session.Config)
-			sess := getSession(config)
-			So(aws.StringValue(sess.Config.Endpoint), ShouldEqual, "bogus-endpoint")
-		})
-
 		Convey("check that we can set the concurrency limit", func() {
 			config.SetConcurrency(50)
 			So(config.concurrency, ShouldEqual, 50)
 		})
 
-		Convey("check that we can set the read timeout for the GetRecords request", func() {
-			config.SetGetRecordsReadTimeout(10 * time.Second)
-			So(config.getRecordsReadTimeout, ShouldEqual, 10*time.Second)
-		})
+		//TODO: Move this test to kinesisreaderconfig_test.go
+		//Convey("check that we can set the read timeout for the GetRecords request", func() {
+		//	config.SetReadTimeout(10 * time.Second)
+		//	So(config.readTimeout, ShouldEqual, 10*time.Second)
+		//})
 
 		Convey("check that we can configure a stats collector", func() {
 			config.SetStatsCollector(&DebugStatsCollector{})

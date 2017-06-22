@@ -196,10 +196,10 @@ func main() {
 
 	// Use the listener to read messages from the kinetic stream
 	go func(sd *StreamData) {
-		l.Listen(func(b []byte, fnwg *sync.WaitGroup) {
+		l.Listen(func(m *message.Message, fnwg *sync.WaitGroup) error {
 			// Unmarshal data
 			msg := &Message{}
-			json.Unmarshal(b, msg)
+			json.Unmarshal(m.Data, msg)
 
 			// Only mark "done" if the message isn't a duplicate
 			if !sd.exists(msg.ID) {
@@ -213,6 +213,8 @@ func main() {
 			// Record message regardless if it is a duplicate
 			sd.mark(msg.ID)
 			fnwg.Done()
+
+			return nil
 		})
 	}(streamData)
 
@@ -321,9 +323,14 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		log.Println("Creating a kinetic producer ...")
 	}
 
-	p, err := producer.NewProducer(func(c *producer.Config) {
-		c.SetAwsConfig(k.Session.Config)
-		c.SetKinesisStream(streamName)
+	w, err := producer.NewKinesisWriter(k.Session.Config, streamName, func(kwc *producer.KinesisWriterConfig) {
+		kwc.SetLogLevel(aws.LogDebug)
+	})
+	if err != nil {
+		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
+	}
+
+	p, err := producer.NewProducer(k.Session.Config, w, func(c *producer.Config) {
 		c.SetBatchSize(5)
 		c.SetBatchTimeout(1000 * time.Millisecond)
 	})
@@ -345,13 +352,14 @@ func newKineticListener(k *kinetic.Kinetic, streamName string) *listener.Listene
 		log.Fatalf("Unable to get shards for stream %s due to: %v\n", streamName, err)
 	}
 
-	l, err := listener.NewListener(func(c *listener.Config) {
-		c.SetAwsConfig(k.Session.Config)
-		c.SetReader(listener.NewKinesisReader(streamName, shards[0]))
+	r, err := listener.NewKinesisReader(k.Session.Config, streamName, shards[0],
+		func(krc *listener.KinesisReaderConfig) {
+			krc.SetReadTimeout(1000 * time.Millisecond)
+	})
+
+	l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {
 		c.SetQueueDepth(20)
 		c.SetConcurrency(10)
-		c.SetGetRecordsReadTimeout(1000 * time.Millisecond)
-		//c.SetLogLevel(aws.LogDebug)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new listener due to: %v\n", err)

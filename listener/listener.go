@@ -6,34 +6,30 @@ import (
 	"sync"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws/session"
-
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
 )
 
-// StreamReader is an interface that abstracts out a stream reader
+// StreamReader is an interface that abstracts out a stream reader.
 type StreamReader interface {
-	AssociateListener(listener *Listener) error
-	GetRecord() (int, error)
-	GetRecords() (int, error)
-	ensureClient() error
+	GetRecord(context.Context, MessageFn) (int, error)
+	GetRecords(context.Context, MessageFn) (int, error)
 }
 
-// Empty is used a as a dummy type for counting semaphore channels.
-type Empty struct{}
+// empty is used a as a dummy type for semaphore channels and the pipe of death channel.
+type empty struct{}
 
-// MessageFn defines the signature of a message handler used by Listen and
-// RetrieveFn.
-type MessageFn func([]byte, *sync.WaitGroup)
+// MessageFn defines the signature of a message handler used by Listen, RetrieveFn and their associated WithContext
+// functions.
+type MessageFn func(*message.Message, *sync.WaitGroup) error
 
+// listenerOptions is used to hold all of the configurable settings of a Listener object.
 type listenerOptions struct {
-	queueDepth            int
-	concurrency           int
-	getRecordsReadTimeout time.Duration
-	reader                StreamReader
-	Stats 		      StatsCollector
+	queueDepth  int
+	concurrency int
+	Stats       StatsCollector
 }
 
 // Listener polls the StreamReader for messages.
@@ -41,42 +37,34 @@ type Listener struct {
 	*listenerOptions
 	*logging.LogHelper
 
+	reader         StreamReader
 	messages       chan *message.Message
-	concurrencySem chan Empty
-	pipeOfDeath    chan Empty
-
+	concurrencySem chan empty
+	pipeOfDeath    chan empty
 	consuming      bool
 	consumingMu    sync.Mutex
-
-	Session        *session.Session
 }
 
-// NewListener creates a new listener for listening to message on a StreamReader.
-func NewListener(fn func(*Config)) (*Listener, error) {
-	config := NewConfig()
-	fn(config)
-	session, err := config.GetSession()
-	if err != nil {
-		return nil, err
+// NewListener creates a new Listener object for retrieving and listening to message(s) on a StreamReader.
+func NewListener(c *aws.Config, r StreamReader, fn ...func(*Config)) (*Listener, error) {
+	cfg := NewConfig(c)
+	for _, f := range fn {
+		f(cfg)
 	}
-	l := &Listener{
-		listenerOptions: config.listenerOptions,
+	return &Listener{
+		listenerOptions: cfg.listenerOptions,
 		LogHelper: &logging.LogHelper{
-			LogLevel: config.LogLevel,
-			Logger:   session.Config.Logger,
+			LogLevel: cfg.LogLevel,
+			Logger: cfg.AwsConfig.Logger,
 		},
-		concurrencySem: make(chan Empty, config.concurrency),
-		pipeOfDeath:    make(chan Empty),
-		Session: session,
-	}
-	if err := l.reader.AssociateListener(l); err != nil {
-		return nil, err
-	}
-	return l, nil
+		reader: r,
+		concurrencySem: make(chan empty, cfg.concurrency),
+		pipeOfDeath:    make(chan empty),
+	}, nil
 }
 
-// startConsuming will initialize the consumer and set consuming to true if
-// there is not already another consume loop running.
+// startConsuming will initialize the message channel and set consuming to true if there is not already another consume
+// loop running.
 func (l *Listener) startConsuming() bool {
 	l.consumingMu.Lock()
 	defer l.consumingMu.Unlock()
@@ -88,8 +76,8 @@ func (l *Listener) startConsuming() bool {
 	return false
 }
 
-// shouldConsume is a convenience function that allows functions to break their
-// loops if the context receives a cancellation.
+// shouldConsume is a convenience function that allows functions to break their loops if the context receives a
+// cancellation or a pipe of death.
 func (l *Listener) shouldConsume(ctx context.Context) (bool, error) {
 	select {
 	case <-l.pipeOfDeath:
@@ -101,36 +89,37 @@ func (l *Listener) shouldConsume(ctx context.Context) (bool, error) {
 	}
 }
 
-// stopConsuming handles any cleanup after a consuming has stopped.
+// stopConsuming handles any cleanup after consuming has stopped.
 func (l *Listener) stopConsuming() {
 	l.consumingMu.Lock()
 	defer l.consumingMu.Unlock()
-	if l.messages != nil {
+	if l.consuming && l.messages != nil {
 		close(l.messages)
 	}
 	l.consuming = false
 }
 
-// RetrieveWithContext waits for a message from the stream and return the value.
-// Cancellation supported through contexts.
+// RetrieveWithContext waits for a message from the stream and returns the message. Cancellation is supported through
+// contexts.
 func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, error) {
 	if !l.startConsuming() {
 		return nil, errs.ErrAlreadyConsuming
 	}
-	defer func() {
-		l.stopConsuming()
-	}()
+	defer l.stopConsuming()
 	for {
-		// A cancellation or closing the pipe of death will cause
-		// Retrieve (and related functions) to abort in between
-		// getRecord calls.  Note, that this would only occur when there
-		// are no new records to retrieve.  Otherwise, getRecords will
-		// be allowed to run to completion and deliver one record.
+		// A cancellation or closing the pipe of death will cause Retrieve (and related functions) to abort in
+		// between getRecord calls.  Note, that this would only occur when there are no new records to retrieve.
+		// Otherwise, getRecords will be allowed to run to completion and deliver one record.
 		ok, err := l.shouldConsume(ctx)
 		if !ok {
 			return nil, err
 		}
-		n, err := l.reader.GetRecord()
+		n, err := l.reader.GetRecord(context.TODO(), func(msg *message.Message, wg *sync.WaitGroup) error {
+			defer wg.Done()
+			l.messages <- msg
+
+			return nil
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -141,66 +130,64 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 	}
 }
 
-// Retrieve waits for a message from the stream and return the value.
+// Retrieve waits for a message from the stream and returns the value
 func (l *Listener) Retrieve() (*message.Message, error) {
 	return l.RetrieveWithContext(context.TODO())
 }
 
-// RetrieveFnWithContext retrieves a message from the stream and dispatches it
-// to the supplied function.  RetrieveFn will wait until the function completes.
-// Cancellation supported through context.
+// RetrieveFnWithContext retrieves a message from the stream and dispatches it to the supplied function.  RetrieveFn
+// will wait until the function completes. Cancellation is supported through context.
 func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageFn) error {
 	msg, err := l.RetrieveWithContext(ctx)
 	if err != nil {
 		return err
 	}
+
 	var wg sync.WaitGroup
+	defer wg.Wait()
 	wg.Add(1)
-	start := time.Now()
-	go fn(msg.Data, &wg)
-	wg.Wait()
-	l.Stats.AddProcessedDuration(time.Since(start))
-	l.Stats.AddProcessed(1)
+	go func() {
+		start := time.Now()
+		fn(msg, &wg)
+		l.Stats.AddProcessedDuration(time.Since(start))
+		l.Stats.AddProcessed(1)
+	}()
+
 	return nil
 }
 
-// RetrieveFn retrieves a message from the stream and dispatches it to the
-// supplied function.  RetrieveFn will wait until the function completes.
+// RetrieveFn retrieves a message from the stream and dispatches it to the supplied function.  RetrieveFn will wait
+// until the function completes.
 func (l *Listener) RetrieveFn(fn MessageFn) error {
 	return l.RetrieveFnWithContext(context.TODO(), fn)
 }
 
-// consume calls getRecords with configured batch size in a loop until the
-// listener is stopped.
+// consume calls getRecords with configured batch size in a loop until the listener is stopped.
 func (l *Listener) consume(ctx context.Context) {
-	// We need to run startConsuming to make sure that we are okay and ready
-	// to start consuming.  This is mainly to avoid a race condition where
-	// Listen() will attempt to read the messages channel prior to consume()
-	// initializing it.  We can then launch a goroutine to handle the actual
-	// consume operation.
-	if !l.startConsuming() {
-		return
-	}
+	// We need to run startConsuming to make sure that we are okay and ready to start consuming.  This is mainly to
+	// avoid a race condition where Listen() will attempt to read the messages channel prior to consume()
+	// initializing it.  We can then launch a goroutine to handle the actual consume operation.
+	if !l.startConsuming() { return }
 	go func() {
-		defer func() {
-			l.stopConsuming()
-		}()
-	stop:
+		defer l.stopConsuming()
+
 		for {
-			// The consume loop can be cancelled by a calling the
-			// cancellation function on the context or by closing
-			// the pipe of death.  Note that in the case of context
-			// cancellation, the getRecords call below will be
-			// allowed to complete (as getRecords does not regard
-			// context cancellation).  In the case of cancellation
-			// by pipe of death, however, the getRecords will
-			// immediately abort and allow the consume function to
-			// immediately abort as well.
-			ok, _ := l.shouldConsume(ctx)
-			if !ok {
-				break stop
+			// The consume loop can be cancelled by a calling the cancellation function on the context or by
+			// closing the pipe of death.  Note that in the case of context cancellation, the getRecords
+			// call below will be allowed to complete (as getRecords does not regard context cancellation).
+			// In the case of cancellation by pipe of death, however, the getRecords will immediately abort
+			// and allow the consume function to immediately abort as well.
+			if ok, _ := l.shouldConsume(ctx); !ok {
+				return
 			}
-			_, err := l.reader.GetRecords()
+
+			_, err := l.reader.GetRecords(context.TODO(),
+				func(msg *message.Message, wg *sync.WaitGroup) error {
+					defer wg.Done()
+					l.messages <- msg
+
+					return nil
+			})
 			if err != nil {
 				switch err := err.(type) {
 				case net.Error:
@@ -226,27 +213,23 @@ func (l *Listener) consume(ctx context.Context) {
 	}()
 }
 
-// ListenWithContext listens and delivers message to the supplied function.
-// Upon cancellation, Listen will stop the consumer loop and wait until the
-// messages channel is closed and all messages are delivered.
+// ListenWithContext listens and delivers message to the supplied function.  Upon cancellation, Listen will stop the
+// consumer loop and wait until the messages channel is closed and all messages are delivered.
 func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 	l.consume(ctx)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-stop:
 	for {
 		select {
 		case msg, ok := <-l.messages:
 			if !ok {
-				break stop
+				return
 			}
 			l.Stats.AddDelivered(1)
-			// For simplicity, did not do the pipe of death here.
-			// If POD is received, we may deliver a couple more
-			// messages (especially since select is random in which
-			// channel is read from).
-			l.concurrencySem <- Empty{}
+			// For simplicity, did not do the pipe of death here. If POD is received, we may deliver a
+			// couple more messages (especially since select is random in which channel is read from).
+			l.concurrencySem <- empty{}
 			wg.Add(1)
 			go func(msg *message.Message) {
 				defer func() {
@@ -255,7 +238,7 @@ stop:
 				var fnWg sync.WaitGroup
 				fnWg.Add(1)
 				start := time.Now()
-				fn(msg.Data, &fnWg)
+				fn(msg, &fnWg)
 				fnWg.Wait()
 				l.Stats.AddProcessedDuration(time.Since(start))
 				l.Stats.AddProcessed(1)
@@ -263,7 +246,7 @@ stop:
 			}(msg)
 		case <-l.pipeOfDeath:
 			l.LogInfo("ListenWithContext received pipe of death")
-			break stop
+			return
 		}
 	}
 }

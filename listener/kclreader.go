@@ -3,102 +3,61 @@ package listener
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"os"
 	"sync"
 
-	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/message"
 	"github.com/rewardStyle/kinetic/multilang"
+	"github.com/rewardStyle/kinetic/logging"
+	"github.com/aws/aws-sdk-go/aws"
 )
 
 type kclReaderOptions struct {
 	onInitCallbackFn       func() error
 	onCheckpointCallbackFn func() error
 	onShutdownCallbackFn   func() error
+	Stats                  StatsCollector
+
 }
 
 // KclReader handles the KCL Multilang Protocol to read records from KCL
 type KclReader struct {
 	*kclReaderOptions
-	throttleSem chan Empty
-	listener    *Listener
+	*logging.LogHelper
+
+	throttleSem chan empty
+	pipeOfDeath chan empty
 	scanner     *bufio.Scanner
 	reader      *bufio.Reader
-	mutex       *sync.Mutex
 	msgBuffer   []message.Message
-	ackPending  bool
 }
 
 // NewKclReader creates a new stream reader to read records from KCL
-func NewKclReader(fn ...func(*KclReaderConfig)) *KclReader {
-	config := NewKclReaderConfig()
+func NewKclReader(c *aws.Config, fn ...func(*KclReaderConfig)) (*KclReader, error) {
+	cfg := NewKclReaderConfig(c)
 	for _, f := range fn {
-		f(config)
+		f(cfg)
 	}
 	return &KclReader{
-		kclReaderOptions: config.kclReaderOptions,
-		throttleSem: make(chan Empty, 5),
+		kclReaderOptions: cfg.kclReaderOptions,
+		LogHelper: &logging.LogHelper{
+			LogLevel: cfg.LogLevel,
+			Logger:  cfg.AwsConfig.Logger,
+		},
+		throttleSem: make(chan empty, 5),
 		msgBuffer: []message.Message{},
-		mutex: &sync.Mutex{},
-	}
-}
-
-// AssociateListener associates the KCL stream reader to a listener
-func (r *KclReader) AssociateListener(l *Listener) error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	if r.listener != nil {
-		return errs.ErrListenerAlreadyAssociated
-	}
-	r.listener = l
-	return nil
-}
-
-// ensureClient will lazily ensure that we are reading from STDIN.
-func (r *KclReader) ensureClient() error {
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-	if r.scanner == nil {
-		if r.listener == nil {
-			return errs.ErrNilListener
-		}
-		r.scanner = bufio.NewScanner(os.Stdin)
-		r.reader = bufio.NewReader(os.Stdin)
-		go func() error {
-			return r.processAction()
-		}()
-	}
-	return nil
-}
-
-// GetRecord calls processRecords to attempt to put one message from message buffer to the listener's message
-// channel
-func (r *KclReader) GetRecord() (int, error) {
-	return r.processRecords(1)
-}
-
-// GetRecords calls processRecords to attempt to put all messages on the message buffer on the listener's
-// message channel
-func (r *KclReader) GetRecords() (int, error) {
-	return r.processRecords(-1)
+	}, nil
 }
 
 // processRecords is a helper method which loops through the message buffer and puts messages on the listener's
 // message channel.  After all the messages on the message buffer have been moved to the listener's message
 // channel, a message is sent (following the Multilang protocol) to acknowledge that the processRecords message
 // has been received / processed
-func (r *KclReader) processRecords(numRecords int) (int, error) {
-	if err := r.ensureClient(); err != nil {
-		return 0, err
-	}
-
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
-
+func (r *KclReader) processRecords(fn MessageFn, numRecords int) (int, error) {
 	// Define the batchSize
 	batchSize := 0;
 	if len(r.msgBuffer) > 0 {
@@ -110,16 +69,19 @@ func (r *KclReader) processRecords(numRecords int) (int, error) {
 	}
 
 	// Loop through the message buffer and put the correct number of messages on the listener's message channel
+	var wg sync.WaitGroup
 	for i := 0; i < batchSize; i++ {
-		r.listener.messages <- &r.msgBuffer[0]
+		wg.Add(1)
+		go fn(&r.msgBuffer[0], &wg)
 		r.msgBuffer = r.msgBuffer[1:]
 	}
+	wg.Wait()
 
 	// Send an acknowledgement that the 'ProcessRecords' message was received/processed
-	if len(r.msgBuffer) == 0 && r.ackPending {
+	if len(r.msgBuffer) == 0 {
 		err := r.sendMessage(multilang.NewStatusMessage(multilang.PROCESSRECORDS))
 		if err != nil {
-			r.listener.LogError(err)
+			r.LogError(err)
 			return batchSize, err
 		}
 	}
@@ -173,18 +135,9 @@ func (r *KclReader) processAction() error {
 			r.sendMessage(multilang.NewStatusMessage(multilang.SHUTDOWN))
 		case multilang.PROCESSRECORDS:
 			go func() error {
-				r.mutex.Lock()
-				defer r.mutex.Unlock()
-
-				if r.ackPending {
-					return errors.New("Received a processRecords action message from KCL " +
-						"unexpectedly")
-				}
-
 				for _, msg := range actionMessage.Records {
 					r.msgBuffer = append(r.msgBuffer, *msg.ToMessage())
 				}
-				r.ackPending = true;
 
 				return nil
 			}()
@@ -198,7 +151,7 @@ func (r *KclReader) processAction() error {
 func (r *KclReader) sendMessage(msg interface{}) error {
 	b, err := json.Marshal(msg)
 	if err != nil {
-		r.listener.LogError(err)
+		r.LogError(err)
 		return err
 	}
 
@@ -211,7 +164,7 @@ func (r *KclReader) onInit() error {
 	if r.onInitCallbackFn != nil {
 		err := r.onInitCallbackFn()
 		if err != nil {
-			r.listener.LogError(err)
+			r.LogError(err)
 			return err
 		}
 	}
@@ -222,7 +175,7 @@ func (r *KclReader) onCheckpoint() error {
 	if r.onCheckpointCallbackFn != nil {
 		err := r.onCheckpointCallbackFn()
 		if err != nil {
-			r.listener.LogError(err)
+			r.LogError(err)
 			return err
 		}
 	}
@@ -233,9 +186,21 @@ func (r *KclReader) onShutdown() error {
 	if r.onShutdownCallbackFn != nil {
 		err := r.onShutdownCallbackFn()
 		if err != nil {
-			r.listener.LogError(err)
+			r.LogError(err)
 			return err
 		}
 	}
 	return nil
+}
+
+// GetRecord calls processRecords to attempt to put one message from message buffer to the listener's message
+// channel
+func (r *KclReader) GetRecord(ctx context.Context,fn MessageFn) (int, error) {
+	return r.processRecords(fn, 1)
+}
+
+// GetRecords calls processRecords to attempt to put all messages on the message buffer on the listener's
+// message channel
+func (r *KclReader) GetRecords(ctx context.Context,fn MessageFn) (int, error) {
+	return r.processRecords(fn, -1)
 }
