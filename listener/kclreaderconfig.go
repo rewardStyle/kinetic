@@ -2,20 +2,19 @@ package listener
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic/config"
 )
 
 // KclReaderConfig is used to configure KclReader
 type KclReaderConfig struct {
-	*config.AwsOptions
 	*kclReaderOptions
+	AwsConfig *aws.Config
 	LogLevel aws.LogLevelType
 }
 
 // NewKclReaderConfig creates a new instance of KclReaderConfig
 func NewKclReaderConfig(cfg *aws.Config) *KclReaderConfig {
 	return &KclReaderConfig{
-		AwsOptions: config.NewAwsOptionsFromConfig(cfg),
+		AwsConfig: cfg,
 		kclReaderOptions: &kclReaderOptions{
 			Stats: &NilStatsCollector{},
 		},

@@ -2,20 +2,19 @@ package producer
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic/config"
 )
 
 // FirehoseWriterConfig is used to configure FirehoseWriter
 type FirehoseWriterConfig struct {
-	*config.AwsOptions
 	*firehoseWriterOptions
+	AwsConfig *aws.Config
 	LogLevel aws.LogLevelType
 }
 
 // NewFirehoseWriterConfig creates a new instance of FirehoseWriterConfig
 func NewFirehoseWriterConfig(cfg *aws.Config) *FirehoseWriterConfig {
 	return &FirehoseWriterConfig{
-		AwsOptions: config.NewAwsOptionsFromConfig(cfg),
+		AwsConfig: cfg,
 		firehoseWriterOptions: &firehoseWriterOptions{
 			Stats: &NilStatsCollector{},
 		},

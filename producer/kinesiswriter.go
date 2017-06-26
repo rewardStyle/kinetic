@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 
@@ -35,7 +36,7 @@ func NewKinesisWriter(c *aws.Config, stream string, fn ...func(*KinesisWriterCon
 	for _, f := range fn {
 		f(cfg)
 	}
-	sess, err := cfg.GetSession()
+	sess, err := session.NewSession(cfg.AwsConfig)
 	if err != nil {
 		return nil, err
 	}

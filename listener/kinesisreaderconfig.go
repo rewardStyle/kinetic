@@ -3,20 +3,19 @@ package listener
 import (
 	"time"
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic/config"
 )
 
 // KinesisReaderConfig is used to configure a KinesisReader
 type KinesisReaderConfig struct {
-	*config.AwsOptions
 	*kinesisReaderOptions
+	AwsConfig *aws.Config
 	LogLevel aws.LogLevelType
 }
 
 // NewKinesisReaderConfig creates a new instance of KinesisReaderConfig
 func NewKinesisReaderConfig(cfg *aws.Config) *KinesisReaderConfig {
 	return &KinesisReaderConfig{
-		AwsOptions:    config.NewAwsOptionsFromConfig(cfg),
+		AwsConfig: cfg,
 		kinesisReaderOptions: &kinesisReaderOptions{
 			batchSize:     10000,
 			shardIterator: NewShardIterator(),
