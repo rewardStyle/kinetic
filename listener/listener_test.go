@@ -61,7 +61,6 @@ func TestListener(t *testing.T) {
 		})
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)
-		//So(r.Session, ShouldNotBeNil)
 
 		l, err := NewListener(k.Session.Config, r, func(c *Config) {
 			c.SetQueueDepth(10)
@@ -76,10 +75,6 @@ func TestListener(t *testing.T) {
 			Convey("check that the reader was initialized with the correct stream name", func() {
 				So(r.stream, ShouldEqual, stream)
 			})
-
-			//Convey("check that the kinesis reader was initialized with an AWS session", func() {
-			//	So(r.Session, ShouldNotBeNil)
-			//})
 
 			Convey("check that the kinesis client was initialized correctly", func() {
 				So(r.client, ShouldNotBeNil)
@@ -190,6 +185,24 @@ func TestListener(t *testing.T) {
 			wg.Wait()
 		})
 
+		Convey("check that listen and retrieve can not be called concurrently", func(c C) {
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				ctx, cancel := context.WithTimeout(context.TODO(), 1000*time.Millisecond)
+				defer cancel()
+				l.ListenWithContext(ctx, func(msg *message.Message, wg *sync.WaitGroup) error {
+					defer wg.Done()
+					return nil
+				})
+				wg.Done()
+			}()
+			<-time.After(10 * time.Millisecond)
+			_, err := l.Retrieve()
+			So(err, ShouldEqual, errs.ErrAlreadyConsuming)
+			wg.Wait()
+		})
+
 		// TODO: Move this test to kinesisreader_test.go
 		Convey("check that throttle mechanism prevents more than 5 calls to get records", func() {
 			start := time.Now()
@@ -214,11 +227,12 @@ func TestListener(t *testing.T) {
 			_, err := putRecord(l, []byte(data))
 			So(err, ShouldBeNil)
 			err = l.RetrieveFn(func(msg *message.Message, wg *sync.WaitGroup) error {
+				defer wg.Done()
+
 				called = true
 				// Note that because this is called in a goroutine, we have to use
 				// the goconvey context
 				c.So(string(msg.Data), ShouldEqual, data)
-				wg.Done()
 
 				return nil
 			})

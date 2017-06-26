@@ -1,8 +1,10 @@
 package producer
 
 import (
+	"context"
 	"fmt"
 	"time"
+	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -49,14 +51,14 @@ func NewFirehoseWriter(c *aws.Config, stream string, fn ...func(*FirehoseWriterC
 }
 
 // PutRecords sends a batch of records to Firehose and returns a list of records that need to be retried.
-func (w *FirehoseWriter) PutRecords(messages []*message.Message) ([]*message.Message, error) {
+func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageFn) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
 	start := time.Now()
 	var records []*firehose.Record
 	for _, msg := range messages {
-		records = append(records, msg.MakeFirehoseRecord())
+		records = append(records, msg.ToFirehoseRecord())
 	}
 	req, resp := w.client.PutRecordBatchRequest(&firehose.PutRecordBatchInput{
 		DeliveryStreamName: aws.String(w.stream),
@@ -87,28 +89,30 @@ func (w *FirehoseWriter) PutRecords(messages []*message.Message) ([]*message.Mes
 	w.Stats.AddPutRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		w.LogError("Error putting records:", err.Error())
-		return nil, err
+		return err
 	}
 	w.Stats.AddPutRecordsDuration(time.Since(start))
 
 	if resp == nil {
-		return nil, errs.ErrNilPutRecordsResponse
+		return errs.ErrNilPutRecordsResponse
 	}
 	if resp.FailedPutCount == nil {
-		return nil, errs.ErrNilFailedRecordCount
+		return errs.ErrNilFailedRecordCount
 	}
 	attempted := len(messages)
 	failed := int(aws.Int64Value(resp.FailedPutCount))
 	sent := attempted - failed
 	w.LogDebug(fmt.Sprintf("Finished PutRecords request, %d records attempted, %d records successful, %d records failed, took %v\n", attempted, sent, failed, time.Since(start)))
 
-	var retries []*message.Message
-	var err error
+	var retries int
+	var wg sync.WaitGroup
 	for idx, record := range resp.RequestResponses {
 		if record.RecordId != nil {
 			// TODO: per-shard metrics
 			messages[idx].RecordID = record.RecordId
 		} else {
+			retries++
+
 			switch aws.StringValue(record.ErrorCode) {
 			case firehose.ErrCodeLimitExceededException:
 				w.Stats.AddProvisionedThroughputExceeded(1)
@@ -117,12 +121,14 @@ func (w *FirehoseWriter) PutRecords(messages []*message.Message) ([]*message.Mes
 			}
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
-			messages[idx].FailCount++
-			retries = append(retries, messages[idx])
+
+			wg.Add(1)
+			go fn(messages[idx], &wg)
 		}
 	}
-	if len(retries) > 0 {
-		err = errs.ErrRetryRecords
+	wg.Wait()
+	if retries > 0 {
+		return errs.ErrRetryRecords
 	}
-	return retries, err
+	return nil
 }

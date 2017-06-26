@@ -18,11 +18,20 @@ import (
 
 // StreamWriter is an interface that abstracts the differences in API between Kinesis and Firehose.
 type StreamWriter interface {
-	PutRecords(message []*message.Message) ([]*message.Message, error)
+	PutRecords(context.Context, []*message.Message, MessageFn) error
 }
 
 // empty is used a as a dummy type for counting semaphore channels.
 type empty struct{}
+
+// MessageFn defines the signature of a message handler used by Listen, RetrieveFn and their associated *WithContext
+// functions.  MessageFn accepts a WaitGroup so the function can be run as a blocking operation as opposed to
+// MessageFnAsync.
+type MessageFn func(*message.Message, *sync.WaitGroup) error
+
+// MessageFnAsync defines the signature of a message handler used by Listen, RetrieveFn and their associated
+// *WithContext functions.  MessageFnAsync is meant to be run asynchronously.
+type MessageFnAsync func(*message.Message) error
 
 type producerOptions struct {
 	batchSize        int
@@ -104,10 +113,27 @@ func (p *Producer) sendBatch(batch []*message.Message) {
 
 	attempts := 0
 	var retries []*message.Message
-	var err error
+
 stop:
 	for {
-		retries, err = p.writer.PutRecords(batch)
+		err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message, wg *sync.WaitGroup) error {
+			defer wg.Done()
+			var err error
+			if msg.FailCount < p.maxRetryAttempts {
+				msg.FailCount++
+				select {
+				case p.retries <- msg:
+				case <-p.pipeOfDeath:
+					err = errs.ErrPipeOfDeath
+				}
+			} else {
+				p.Stats.AddDroppedTotal(1)
+				p.Stats.AddDroppedRetries(1)
+			}
+			retries = append(retries, msg)
+
+			return err
+		})
 		failed := len(retries)
 		p.Stats.AddSent(len(batch) - failed)
 		p.Stats.AddFailed(failed)
@@ -151,32 +177,21 @@ stop:
 		// batch to be retried rather than retrying the batch as-is.  With this approach, we can kill the "stop"
 		// for loop, and set the entire batch to retries to allow the below code to handle retrying the
 		// messages.
-		attempts++
 		if attempts > p.maxRetryAttempts {
 			p.LogError(fmt.Sprintf("Dropping batch after %d failed attempts to deliver to stream", attempts))
-			p.Stats.AddDropped(len(batch))
+			p.Stats.AddDroppedTotal(len(batch))
+			p.Stats.AddDroppedRetries(len(batch))
 			break stop
 		}
+		attempts++
 
 		// Apply an exponential back-off before retrying
-		time.Sleep(time.Duration(attempts * attempts) * time.Second)
+		time.Sleep(time.Duration(attempts * 10) * time.Millisecond)
 	}
 	// This frees up another sendBatch to run to allow drainage of the messages / retry queue.  This should improve
 	// throughput as well as prevent a potential deadlock in which all batches are blocked on sending retries to the
 	// retries channel, and thus no batches are allowed to drain the retry channel.
 	<-p.concurrencySem
-	for _, msg := range retries {
-		if msg.FailCount < p.maxRetryAttempts {
-			msg.FailCount++
-			select {
-			case p.retries <- msg:
-			case <-p.pipeOfDeath:
-				return
-			}
-		} else {
-			p.Stats.AddDropped(1)
-		}
-	}
 }
 
 // produce calls the underlying writer's PutRecords implementation to deliver batches of messages to the target stream
@@ -291,7 +306,8 @@ func (p *Producer) TryToSend(msg *message.Message) error {
 	case p.messages <- msg:
 		return nil
 	default:
-		p.Stats.AddDropped(1)
+		p.Stats.AddDroppedTotal(1)
+		p.Stats.AddDroppedCapacity(1)
 		return errs.ErrDroppedMessage
 	}
 }

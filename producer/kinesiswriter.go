@@ -1,8 +1,10 @@
 package producer
 
 import (
+	"context"
 	"fmt"
 	"time"
+	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -49,14 +51,14 @@ func NewKinesisWriter(c *aws.Config, stream string, fn ...func(*KinesisWriterCon
 }
 
 // PutRecords sends a batch of records to Kinesis and returns a list of records that need to be retried.
-func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Message, error) {
+func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageFn) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
 	start := time.Now()
 	var records []*kinesis.PutRecordsRequestEntry
 	for _, msg := range messages {
-		records = append(records, msg.MakeRequestEntry())
+		records = append(records, msg.ToRequestEntry())
 	}
 	req, resp := w.client.PutRecordsRequest(&kinesis.PutRecordsInput{
 		StreamName: aws.String(w.stream),
@@ -87,29 +89,31 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 	w.Stats.AddPutRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		w.LogError("Error putting records:", err.Error())
-		return nil, err
+		return err
 	}
 	w.Stats.AddPutRecordsDuration(time.Since(start))
 
 	if resp == nil {
-		return nil, errs.ErrNilPutRecordsResponse
+		return errs.ErrNilPutRecordsResponse
 	}
 	if resp.FailedRecordCount == nil {
-		return nil, errs.ErrNilFailedRecordCount
+		return errs.ErrNilFailedRecordCount
 	}
 	attempted := len(messages)
 	failed := int(aws.Int64Value(resp.FailedRecordCount))
 	sent := attempted - failed
 	w.LogDebug(fmt.Sprintf("Finished PutRecords request, %d records attempted, %d records successful, %d records failed, took %v\n", attempted, sent, failed, time.Since(start)))
 
-	var retries []*message.Message
-	var err error
+	var retries int
+	var wg sync.WaitGroup
 	for idx, record := range resp.Records {
 		if record.SequenceNumber != nil && record.ShardId != nil {
 			// TODO: per-shard metrics
 			messages[idx].SequenceNumber = record.SequenceNumber
 			messages[idx].ShardID = record.ShardId
 		} else {
+			retries++
+
 			switch aws.StringValue(record.ErrorCode) {
 			case kinesis.ErrCodeProvisionedThroughputExceededException:
 				w.Stats.AddProvisionedThroughputExceeded(1)
@@ -118,12 +122,14 @@ func (w *KinesisWriter) PutRecords(messages []*message.Message) ([]*message.Mess
 			}
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
-			messages[idx].FailCount++
-			retries = append(retries, messages[idx])
+
+			wg.Add(1)
+			go fn(messages[idx], &wg)
 		}
 	}
-	if len(retries) > 0 {
-		err = errs.ErrRetryRecords
+	wg.Wait()
+	if retries > 0 {
+		return errs.ErrRetryRecords
 	}
-	return retries, err
+	return nil
 }

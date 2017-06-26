@@ -21,9 +21,14 @@ type StreamReader interface {
 // empty is used a as a dummy type for semaphore channels and the pipe of death channel.
 type empty struct{}
 
-// MessageFn defines the signature of a message handler used by Listen, RetrieveFn and their associated WithContext
-// functions.
+// MessageFn defines the signature of a message handler used by Listen, RetrieveFn and their associated *WithContext
+// functions.  MessageFn accepts a WaitGroup so the function can be run as a blocking operation as opposed to
+// MessageFnAsync.
 type MessageFn func(*message.Message, *sync.WaitGroup) error
+
+// MessageFnAsync defines the signature of a message handler used by Listen, RetrieveFn and their associated
+// *WithContext functions.  MessageFnAsync is meant to be run asynchronously.
+type MessageFnAsync func(*message.Message) error
 
 // listenerOptions is used to hold all of the configurable settings of a Listener object.
 type listenerOptions struct {
@@ -223,9 +228,7 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 	for {
 		select {
 		case msg, ok := <-l.messages:
-			if !ok {
-				return
-			}
+			if !ok { return }
 			l.Stats.AddDelivered(1)
 			// For simplicity, did not do the pipe of death here. If POD is received, we may deliver a
 			// couple more messages (especially since select is random in which channel is read from).

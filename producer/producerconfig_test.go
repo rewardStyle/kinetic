@@ -18,7 +18,9 @@ type DebugStatsCollector struct{}
 
 func (l *DebugStatsCollector) AddSent(int)                                    {}
 func (l *DebugStatsCollector) AddFailed(int)                                  {}
-func (l *DebugStatsCollector) AddDropped(int)                                 {}
+func (l *DebugStatsCollector) AddDroppedTotal(int)                                 {}
+func (l *DebugStatsCollector) AddDroppedCapacity(int)                                 {}
+func (l *DebugStatsCollector) AddDroppedRetries(int)                                 {}
 func (l *DebugStatsCollector) AddBatchSize(int)                               {}
 func (l *DebugStatsCollector) AddPutRecordsProvisionedThroughputExceeded(int) {}
 func (l *DebugStatsCollector) AddPutRecordsCalled(int)                        {}
