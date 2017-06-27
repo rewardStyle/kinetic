@@ -135,7 +135,7 @@ func (r *KinesisReader) throttle(sem chan empty) {
 // in turn call Close on the underlying HTTPResponse.Body.  The question is whether this actually shuts down the TCP
 // connection.  Worst case scenario is that our client Timeout eventually fires and closes the socket, but this can be
 // susceptible to FD exhaustion.
-func (r *KinesisReader) getRecords(ctx context.Context, fn MessageFn, batchSize int) (int, error) {
+func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batchSize int) (int, error) {
 	if err := r.ensureShardIterator(); err != nil {
 		return 0, err
 	}
@@ -239,6 +239,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageFn, batchSize 
 	// Send the GetRecords request
 	r.LogDebug("Starting GetRecords Build/Sign request, took", time.Since(start))
 	r.Stats.AddGetRecordsCalled(1)
+	//req.SetContext(ctx)
 	if err := req.Send(); err != nil {
 		r.LogError("Error getting records:", err)
 		switch err.(awserr.Error).Code() {
@@ -304,11 +305,11 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageFn, batchSize 
 }
 
 // GetRecord calls getRecords and delivers one record into the messages channel.
-func (r *KinesisReader) GetRecord(ctx context.Context, fn MessageFn) (int, error) {
+func (r *KinesisReader) GetRecord(ctx context.Context, fn MessageHandler) (int, error) {
 	return r.getRecords(ctx, fn, 1)
 }
 
 // GetRecords calls getRecords and delivers each record into the messages channel.
-func (r *KinesisReader) GetRecords(ctx context.Context, fn MessageFn) (int, error) {
+func (r *KinesisReader) GetRecords(ctx context.Context, fn MessageHandler) (int, error) {
 	return r.getRecords(ctx, fn, r.batchSize)
 }

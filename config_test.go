@@ -25,7 +25,7 @@ func TestNewConfig(t *testing.T) {
 		config := NewConfig()
 
 		Convey("check the default values for its non-zero config", func() {
-			So(config.AwsConfig.HTTPClient.Timeout, ShouldEqual, 10*time.Minute)
+			So(config.AwsConfig.HTTPClient.Timeout, ShouldEqual, 2*time.Minute)
 			So(config.AwsConfig.LogLevel.Value(), ShouldEqual, aws.LogOff)
 			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
 		})

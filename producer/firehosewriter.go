@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"time"
-	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -27,7 +26,7 @@ type FirehoseWriter struct {
 	*logging.LogHelper
 
 	stream string
-	client  firehoseiface.FirehoseAPI
+	client firehoseiface.FirehoseAPI
 }
 
 // NewFirehoseWriter creates a new stream writer to write records to a Kinesis.
@@ -52,7 +51,7 @@ func NewFirehoseWriter(c *aws.Config, stream string, fn ...func(*FirehoseWriterC
 }
 
 // PutRecords sends a batch of records to Firehose and returns a list of records that need to be retried.
-func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageFn) error {
+func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageHandlerAsync) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
@@ -106,7 +105,6 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 	w.LogDebug(fmt.Sprintf("Finished PutRecords request, %d records attempted, %d records successful, %d records failed, took %v\n", attempted, sent, failed, time.Since(start)))
 
 	var retries int
-	var wg sync.WaitGroup
 	for idx, record := range resp.RequestResponses {
 		if record.RecordId != nil {
 			// TODO: per-shard metrics
@@ -123,13 +121,9 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
 
-			wg.Add(1)
-			go fn(messages[idx], &wg)
+			go fn(messages[idx])
 		}
 	}
-	wg.Wait()
-	if retries > 0 {
-		return errs.ErrRetryRecords
-	}
+
 	return nil
 }

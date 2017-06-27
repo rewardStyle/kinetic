@@ -57,7 +57,7 @@ func NewKclReader(c *aws.Config, fn ...func(*KclReaderConfig)) (*KclReader, erro
 // message channel.  After all the messages on the message buffer have been moved to the listener's message
 // channel, a message is sent (following the Multilang protocol) to acknowledge that the processRecords message
 // has been received / processed
-func (r *KclReader) processRecords(fn MessageFn, numRecords int) (int, error) {
+func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, error) {
 	// Define the batchSize
 	batchSize := 0;
 	if len(r.msgBuffer) > 0 {
@@ -195,12 +195,12 @@ func (r *KclReader) onShutdown() error {
 
 // GetRecord calls processRecords to attempt to put one message from message buffer to the listener's message
 // channel
-func (r *KclReader) GetRecord(ctx context.Context,fn MessageFn) (int, error) {
+func (r *KclReader) GetRecord(ctx context.Context,fn MessageHandler) (int, error) {
 	return r.processRecords(fn, 1)
 }
 
 // GetRecords calls processRecords to attempt to put all messages on the message buffer on the listener's
 // message channel
-func (r *KclReader) GetRecords(ctx context.Context,fn MessageFn) (int, error) {
+func (r *KclReader) GetRecords(ctx context.Context,fn MessageHandler) (int, error) {
 	return r.processRecords(fn, -1)
 }

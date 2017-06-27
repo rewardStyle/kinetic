@@ -14,21 +14,25 @@ import (
 
 // StreamReader is an interface that abstracts out a stream reader.
 type StreamReader interface {
-	GetRecord(context.Context, MessageFn) (int, error)
-	GetRecords(context.Context, MessageFn) (int, error)
+	GetRecord(context.Context, MessageHandler) (int, error)
+	GetRecords(context.Context, MessageHandler) (int, error)
 }
 
 // empty is used a as a dummy type for semaphore channels and the pipe of death channel.
 type empty struct{}
 
-// MessageFn defines the signature of a message handler used by Listen, RetrieveFn and their associated *WithContext
-// functions.  MessageFn accepts a WaitGroup so the function can be run as a blocking operation as opposed to
-// MessageFnAsync.
-type MessageFn func(*message.Message, *sync.WaitGroup) error
+// MessageProcessor defines the signature of a message handler used by Listen, RetrieveFn and their associated
+// *WithContext functions.  MessageHandler accepts a WaitGroup so the function can be run as a blocking operation as
+// opposed to MessageHandlerAsync.
+type MessageProcessor func(*message.Message, *sync.WaitGroup) error
 
-// MessageFnAsync defines the signature of a message handler used by Listen, RetrieveFn and their associated
-// *WithContext functions.  MessageFnAsync is meant to be run asynchronously.
-type MessageFnAsync func(*message.Message) error
+// MessageHandler defines the signature of a message handler used by GetRecord() and GetRecords().  MessageHandler
+// accepts a WaitGroup so the function can be run as a blocking operation as opposed to MessageHandlerAsync.
+type MessageHandler func(*message.Message, *sync.WaitGroup) error
+
+// MessageHandlerAsync defines the signature of a message handler used by GetRecord() and GetRecords().
+// MessageHandlerAsync is meant to be run asynchronously.
+type MessageHandlerAsync func(*message.Message) error
 
 // listenerOptions is used to hold all of the configurable settings of a Listener object.
 type listenerOptions struct {
@@ -142,7 +146,7 @@ func (l *Listener) Retrieve() (*message.Message, error) {
 
 // RetrieveFnWithContext retrieves a message from the stream and dispatches it to the supplied function.  RetrieveFn
 // will wait until the function completes. Cancellation is supported through context.
-func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageFn) error {
+func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageProcessor) error {
 	msg, err := l.RetrieveWithContext(ctx)
 	if err != nil {
 		return err
@@ -163,7 +167,7 @@ func (l *Listener) RetrieveFnWithContext(ctx context.Context, fn MessageFn) erro
 
 // RetrieveFn retrieves a message from the stream and dispatches it to the supplied function.  RetrieveFn will wait
 // until the function completes.
-func (l *Listener) RetrieveFn(fn MessageFn) error {
+func (l *Listener) RetrieveFn(fn MessageProcessor) error {
 	return l.RetrieveFnWithContext(context.TODO(), fn)
 }
 
@@ -220,7 +224,7 @@ func (l *Listener) consume(ctx context.Context) {
 
 // ListenWithContext listens and delivers message to the supplied function.  Upon cancellation, Listen will stop the
 // consumer loop and wait until the messages channel is closed and all messages are delivered.
-func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
+func (l *Listener) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 	l.consume(ctx)
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -255,6 +259,6 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageFn) {
 }
 
 // Listen listens and delivers message to the supplied function.
-func (l *Listener) Listen(fn MessageFn) {
+func (l *Listener) Listen(fn MessageProcessor) {
 	l.ListenWithContext(context.TODO(), fn)
 }

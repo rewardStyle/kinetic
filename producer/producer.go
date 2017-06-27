@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -18,20 +19,19 @@ import (
 
 // StreamWriter is an interface that abstracts the differences in API between Kinesis and Firehose.
 type StreamWriter interface {
-	PutRecords(context.Context, []*message.Message, MessageFn) error
+	PutRecords(context.Context, []*message.Message, MessageHandlerAsync) error
 }
 
 // empty is used a as a dummy type for counting semaphore channels.
 type empty struct{}
 
-// MessageFn defines the signature of a message handler used by Listen, RetrieveFn and their associated *WithContext
-// functions.  MessageFn accepts a WaitGroup so the function can be run as a blocking operation as opposed to
-// MessageFnAsync.
-type MessageFn func(*message.Message, *sync.WaitGroup) error
+// MessageHandler defines the signature of a message handler used by PutRecords().  MessageHandler accepts a WaitGroup
+// so the function can be run as a blocking operation as opposed to MessageHandlerAsync.
+type MessageHandler func(*message.Message, *sync.WaitGroup) error
 
-// MessageFnAsync defines the signature of a message handler used by Listen, RetrieveFn and their associated
-// *WithContext functions.  MessageFnAsync is meant to be run asynchronously.
-type MessageFnAsync func(*message.Message) error
+// MessageHandlerAsync defines the signature of a message handler used by PutRecords().  MessageHandlerAsync is meant to
+// be run asynchronously.
+type MessageHandlerAsync func(*message.Message) error
 
 type producerOptions struct {
 	batchSize        int
@@ -86,9 +86,8 @@ func (p *Producer) startProducing() bool {
 		p.producing = true
 		p.messages = make(chan *message.Message, p.queueDepth)
 		p.retries = make(chan *message.Message, p.queueDepth)
-		p.shutdownCond = &sync.Cond{L: &sync.Mutex{}}
+		p.shutdownCond = sync.NewCond(new(sync.Mutex))
 		p.producerWg = new(sync.WaitGroup)
-		p.outstanding = 0
 		return true
 	}
 	return false
@@ -111,35 +110,34 @@ func (p *Producer) sendBatch(batch []*message.Message) {
 		p.shutdownCond.L.Unlock()
 	}()
 
-	attempts := 0
-	var retries []*message.Message
+	var attempts int
+	var failed uint64
 
 stop:
 	for {
-		err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message, wg *sync.WaitGroup) error {
-			defer wg.Done()
-			var err error
+		err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
 			if msg.FailCount < p.maxRetryAttempts {
 				msg.FailCount++
 				select {
 				case p.retries <- msg:
+					atomic.AddUint64(&failed, 1)
 				case <-p.pipeOfDeath:
-					err = errs.ErrPipeOfDeath
+					return errs.ErrPipeOfDeath
 				}
 			} else {
 				p.Stats.AddDroppedTotal(1)
 				p.Stats.AddDroppedRetries(1)
 			}
-			retries = append(retries, msg)
 
-			return err
+			return nil
 		})
-		failed := len(retries)
-		p.Stats.AddSent(len(batch) - failed)
-		p.Stats.AddFailed(failed)
-		if err == nil && failed == 0 {
+		p.Stats.AddSent(len(batch) - int(failed))
+		p.Stats.AddFailed(int(failed))
+		if err == nil {
 			break stop
 		}
+
+		// The call failed so we need to retry the batch
 		switch err := err.(type) {
 		case net.Error:
 			if err.Timeout() {
@@ -185,7 +183,7 @@ stop:
 		}
 		attempts++
 
-		// Apply an exponential back-off before retrying
+		// Apply a delay before retrying
 		time.Sleep(time.Duration(attempts * 10) * time.Millisecond)
 	}
 	// This frees up another sendBatch to run to allow drainage of the messages / retry queue.  This should improve
@@ -213,11 +211,9 @@ func (p *Producer) produce() {
 		batch:
 			for len(batch) <= p.batchSize {
 				select {
-				// Using the select, retry messages will
-				// interleave with new messages.  This is
-				// preferable to putting the messages at the end
-				// of the channel as it minimizes the delay in
-				// the delivery of retry messages.
+				// Using the select, retry messages will interleave with new messages.  This is
+				// preferable to putting the messages at the end of the channel as it minimizes the
+				// delay in the delivery of retry messages.
 				case msg, ok := <-p.messages:
 					if !ok {
 						p.messages = nil
