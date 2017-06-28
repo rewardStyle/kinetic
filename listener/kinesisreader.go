@@ -21,10 +21,10 @@ import (
 
 // kinesisReaderOptions is used to hold all of the configurable settings of a KinesisReader.
 type kinesisReaderOptions struct {
-	batchSize     int
-	shardIterator *ShardIterator
-	readTimeout   time.Duration
-	Stats         StatsCollector
+	batchSize           int
+	shardIterator       *ShardIterator
+	responseReadTimeout time.Duration
+	Stats               StatsCollector
 }
 
 // KinesisReader handles the API to read records from Kinesis.
@@ -152,6 +152,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		Limit:         aws.Int64(int64(batchSize)),
 		ShardIterator: aws.String(r.nextShardIterator),
 	})
+	req.ApplyOptions(request.WithResponseReadTimeout(r.responseReadTimeout))
 
 	// If debug is turned on, add some handlers for GetRecords logging
 	if r.LogLevel.AtLeast(logging.LogDebug) {
@@ -168,60 +169,15 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 	//
 	// The Unmarshal handler will ultimately call ioutil.ReadAll() on the HTTPResponse.Body stream.
 	//
-	// Our handler wraps the HTTPResponse.Body with our own ReadCloser so that we can implement a timeout mechanism
-	// on the Read() call (which is called by the ioutil.ReadAll() function)
+	// Our handler wraps the HTTPResponse.Body with our own ReadCloser so that we can implement stats collection
 	req.Handlers.Unmarshal.PushFront(func(req *request.Request) {
 		r.LogDebug("Started getRecords Unmarshal, took", time.Since(start))
-		// Here, we set a timer that the initial Read() call on HTTPResponse.Body must return by.  Note that the
-		// normal http.Client Timeout is still in effect.
 		startReadTime = time.Now()
-		timer := time.NewTimer(r.readTimeout)
 
 		req.HTTPResponse.Body = &ReadCloserWrapper{
 			ReadCloser: req.HTTPResponse.Body,
-			OnReadFn: func(stream io.ReadCloser, b []byte) (n int, err error) {
-				// The OnReadFn will be called each time ioutil.ReadAll calls Read on the
-				// ReadCloserWrapper.
-
-				// First, we set up a struct that to hold the results of the Read() call that can go
-				// through a channel
-				type Result struct {
-					n   int
-					err error
-				}
-
-				// Next, we build a channel with which to pass the Read() results
-				c := make(chan Result, 1)
-
-				// Now, we call the Read() on the HTTPResponse.Body in a goroutine and feed the results
-				// into the channel
-				readStart := time.Now()
-				go func() {
-					var result Result
-					result.n, result.err = stream.Read(b)
-					c <- result
-				}()
-
-				// Finally, we poll for the Read() to complete or the timer to elapse.
-				select {
-				case result := <-c:
-					// If we sucessfully Read() from the HTTPResponse.Body, we reset our timeout and
-					// return the results from the Read()
-					timer.Reset(r.readTimeout)
-					n, err = result.n, result.err
-					r.LogDebug(fmt.Sprintf("getRecords read %d bytes, took %v", n, time.Since(readStart)))
-				case <-timer.C:
-					// If we timeout, we return an error that will unblock ioutil.ReadAll(). This
-					// will cause the Unmarshal handler to return an error.  This error will
-					// propogate to the original req.Send() call (below)
-					r.LogDebug(fmt.Sprintf("getRecords read timed out after %v", time.Since(readStart)))
-					err = errs.ErrTimeoutReadResponseBody
-				case <-ctx.Done():
-					// The pipe of death will abort any pending reads on a GetRecords call.
-					r.LogDebug(fmt.Sprintf("getRecords received ctx.Done() after %v", time.Since(readStart)))
-					err = ctx.Err()
-				}
-				return
+			OnReadFn: func(stream io.ReadCloser, b []byte) (int, error) {
+				return stream.Read(b)
 			},
 			OnCloseFn: func() {
 				r.Stats.AddGetRecordsReadResponseDuration(time.Since(startReadTime))
@@ -239,7 +195,6 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 	// Send the GetRecords request
 	r.LogDebug("Starting GetRecords Build/Sign request, took", time.Since(start))
 	r.Stats.AddGetRecordsCalled(1)
-	//req.SetContext(ctx)
 	if err := req.Send(); err != nil {
 		r.LogError("Error getting records:", err)
 		switch err.(awserr.Error).Code() {

@@ -1,6 +1,8 @@
 package producer
 
 import (
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 )
 
@@ -16,10 +18,16 @@ func NewKinesisWriterConfig(cfg *aws.Config) *KinesisWriterConfig {
 	return &KinesisWriterConfig{
 		AwsConfig: cfg,
 		kinesisWriterOptions: &kinesisWriterOptions{
+			responseReadTimeout: time.Second,
 			Stats: &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
 	}
+}
+
+// SetResponseReadTimeout configures the time to wait for each successive Read operation on the GetRecords response payload.
+func (c *KinesisWriterConfig) SetResponseReadTimeout(timeout time.Duration) {
+	c.responseReadTimeout = timeout
 }
 
 // SetStatsCollector configures a listener to handle listener metrics.

@@ -17,7 +17,8 @@ import (
 )
 
 type kinesisWriterOptions struct {
-	Stats  StatsCollector
+	responseReadTimeout time.Duration
+	Stats               StatsCollector
 }
 
 // KinesisWriter handles the API to send records to Kinesis.
@@ -64,6 +65,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 		StreamName: aws.String(w.stream),
 		Records:    records,
 	})
+	req.ApplyOptions(request.WithResponseReadTimeout(w.responseReadTimeout))
 
 	req.Handlers.Build.PushFront(func(r *request.Request) {
 		startBuildTime = time.Now()

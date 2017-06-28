@@ -55,7 +55,7 @@ func TestProducer(t *testing.T) {
 		So(k.Session.Config, ShouldNotBeNil)
 		r, err := listener.NewKinesisReader(k.Session.Config, stream, shards[0],
 			func(krc *listener.KinesisReaderConfig) {
-				krc.SetReadTimeout(1000 * time.Millisecond)
+				krc.SetResponseReadTimeout(1000 * time.Millisecond)
 		})
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)

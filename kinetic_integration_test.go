@@ -132,6 +132,7 @@ func TestKineticIntegration(t *testing.T) {
 	// Create a new kinesis stream writer
 	w, err := producer.NewKinesisWriter(k.Session.Config, stream, func(kwc *producer.KinesisWriterConfig) {
 		kwc.SetLogLevel(aws.LogDebug)
+		kwc.SetResponseReadTimeout(time.Second)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
@@ -149,7 +150,7 @@ func TestKineticIntegration(t *testing.T) {
 	assert.NotNil(t, k.Session.Config)
 	r, err := listener.NewKinesisReader(k.Session.Config, stream, shards[0],
 		func(krc *listener.KinesisReaderConfig) {
-			krc.SetReadTimeout(1000 * time.Millisecond)
+			krc.SetResponseReadTimeout(time.Second)
 	})
 	assert.NotNil(t, r)
 	assert.NoError(t, err)

@@ -325,6 +325,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 
 	w, err := producer.NewKinesisWriter(k.Session.Config, streamName, func(kwc *producer.KinesisWriterConfig) {
 		kwc.SetLogLevel(aws.LogDebug)
+		kwc.SetResponseReadTimeout(time.Second)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
@@ -354,7 +355,7 @@ func newKineticListener(k *kinetic.Kinetic, streamName string) *listener.Listene
 
 	r, err := listener.NewKinesisReader(k.Session.Config, streamName, shards[0],
 		func(krc *listener.KinesisReaderConfig) {
-			krc.SetReadTimeout(1000 * time.Millisecond)
+			krc.SetResponseReadTimeout(1000 * time.Millisecond)
 	})
 
 	l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {

@@ -2,6 +2,7 @@ package listener
 
 import (
 	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 )
 
@@ -17,10 +18,10 @@ func NewKinesisReaderConfig(cfg *aws.Config) *KinesisReaderConfig {
 	return &KinesisReaderConfig{
 		AwsConfig: cfg,
 		kinesisReaderOptions: &kinesisReaderOptions{
-			batchSize:     10000,
+			batchSize: 10000,
 			shardIterator: NewShardIterator(),
-			readTimeout:   time.Second,
-			Stats:         &NilStatsCollector{},
+			responseReadTimeout: time.Second,
+			Stats: &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
 	}
@@ -37,9 +38,9 @@ func (c *KinesisReaderConfig) SetInitialShardIterator(shardIterator *ShardIterat
 	c.shardIterator = shardIterator
 }
 
-// SetReadTimeout configures the time to wait for each successive Read operation on the GetRecords response payload.
-func (c *KinesisReaderConfig) SetReadTimeout(timeout time.Duration) {
-	c.readTimeout = timeout
+// SetResponseReadTimeout configures the time to wait for each successive Read operation on the GetRecords response payload.
+func (c *KinesisReaderConfig) SetResponseReadTimeout(timeout time.Duration) {
+	c.responseReadTimeout = timeout
 }
 
 // SetStatsCollector configures a listener to handle listener metrics.

@@ -115,6 +115,9 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 		return nil, errs.ErrAlreadyConsuming
 	}
 	defer l.stopConsuming()
+
+	childCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	for {
 		// A cancellation or closing the pipe of death will cause Retrieve (and related functions) to abort in
 		// between getRecord calls.  Note, that this would only occur when there are no new records to retrieve.
@@ -123,7 +126,7 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 		if !ok {
 			return nil, err
 		}
-		n, err := l.reader.GetRecord(context.TODO(), func(msg *message.Message, wg *sync.WaitGroup) error {
+		n, err := l.reader.GetRecord(childCtx, func(msg *message.Message, wg *sync.WaitGroup) error {
 			defer wg.Done()
 			l.messages <- msg
 
@@ -180,6 +183,8 @@ func (l *Listener) consume(ctx context.Context) {
 	go func() {
 		defer l.stopConsuming()
 
+		childCtx, cancel := context.WithCancel(ctx)
+		defer cancel()
 		for {
 			// The consume loop can be cancelled by a calling the cancellation function on the context or by
 			// closing the pipe of death.  Note that in the case of context cancellation, the getRecords
@@ -190,7 +195,7 @@ func (l *Listener) consume(ctx context.Context) {
 				return
 			}
 
-			_, err := l.reader.GetRecords(context.TODO(),
+			_, err := l.reader.GetRecords(childCtx,
 				func(msg *message.Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					l.messages <- msg
