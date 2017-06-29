@@ -129,12 +129,6 @@ func (r *KinesisReader) throttle(sem chan empty) {
 	})
 }
 
-// FIXME: Need to investigate that the timeout implementation doesn't result in an fd leak.  Since we call Read on the
-// HTTPResonse.Body in a select with a timeout channel, we do prevent ourself from blocking.  Once we timeout, we return
-// an error to the outer ioutil.ReadAll, which should result in a call to our io.ReadCloser's Close function.  This will
-// in turn call Close on the underlying HTTPResponse.Body.  The question is whether this actually shuts down the TCP
-// connection.  Worst case scenario is that our client Timeout eventually fires and closes the socket, but this can be
-// susceptible to FD exhaustion.
 func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batchSize int) (int, error) {
 	if err := r.ensureShardIterator(); err != nil {
 		return 0, err

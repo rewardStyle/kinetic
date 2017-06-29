@@ -67,13 +67,15 @@ func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, erro
 			batchSize = int(math.Min(float64(len(r.msgBuffer)), float64(numRecords)))
 		}
 	}
+	r.Stats.AddBatchSize(batchSize)
 
-	// Loop through the message buffer and put the correct number of messages on the listener's message channel
+	// Loop through the message buffer and call the message handler function on each message
 	var wg sync.WaitGroup
 	for i := 0; i < batchSize; i++ {
 		wg.Add(1)
 		go fn(&r.msgBuffer[0], &wg)
 		r.msgBuffer = r.msgBuffer[1:]
+		r.Stats.AddConsumed(1)
 	}
 	wg.Wait()
 
@@ -195,12 +197,12 @@ func (r *KclReader) onShutdown() error {
 
 // GetRecord calls processRecords to attempt to put one message from message buffer to the listener's message
 // channel
-func (r *KclReader) GetRecord(ctx context.Context,fn MessageHandler) (int, error) {
+func (r *KclReader) GetRecord(ctx context.Context, fn MessageHandler) (int, error) {
 	return r.processRecords(fn, 1)
 }
 
 // GetRecords calls processRecords to attempt to put all messages on the message buffer on the listener's
 // message channel
-func (r *KclReader) GetRecords(ctx context.Context,fn MessageHandler) (int, error) {
+func (r *KclReader) GetRecords(ctx context.Context, fn MessageHandler) (int, error) {
 	return r.processRecords(fn, -1)
 }

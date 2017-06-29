@@ -154,7 +154,6 @@ func TestKineticIntegration(t *testing.T) {
 	})
 	assert.NotNil(t, r)
 	assert.NoError(t, err)
-	//assert.NotNil(t, r.Session)
 
 	// Create a new kinetic listener
 	l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {

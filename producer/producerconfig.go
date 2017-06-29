@@ -1,10 +1,12 @@
 package producer
 
 import (
+	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/rewardStyle/kinetic/config"
+	"github.com/rewardStyle/kinetic/errs"
 )
 
 // Config is used to configure a Producer instance.
@@ -32,7 +34,13 @@ func NewConfig(cfg *aws.Config) *Config {
 
 // SetBatchSize configures the batch size to flush pending records to the PutRecords call.
 func (c *Config) SetBatchSize(batchSize int) {
-	c.batchSize = batchSize
+	if batchSize > 0 && batchSize <= 500 {
+		c.batchSize = batchSize
+	} else {
+		// http://docs.aws.amazon.com/firehose/latest/APIReference/API_PutRecordBatch.html
+		log.Fatal("BatchSize must be less than or equal to 500 ")
+		panic(errs.ErrInvalidBatchSize)
+	}
 }
 
 // SetBatchTimeout configures the timeout to flush pending records to the PutRecords call.

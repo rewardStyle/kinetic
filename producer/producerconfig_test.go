@@ -75,8 +75,8 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set the batch size", func() {
-			cfg.SetBatchSize(1000)
-			So(cfg.batchSize, ShouldEqual, 1000)
+			cfg.SetBatchSize(100)
+			So(cfg.batchSize, ShouldEqual, 100)
 		})
 
 		Convey("check that we can set the batch timeout", func() {

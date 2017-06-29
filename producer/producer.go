@@ -209,7 +209,7 @@ func (p *Producer) produce() {
 			var batch []*message.Message
 			timer := time.After(p.batchTimeout)
 		batch:
-			for len(batch) <= p.batchSize {
+			for len(batch) < p.batchSize {
 				select {
 				// Using the select, retry messages will interleave with new messages.  This is
 				// preferable to putting the messages at the end of the channel as it minimizes the

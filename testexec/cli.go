@@ -3,10 +3,12 @@ package main
 import (
 	"flag"
 	"log"
+	"strings"
 )
 
 // Config is a data structure used to hold this program's configuration info
 type Config struct {
+	Mode       *string
 	Location   *string
 	StreamName *string
 	NumMsgs    *int
@@ -18,6 +20,7 @@ type Config struct {
 func parseCommandLineArgs() *Config {
 
 	// Define command line flags
+	modePtr := flag.String("mode", "write", "used to specify the mode in which to run; either read or write")
 	locationPtr := flag.String("location", "local", "used to specify the location of the kinesis stream.  " +
 		"Accepted values are (local|aws).  For local, run kinesalite on http://127.0.0.1:4567. For aws, your " +
 		"aws credentials and configuration need to be defined at ~/.aws")
@@ -47,7 +50,18 @@ func parseCommandLineArgs() *Config {
 		durationPtr = nil
 	}
 
+	var mode string
+	switch strings.ToLower(*modePtr) {
+	case "read":
+		fallthrough
+	case "write":
+		mode = strings.ToLower(*modePtr)
+	default:
+		log.Fatal("Mode must be defined as either 'read' or 'write'")
+	}
+
 	return &Config{
+		Mode: &mode,
 		StreamName: streamNamePtr,
 		Duration: durationPtr,
 		NumMsgs: numMsgsPtr,
@@ -60,6 +74,7 @@ func parseCommandLineArgs() *Config {
 func (c *Config) printConfigs() {
 	if *c.Verbose {
 		log.Println("Command Line Arguments:")
+		log.Println("-mode: ", *c.Mode)
 		log.Println("-location: ", *c.Location)
 		log.Println("-stream-name: ", *c.StreamName)
 		if c.NumMsgs != nil {

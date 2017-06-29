@@ -332,7 +332,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 	}
 
 	p, err := producer.NewProducer(k.Session.Config, w, func(c *producer.Config) {
-		c.SetBatchSize(5)
+		c.SetBatchSize(500)
 		c.SetBatchTimeout(1000 * time.Millisecond)
 	})
 	if err != nil {

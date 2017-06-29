@@ -68,12 +68,6 @@ func TestNewConfig(t *testing.T) {
 			So(config.concurrency, ShouldEqual, 50)
 		})
 
-		//TODO: Move this test to kinesisreaderconfig_test.go
-		//Convey("check that we can set the read timeout for the GetRecords request", func() {
-		//	config.SetReadTimeout(10 * time.Second)
-		//	So(config.readTimeout, ShouldEqual, 10*time.Second)
-		//})
-
 		Convey("check that we can configure a stats collector", func() {
 			config.SetStatsCollector(&DebugStatsCollector{})
 			So(config.Stats, ShouldHaveSameTypeAs, &DebugStatsCollector{})

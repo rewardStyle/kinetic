@@ -314,8 +314,6 @@ func TestListener(t *testing.T) {
 			Printf("(count was %d)", atomic.LoadInt64(&count))
 		})
 
-		// TODO: test get records read timeout
-
 		Reset(func() {
 			k.DeleteStream(stream)
 			k.WaitUntilStreamDeleted(context.TODO(), stream, request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
