@@ -2,21 +2,20 @@ package listener
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic/config"
 	"github.com/rewardStyle/kinetic/logging"
 )
 
 // Config is used to configure a Listener instance
 type Config struct {
-	*config.AwsOptions
 	*listenerOptions
+	AwsConfig *aws.Config
 	LogLevel aws.LogLevelType
 }
 
 // NewConfig creates a new instance of Config
 func NewConfig(cfg *aws.Config) *Config {
 	return &Config{
-		AwsOptions: config.NewAwsOptionsFromConfig(cfg),
+		AwsConfig: cfg,
 		listenerOptions: &listenerOptions{
 			queueDepth:  10000,
 			concurrency: 10000,
@@ -44,7 +43,5 @@ func (c *Config) SetStatsCollector(stats StatsCollector) {
 
 // SetLogLevel configures both the SDK and Kinetic log levels.
 func (c *Config) SetLogLevel(logLevel aws.LogLevelType) {
-	// TODO: Do we want to change the AWS log level?
-	c.AwsOptions.SetLogLevel(logLevel)
 	c.LogLevel = logLevel & 0xffff0000
 }

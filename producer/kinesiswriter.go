@@ -120,6 +120,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 			}
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
+			messages[idx].FailCount++
 
 			go fn(messages[idx])
 		}

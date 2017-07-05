@@ -25,13 +25,6 @@ func DefaultAwsOptions() *AwsOptions {
 	}
 }
 
-// NewAwsOptionsFromConfig initializes a new AwsOption from an existing aws Config
-func NewAwsOptionsFromConfig(c *aws.Config) *AwsOptions {
-	return &AwsOptions{
-		AwsConfig: c,
-	}
-}
-
 // SetCredentials configures AWS credentials.
 func (c *AwsOptions) SetCredentials(accessKey, secretKey, sessionToken string) {
 	c.AwsConfig.WithCredentials(

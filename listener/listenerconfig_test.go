@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/logging"
 )
@@ -27,13 +26,6 @@ func (l *DebugStatsCollector) AddGetRecordsDuration(time.Duration)             {
 func (l *DebugStatsCollector) AddGetRecordsReadResponseDuration(time.Duration) {}
 func (l *DebugStatsCollector) AddGetRecordsUnmarshalDuration(time.Duration)    {}
 
-func getSession(config *Config) *session.Session {
-	sess, err := config.GetSession()
-	So(err, ShouldBeNil)
-	So(sess, ShouldNotBeNil)
-	return sess
-}
-
 func TestNewConfig(t *testing.T) {
 	Convey("given a new listener config", t, func() {
 		k, err := kinetic.New(func(c *kinetic.Config) {
@@ -50,16 +42,9 @@ func TestNewConfig(t *testing.T) {
 			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
 		})
 
-		Convey("check that we can retrieve an aws.Session from it ", func() {
-			getSession(config)
-		})
-
 		Convey("check that we can set both the sdk and kinetic log level", func() {
 			ll := aws.LogDebug | aws.LogDebugWithSigning | logging.LogDebug
 			config.SetLogLevel(ll)
-			sess := getSession(config)
-			So(sess.Config.LogLevel.AtLeast(aws.LogDebug), ShouldBeTrue)
-			So(sess.Config.LogLevel.Matches(aws.LogDebugWithSigning), ShouldBeTrue)
 			So(config.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
 		})
 

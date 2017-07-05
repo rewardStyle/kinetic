@@ -116,8 +116,10 @@ func (p *Producer) sendBatch(batch []*message.Message) {
 stop:
 	for {
 		err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
-			if msg.FailCount < p.maxRetryAttempts {
-				msg.FailCount++
+			if msg.FailCount <= p.maxRetryAttempts {
+				// Apply a delay before retrying
+				time.Sleep(time.Duration(msg.FailCount * msg.FailCount) * time.Second)
+
 				select {
 				case p.retries <- msg:
 					atomic.AddUint64(&failed, 1)
@@ -184,11 +186,12 @@ stop:
 		attempts++
 
 		// Apply a delay before retrying
-		time.Sleep(time.Duration(attempts * 10) * time.Millisecond)
+		time.Sleep(time.Duration(attempts * attempts) * time.Second)
 	}
-	// This frees up another sendBatch to run to allow drainage of the messages / retry queue.  This should improve
-	// throughput as well as prevent a potential deadlock in which all batches are blocked on sending retries to the
-	// retries channel, and thus no batches are allowed to drain the retry channel.
+
+	// This frees up another sendBatch to run to allow drainage of the messages / retry queue.  This should
+	// improve throughput as well as prevent a potential deadlock in which all batches are blocked on
+	// sending retries to the retries channel, and thus no batches are allowed to drain the retry channel.
 	<-p.concurrencySem
 }
 

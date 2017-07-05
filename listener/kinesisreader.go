@@ -3,7 +3,6 @@ package listener
 import (
 	"context"
 	"fmt"
-	"io"
 	"sync"
 	"time"
 
@@ -170,9 +169,6 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 
 		req.HTTPResponse.Body = &ReadCloserWrapper{
 			ReadCloser: req.HTTPResponse.Body,
-			OnReadFn: func(stream io.ReadCloser, b []byte) (int, error) {
-				return stream.Read(b)
-			},
 			OnCloseFn: func() {
 				r.Stats.AddGetRecordsReadResponseDuration(time.Since(startReadTime))
 				r.LogDebug("Finished GetRecords body read, took", time.Since(start))

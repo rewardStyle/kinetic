@@ -11,6 +11,7 @@ import (
 	"os/user"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -20,18 +21,41 @@ import (
 	"github.com/rewardStyle/kinetic/listener"
 	"github.com/rewardStyle/kinetic/message"
 	"github.com/rewardStyle/kinetic/producer"
+
+	_ "net/http/pprof"
+	"net/http"
+)
+
+// Define constants for Kinesis stream location
+const (
+	LocationLocal = "local"
+	LocationAws = "aws"
+)
+
+// Define operation modes
+const (
+	ModeRead = "read"
+	ModeWrite = "write"
+	ModeReadWrite = "readwrite"
 )
 
 // Declare global variables
+var streamName string
 var startTime time.Time
 var streamStart time.Time
 var streamStop time.Time
 var pipeOfDeath chan os.Signal
 var stopDisplay chan struct{}
-var stopProducing chan struct{}
-var config *Config
+var stopProduce chan struct{}
+var stopListen chan struct{}
+var cfg *Config
 
 func init() {
+	// Set up Http server for pprof
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
 	// Start the stopwatch
 	startTime = time.Now()
 
@@ -41,25 +65,26 @@ func init() {
 	// Instantiate channels for communicating between threads
 	pipeOfDeath = make(chan os.Signal, 1)
 	stopDisplay = make(chan struct{}, 1)
-	stopProducing = make(chan struct{}, 1)
+	stopProduce = make(chan struct{}, 1)
+	stopListen = make(chan struct{}, 1)
 
 	// Set up pipeOfDeath channel to receive os signals
 	signal.Notify(pipeOfDeath, os.Interrupt)
 }
 
-func cleanup(k *kinetic.Kinetic, streamName string) {
-	if *config.Cleanup {
-		if *config.Verbose {
+func cleanup(k *kinetic.Kinetic, stream string) {
+	if *cfg.Cleanup {
+		if *cfg.Verbose {
 			log.Println()
-			log.Printf("Cleaning up by deleting stream [%s] ...\n", streamName)
+			log.Printf("Cleaning up by deleting stream [%s] ...\n", stream)
 		}
-		k.DeleteStream(streamName)
-		if *config.Verbose {
-			log.Printf("Waiting for stream [%s] to be deleted ...\n", streamName)
+		k.DeleteStream(stream)
+		if *cfg.Verbose {
+			log.Printf("Waiting for stream [%s] to be deleted ...\n", stream)
 		}
-		k.WaitUntilStreamDeleted(context.TODO(), streamName,
+		k.WaitUntilStreamDeleted(context.TODO(), stream,
 			request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
-		if *config.Verbose {
+		if *cfg.Verbose {
 			log.Println("Clean up complete")
 			log.Println()
 		}
@@ -68,28 +93,29 @@ func cleanup(k *kinetic.Kinetic, streamName string) {
 
 func main() {
 	// Process command line arguments
-	config = parseCommandLineArgs()
-	config.printConfigs()
+	cfg = parseCommandLineArgs()
+	cfg.printConfigs()
 
 	// Instantiate a new kinetic object based on the location of the kinesis stream
 	var k *kinetic.Kinetic
-	switch strings.ToLower(*config.Location) {
-	case "local":
+	switch strings.ToLower(*cfg.Location) {
+	case LocationLocal:
 		k = newDefaultKinetic()
-	case "aws":
+	case LocationAws:
 		k = newAwsKinetic()
 	default :
-		log.Fatalf("Unknown location for kinesis stream: %s\n", *config.Location)
+		log.Fatalf("Unknown location for kinesis stream: %s\n", *cfg.Location)
 	}
 
 	// Set streamName from config or generate a random one
-	streamName := *config.StreamName
+	streamName = *cfg.StreamName
 	if streamName == "" {
 		streamName = generateRandomStreamName()
 	}
 
 	// Create and wait for a new kinetic stream (if the stream name doesn't already exist)
 	prepareKinesisStream(k, streamName)
+	defer cleanup(k, streamName)
 
 	// Create a new kinetic producer
 	p := newKineticProducer(k, streamName)
@@ -100,131 +126,14 @@ func main() {
 	// Instantiate StreamData Object to keep stats
 	streamData := NewStreamData()
 
-	// Display stream data statistics to the console
-	displayWg := sync.WaitGroup{}
-	displayWg.Add(1)
-	go func(sd *StreamData) {
-		displayLoop:
-			for {
-				select {
-				case <-pipeOfDeath:
-					stopProducing <- struct{}{}
-					if *config.Verbose {
-						log.Println()
-						log.Println("display: Received pipeOfDeath ...")
-					}
-				case <-stopDisplay:
-					if *config.Verbose {
-						log.Println()
-						log.Print("display: Received stopDisplay ...")
-					}
-					break displayLoop
-				default:
-					time.Sleep(1000 * time.Millisecond)
-					log.Println()
-					log.Printf("Stream name: %s\n", streamName)
-					log.Printf("Elapsed Time: %v\n", time.Since(startTime))
-					if streamStop.IsZero() {
-						log.Printf("Streaming Time: %v\n", time.Since(streamStart))
-					} else {
-						log.Printf("Streaming Time: %v\n", streamStop.Sub(streamStart))
-					}
-					sd.printStats()
-				}
-			}
-		streamData.printSummary()
-		displayWg.Done()
-	}(streamData)
-
-	// Use the producer to write messages to the kinetic stream
-	streamWg := sync.WaitGroup{}
-	streamWg.Add(1)
-	go func(sd *StreamData) {
-		streamStart = time.Now()
-		if config.Duration != nil {
-			// Set a timeout based on the config
-			var timeout <-chan time.Time
-			if *config.Duration > 0 {
-				timeout = time.After(time.Duration(*config.Duration) * time.Second)
-			} else {
-				timeout = make(chan time.Time, 1)
-			}
-
-			produceLoop:
-				for {
-					select {
-					case <-stopProducing:
-						if *config.Verbose {
-							log.Println()
-							log.Print("producer: Received stopProducing ...")
-						}
-						streamStop = time.Now()
-						break produceLoop
-					case <-timeout:
-						if *config.Verbose {
-							log.Println()
-							log.Print("producer: Timed out ...")
-						}
-						streamStop = time.Now()
-						break produceLoop
-					default:
-						jsonStr, _ := json.Marshal(NewMessage())
-						if err := p.Send(&message.Message {
-							PartitionKey: aws.String("key"),
-							Data: []byte(jsonStr),
-						}); err == nil {
-							streamWg.Add(1)
-							sd.incrementMsgCount()
-						}
-					}
-				}
-		} else if config.NumMsgs != nil {
-			for i := 0; i < *config.NumMsgs; i++ {
-				jsonStr, _ := json.Marshal(NewMessage())
-				if err := p.Send(&message.Message {
-					PartitionKey: aws.String("key"),
-					Data: []byte(jsonStr),
-				}); err == nil {
-					streamWg.Add(1)
-					sd.incrementMsgCount()
-				}
-			}
-			streamStop = time.Now()
-		}
-		streamWg.Done()
-	}(streamData)
-
-	// Use the listener to read messages from the kinetic stream
-	go func(sd *StreamData) {
-		l.Listen(func(m *message.Message, fnwg *sync.WaitGroup) error {
-			// Unmarshal data
-			msg := &Message{}
-			json.Unmarshal(m.Data, msg)
-
-			// Only mark "done" if the message isn't a duplicate
-			if !sd.exists(msg.ID) {
-				streamWg.Done()
-			} else {
-				if *config.Verbose {
-					log.Printf("listner: Duplicate message: %v\n", msg)
-				}
-			}
-
-			// Record message regardless if it is a duplicate
-			sd.mark(msg.ID)
-			fnwg.Done()
-
-			return nil
-		})
-	}(streamData)
-
-	// Wait until streaming is complete
-	streamWg.Wait()
-	stopDisplay <- struct{}{}
-
-	// Wait until output display is complete
-	displayWg.Wait()
-	cleanup(k, streamName)
+	// Run all the things concurrently
+	mainWg := sync.WaitGroup{}
+	mainWg.Add(3) // Wait for display, produce and listen
+	go handlePoD()
+	go display(streamData, p, l, &mainWg)
+	go produce(streamData, p, &mainWg)
+	go listen(streamData, l, &mainWg)
+	mainWg.Wait()
 }
 
 func newDefaultKinetic() *kinetic.Kinetic {
@@ -289,7 +198,7 @@ func generateRandomStreamName() string {
 }
 
 func prepareKinesisStream(k *kinetic.Kinetic, streamName string) {
-	if *config.Verbose {
+	if *cfg.Verbose {
 		log.Printf("Preparing kinesis stream: [%s] ...\n", streamName)
 	}
 
@@ -298,7 +207,7 @@ func prepareKinesisStream(k *kinetic.Kinetic, streamName string) {
 		request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
 	if err != nil {
 		// If not, create a kinetic stream
-		if *config.Verbose {
+		if *cfg.Verbose {
 			log.Printf("Creating a new kinesis stream: [%s] ...\n", streamName)
 		}
 		err := k.CreateStream(streamName, 1)
@@ -307,8 +216,8 @@ func prepareKinesisStream(k *kinetic.Kinetic, streamName string) {
 		}
 
 		// And wait until the stream is ready to go
-		if *config.Verbose {
-			log.Printf("Waiting for new kinesis stream: [%s]\n", streamName)
+		if *cfg.Verbose {
+			log.Printf("Waiting for new kinesis stream: [%s] ...\n", streamName)
 		}
 		err = k.WaitUntilStreamExists(context.TODO(), streamName,
 			request.WithWaiterDelay(request.ConstantWaiterDelay(2*time.Second)))
@@ -319,13 +228,15 @@ func prepareKinesisStream(k *kinetic.Kinetic, streamName string) {
 }
 
 func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Producer {
-	if *config.Verbose {
+	if *cfg.Verbose {
 		log.Println("Creating a kinetic producer ...")
 	}
 
+	psc := new(ProducerStatsCollector)
 	w, err := producer.NewKinesisWriter(k.Session.Config, streamName, func(kwc *producer.KinesisWriterConfig) {
 		kwc.SetLogLevel(aws.LogDebug)
 		kwc.SetResponseReadTimeout(time.Second)
+		kwc.SetStatsCollector(psc)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
@@ -334,6 +245,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 	p, err := producer.NewProducer(k.Session.Config, w, func(c *producer.Config) {
 		c.SetBatchSize(500)
 		c.SetBatchTimeout(1000 * time.Millisecond)
+		c.SetStatsCollector(psc)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new producer due to: %v\n", err)
@@ -343,7 +255,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 }
 
 func newKineticListener(k *kinetic.Kinetic, streamName string) *listener.Listener {
-	if *config.Verbose {
+	if *cfg.Verbose {
 		log.Println("Creating a kinetic listener ...")
 	}
 
@@ -353,18 +265,275 @@ func newKineticListener(k *kinetic.Kinetic, streamName string) *listener.Listene
 		log.Fatalf("Unable to get shards for stream %s due to: %v\n", streamName, err)
 	}
 
+	lsc := new(ListenerStatsCollector)
 	r, err := listener.NewKinesisReader(k.Session.Config, streamName, shards[0],
 		func(krc *listener.KinesisReaderConfig) {
 			krc.SetResponseReadTimeout(1000 * time.Millisecond)
+			krc.SetStatsCollector(lsc)
 	})
+	if err != nil {
+		log.Fatalf("Unable to create a new kinesis reader due to: %v\n", err)
+	}
 
 	l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {
-		c.SetQueueDepth(20)
+		c.SetQueueDepth(500)
 		c.SetConcurrency(10)
+		c.SetStatsCollector(lsc)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new listener due to: %v\n", err)
 	}
 
 	return l
+}
+
+func handlePoD() {
+	<-pipeOfDeath
+	if *cfg.Verbose {
+		log.Println()
+		log.Println("Received pipeOfDeath ...")
+	}
+	if *cfg.Mode == ModeRead {
+		stopListen <- struct{}{}
+	} else {
+		stopProduce <- struct{}{}
+	}
+}
+
+func display(sd *StreamData, p *producer.Producer, l *listener.Listener, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	for {
+		select {
+		case <-stopDisplay:
+			if *cfg.Verbose {
+				log.Println()
+				log.Print("display: Received stopDisplay ...")
+			}
+			log.Println()
+			log.Println("***** Stream Data Summary *****")
+			if *cfg.Mode != ModeRead {
+				p.Stats.(*ProducerStatsCollector).PrintStats()
+			}
+			if *cfg.Mode != ModeWrite {
+				l.Stats.(*ListenerStatsCollector).PrintStats()
+				sd.printSummary()
+			}
+			return
+		case <-time.After(time.Second):
+			log.Println()
+			log.Printf("Stream name: %s\n", streamName)
+			log.Printf("Elapsed Time: %v\n", time.Since(startTime))
+			if !streamStart.IsZero() && !streamStop.IsZero() {
+				log.Printf("Streaming Time: %v\n", streamStop.Sub(streamStart))
+			}
+			log.Println()
+			log.Println("***** Stream Data Stats *****")
+			if *cfg.Mode != ModeRead {
+				p.Stats.(*ProducerStatsCollector).PrintStats()
+			}
+			if *cfg.Mode != ModeWrite {
+				l.Stats.(*ListenerStatsCollector).PrintStats()
+				sd.printStats()
+			}
+		}
+	}
+}
+
+func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// Return early if we don't need to produce
+	if *cfg.Mode == ModeRead {
+		return
+	}
+
+	defer func() {
+		if *cfg.Verbose {
+			log.Println()
+			log.Println("producer: Exiting produce ...")
+		}
+
+		// In write mode the producer controls when to stop displaying
+		if *cfg.Mode == ModeWrite {
+			stopDisplay <- struct{}{}
+		}
+	}()
+
+	// Define a timeout channel if the duration is set
+	streamStart = time.Now()
+	var timeout <-chan time.Time
+	if cfg.Duration != nil && *cfg.Duration > 0 {
+		timeout = time.After(time.Duration(*cfg.Duration) * time.Second)
+	} else {
+		timeout = make(chan time.Time, 1)
+	}
+
+	var sendSignal = make(chan struct{}, 1)
+	go func() {
+		for {
+			<-sendSignal
+			jsonStr, _ := json.Marshal(NewMessage())
+			if err := p.Send(&message.Message{
+				PartitionKey: aws.String("key"),
+				Data: []byte(jsonStr),
+			}); err == nil {
+				sd.incrementMsgCount()
+			} else {
+				log.Println("producer: Uh oh, something bad happened!!!!")
+			}
+		}
+	}()
+
+	// Control when to exit produce
+	produceWg := sync.WaitGroup{}
+	produceWg.Add(1)
+	go func(){
+		defer produceWg.Done()
+
+		var sent uint64
+		var sendTicker *time.Ticker
+		if *cfg.Throttle {
+			sendTicker = time.NewTicker(time.Millisecond)
+		} else {
+			sendTicker = time.NewTicker(time.Nanosecond)
+		}
+	produce:
+		for {
+			select {
+			case <-stopProduce:
+				if *cfg.Verbose {
+					log.Println()
+					log.Println("produce: Received stop produce ...")
+				}
+				break produce
+			case <-timeout:
+				if *cfg.Verbose {
+					log.Println()
+					log.Print("producer: Duration time out ...")
+				}
+				break produce
+			case <-sendTicker.C:
+				// Break from the loop if we have sent the correct number of messages
+				if cfg.NumMsgs != nil {
+					if atomic.LoadUint64(&sent) >= uint64(*cfg.NumMsgs) {
+						break produce
+					}
+				}
+				sendSignal <- struct{}{}
+				atomic.AddUint64(&sent, 1)
+			}
+		}
+
+		// We may need to wait for Send to finish so we add a delay before exiting produce
+		var staleTimeout time.Duration
+		switch strings.ToLower(*cfg.Location) {
+		case LocationLocal:
+			staleTimeout = time.Duration(2 * time.Second)
+		case LocationAws:
+			staleTimeout = time.Duration(60 * time.Second)
+		}
+		staleTime := time.NewTimer(staleTimeout)
+
+		for {
+			select {
+			case <-staleTime.C:
+				if *cfg.Verbose {
+					log.Println()
+					log.Println("producer: No more outgoing messages from producer ...")
+				}
+				return
+			case <-time.After(time.Second):
+				newSent := atomic.LoadUint64(&p.Stats.(*ProducerStatsCollector).Sent);
+				if sent != newSent {
+					staleTime.Reset(staleTimeout)
+					sent = newSent
+				}
+			}
+		}
+	}()
+	produceWg.Wait()
+}
+
+func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// Return early if we don't need to produce
+	if *cfg.Mode == ModeWrite {
+		return
+	}
+
+	defer func() {
+		if *cfg.Verbose {
+			log.Println()
+			log.Println("listener: Exiting listen ...")
+		}
+
+		// In read and readwrite mode the listener controls when to stop displaying
+		stopDisplay <- struct{}{}
+	}()
+
+	// Call Listen within a go routine
+	go func(){
+		l.Listen(func(m *message.Message, wg *sync.WaitGroup) error {
+			defer wg.Done()
+
+			// Unmarshal data
+			msg := &Message{}
+			json.Unmarshal(m.Data, msg)
+
+			// Only mark "done" if the message isn't a duplicate
+			if sd.exists(msg.ID) {
+				if *cfg.Verbose {
+					log.Printf("listener: Duplicate message: %v\n", msg)
+				}
+			}
+
+			// Record message regardless if it is a duplicate
+			sd.mark(msg.ID)
+
+			return nil
+		})
+	}()
+
+	// Control when to exit listen
+	listenWg := sync.WaitGroup{}
+	listenWg.Add(1)
+	go func(){
+		defer listenWg.Done()
+
+		var staleTimeout time.Duration
+		switch strings.ToLower(*cfg.Location) {
+		case LocationLocal:
+			staleTimeout = time.Duration(10 * time.Second)
+		case LocationAws:
+			staleTimeout = time.Duration(60 * time.Second)
+		}
+		staleTime := time.NewTimer(staleTimeout)
+
+		var consumed uint64
+		for {
+			select {
+			case <-stopListen:
+				if *cfg.Verbose {
+					log.Println()
+					log.Println("listener: Received stop listen ...")
+				}
+				return
+			case <-staleTime.C:
+				if *cfg.Verbose {
+					log.Println()
+					log.Println("listener: No more incoming messages from listener ...")
+				}
+				return
+			case <-time.After(time.Second):
+				newConsumed := atomic.LoadUint64(&l.Stats.(*ListenerStatsCollector).Consumed);
+				if consumed != newConsumed {
+					staleTime.Reset(staleTimeout)
+					consumed = newConsumed
+				}
+			}
+		}
+	}()
+	listenWg.Wait()
 }

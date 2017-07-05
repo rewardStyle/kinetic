@@ -13,6 +13,7 @@ type Config struct {
 	StreamName *string
 	NumMsgs    *int
 	Duration   *int
+	Throttle   *bool
 	Cleanup    *bool
 	Verbose    *bool
 }
@@ -20,7 +21,8 @@ type Config struct {
 func parseCommandLineArgs() *Config {
 
 	// Define command line flags
-	modePtr := flag.String("mode", "write", "used to specify the mode in which to run; either read or write")
+	modePtr := flag.String("mode", "readwrite", "used to specify the mode in which to run; either 'r', 'read', 'w', " +
+		"'write', 'rw' or 'readwrite'")
 	locationPtr := flag.String("location", "local", "used to specify the location of the kinesis stream.  " +
 		"Accepted values are (local|aws).  For local, run kinesalite on http://127.0.0.1:4567. For aws, your " +
 		"aws credentials and configuration need to be defined at ~/.aws")
@@ -30,6 +32,7 @@ func parseCommandLineArgs() *Config {
 		"receive.  Either -num-msgs or -duration must be set.")
 	durationPtr := flag.Int("duration", 0, "used to specify the duration (in seconds) the program should run. " +
 		"Use a value of -1 to run indefinitely.  Either -num-msgs or -duration must be set.")
+	throttlePtr := flag.Bool("throttle", true, "used to specify whether to throttle PutRecord requests by 1 ms.  ")
 	cleanupPtr := flag.Bool("cleanup", true, "used to specify whether or not to delete a newly created kinesis " +
 		"stream")
 	verbosePtr := flag.Bool("verbose", false, "used to specify whether or not to log in verbose mode")
@@ -52,12 +55,20 @@ func parseCommandLineArgs() *Config {
 
 	var mode string
 	switch strings.ToLower(*modePtr) {
+	case "r":
+		fallthrough
 	case "read":
+		mode = ModeRead
+	case "w":
 		fallthrough
 	case "write":
-		mode = strings.ToLower(*modePtr)
+		mode = ModeWrite
+	case "rw":
+		fallthrough
+	case "readwrite":
+		mode = ModeReadWrite
 	default:
-		log.Fatal("Mode must be defined as either 'read' or 'write'")
+		log.Fatal("Mode must be defined as either 'r', 'read', 'w', 'write', 'rw' or 'readwrite'")
 	}
 
 	return &Config{
@@ -66,6 +77,7 @@ func parseCommandLineArgs() *Config {
 		Duration: durationPtr,
 		NumMsgs: numMsgsPtr,
 		Location: locationPtr,
+		Throttle: throttlePtr,
 		Cleanup: cleanupPtr,
 		Verbose: verbosePtr,
 	}
@@ -83,6 +95,7 @@ func (c *Config) printConfigs() {
 		if c.Duration != nil {
 			log.Println("-duration: ", *c.Duration)
 		}
+		log.Println("-throttle: ", *c.Throttle)
 		log.Println("-cleanup: ", *c.Cleanup)
 		log.Println("-verbose: ", *c.Verbose)
 		log.Println()
