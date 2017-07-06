@@ -110,7 +110,7 @@ func (p *Producer) sendBatch(batch []*message.Message) {
 		p.shutdownCond.L.Unlock()
 	}()
 
-	var attempts int
+	var attempts uint64
 	var failed uint64
 
 stop:
@@ -177,13 +177,13 @@ stop:
 		// batch to be retried rather than retrying the batch as-is.  With this approach, we can kill the "stop"
 		// for loop, and set the entire batch to retries to allow the below code to handle retrying the
 		// messages.
-		if attempts > p.maxRetryAttempts {
+		if atomic.LoadUint64(&attempts) > uint64(p.maxRetryAttempts) {
 			p.LogError(fmt.Sprintf("Dropping batch after %d failed attempts to deliver to stream", attempts))
 			p.Stats.AddDroppedTotal(len(batch))
 			p.Stats.AddDroppedRetries(len(batch))
 			break stop
 		}
-		attempts++
+		atomic.AddUint64(&attempts, 1)
 
 		// Apply a delay before retrying
 		time.Sleep(time.Duration(attempts * attempts) * time.Second)

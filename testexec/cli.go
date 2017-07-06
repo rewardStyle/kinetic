@@ -28,29 +28,27 @@ func parseCommandLineArgs() *Config {
 		"aws credentials and configuration need to be defined at ~/.aws")
 	streamNamePtr := flag.String("stream-name", "", "used to specify a pre-existing stream to be used for " +
 		"testing.  A new stream will be created if not defined.")
-	numMsgsPtr := flag.Int("num-msgs", 0, "used to specify the number of messages to (attempt to) send / " +
-		"receive.  Either -num-msgs or -duration must be set.")
+	numMsgsPtr := flag.Int("num-msgs", 0, "used to specify the number of messages to (attempt to) send.  This " +
+		"flag is only applicable to 'write' and 'readwrite' modes.  Use zero or a negative number to produce " +
+		"indefinitely")
 	durationPtr := flag.Int("duration", 0, "used to specify the duration (in seconds) the program should run. " +
-		"Use a value of -1 to run indefinitely.  Either -num-msgs or -duration must be set.")
+		"This flag is only applicable to 'write' and 'readwrite' modes.  Use zero or negative number to run " +
+		"indefinitely.")
 	throttlePtr := flag.Bool("throttle", true, "used to specify whether to throttle PutRecord requests by 1 ms.  ")
-	cleanupPtr := flag.Bool("cleanup", true, "used to specify whether or not to delete a newly created kinesis " +
-		"stream")
+	cleanupPtr := flag.Bool("cleanup", true, "used to specify whether or not to delete the kinesis stream after " +
+		"processing is complete.")
 	verbosePtr := flag.Bool("verbose", false, "used to specify whether or not to log in verbose mode")
 
 	// Parse command line arguments
 	flag.Parse()
 
 	// Process command line arguments
-	if *numMsgsPtr == 0 && *durationPtr == 0 {
-		log.Fatal("Either -num-msgs or -duration must be set.")
-	} else if *numMsgsPtr != 0 && *durationPtr != 0 {
-		log.Fatal("Both -num-msgs and -duration were set.  Only one may be set.")
-	} else if *durationPtr != 0 {
-		numMsgsPtr = nil
-	} else if *numMsgsPtr < 0 {
-		log.Fatal("Number of messages value must be greater than 0")
-	} else {
+	if *durationPtr <= 0 {
 		durationPtr = nil
+	}
+
+	if *numMsgsPtr <= 0 {
+		numMsgsPtr = nil
 	}
 
 	var mode string
@@ -88,12 +86,20 @@ func (c *Config) printConfigs() {
 		log.Println("Command Line Arguments:")
 		log.Println("-mode: ", *c.Mode)
 		log.Println("-location: ", *c.Location)
-		log.Println("-stream-name: ", *c.StreamName)
+		if len(*c.StreamName) == 0 {
+			log.Println("-stream-name: (randomly generated)")
+		} else {
+			log.Println("-stream-name: ", *c.StreamName)
+		}
 		if c.NumMsgs != nil {
 			log.Println("-num-msgs: ", *c.NumMsgs)
+		} else {
+			log.Println("-num-msgs: (unbounded)")
 		}
 		if c.Duration != nil {
 			log.Println("-duration: ", *c.Duration)
+		} else {
+			log.Println("-duration: (indefinite)")
 		}
 		log.Println("-throttle: ", *c.Throttle)
 		log.Println("-cleanup: ", *c.Cleanup)

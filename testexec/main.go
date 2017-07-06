@@ -245,6 +245,9 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 	p, err := producer.NewProducer(k.Session.Config, w, func(c *producer.Config) {
 		c.SetBatchSize(500)
 		c.SetBatchTimeout(1000 * time.Millisecond)
+		c.SetConcurrency(10)
+		c.SetMaxRetryAttempts(2)
+		c.SetQueueDepth(100)
 		c.SetStatsCollector(psc)
 	})
 	if err != nil {
@@ -291,7 +294,7 @@ func handlePoD() {
 	<-pipeOfDeath
 	if *cfg.Verbose {
 		log.Println()
-		log.Println("Received pipeOfDeath ...")
+		log.Println("main: Received pipeOfDeath ...")
 	}
 	if *cfg.Mode == ModeRead {
 		stopListen <- struct{}{}
@@ -311,6 +314,12 @@ func display(sd *StreamData, p *producer.Producer, l *listener.Listener, wg *syn
 				log.Print("display: Received stopDisplay ...")
 			}
 			log.Println()
+			log.Printf("Stream name: %s\n", streamName)
+			log.Printf("Elapsed Time: %v\n", time.Since(startTime))
+			if !streamStart.IsZero() && !streamStop.IsZero() {
+				log.Printf("Streaming Time: %v\n", streamStop.Sub(streamStart))
+			}
+			log.Println()
 			log.Println("***** Stream Data Summary *****")
 			if *cfg.Mode != ModeRead {
 				p.Stats.(*ProducerStatsCollector).PrintStats()
@@ -324,9 +333,6 @@ func display(sd *StreamData, p *producer.Producer, l *listener.Listener, wg *syn
 			log.Println()
 			log.Printf("Stream name: %s\n", streamName)
 			log.Printf("Elapsed Time: %v\n", time.Since(startTime))
-			if !streamStart.IsZero() && !streamStop.IsZero() {
-				log.Printf("Streaming Time: %v\n", streamStop.Sub(streamStart))
-			}
 			log.Println()
 			log.Println("***** Stream Data Stats *****")
 			if *cfg.Mode != ModeRead {
@@ -369,6 +375,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 		timeout = make(chan time.Time, 1)
 	}
 
+	// Run Send in a separate go routine listening for the sendSignal
 	var sendSignal = make(chan struct{}, 1)
 	go func() {
 		for {
@@ -404,7 +411,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 			case <-stopProduce:
 				if *cfg.Verbose {
 					log.Println()
-					log.Println("produce: Received stop produce ...")
+					log.Println("producer: Received stop produce ...")
 				}
 				break produce
 			case <-timeout:
@@ -424,6 +431,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 				atomic.AddUint64(&sent, 1)
 			}
 		}
+		streamStop = time.Now()
 
 		// We may need to wait for Send to finish so we add a delay before exiting produce
 		var staleTimeout time.Duration
@@ -431,7 +439,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 		case LocationLocal:
 			staleTimeout = time.Duration(2 * time.Second)
 		case LocationAws:
-			staleTimeout = time.Duration(60 * time.Second)
+			staleTimeout = time.Duration(10 * time.Second)
 		}
 		staleTime := time.NewTimer(staleTimeout)
 
@@ -505,7 +513,7 @@ func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
 		var staleTimeout time.Duration
 		switch strings.ToLower(*cfg.Location) {
 		case LocationLocal:
-			staleTimeout = time.Duration(10 * time.Second)
+			staleTimeout = time.Duration(3 * time.Second)
 		case LocationAws:
 			staleTimeout = time.Duration(60 * time.Second)
 		}
