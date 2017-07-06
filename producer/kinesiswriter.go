@@ -44,7 +44,7 @@ func NewKinesisWriter(c *aws.Config, stream string, fn ...func(*KinesisWriterCon
 		kinesisWriterOptions: cfg.kinesisWriterOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: cfg.LogLevel,
-			Logger:  cfg.AwsConfig.Logger,
+			Logger:   cfg.AwsConfig.Logger,
 		},
 		stream: stream,
 		client: kinesis.New(sess),

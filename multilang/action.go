@@ -2,8 +2,8 @@ package multilang
 
 import (
 	"encoding/base64"
-	"time"
 	"strconv"
+	"time"
 
 	"github.com/rewardStyle/kinetic/message"
 )
@@ -13,29 +13,29 @@ type ActionType string
 
 // These are the enumerated KCL Multilang protocol action message types
 const (
-	INITIALIZE ActionType = "initialize"
+	INITIALIZE     ActionType = "initialize"
 	PROCESSRECORDS ActionType = "processRecords"
-	RECORD ActionType = "record"
-	CHECKPOINT ActionType = "checkpoint"
-	SHUTDOWN ActionType = "shutdown"
-	STATUS ActionType = "status"
+	RECORD         ActionType = "record"
+	CHECKPOINT     ActionType = "checkpoint"
+	SHUTDOWN       ActionType = "shutdown"
+	STATUS         ActionType = "status"
 )
 
 // ActionMessage is a struct used to marshal / unmarshal KCL Multilang protocol action messages
 type ActionMessage struct {
-	Action            ActionType `json:"action"`
-	ShardID           string     `json:"shardId,omitempty"`
-	SequenceNumber    string     `json:"sequenceNumber,omitempty"`
-	Records           []Record   `json:"records,omitempty"`
-	Checkpoint        string     `json:"checkpoint,omitempty"`
-	Error             string     `json:"error,omitempty"`
-	Reason            string     `json:"reason,omitempty"`
-	ResponseFor       ActionType `json:"responseFor,omitempty"`
+	Action         ActionType `json:"action"`
+	ShardID        string     `json:"shardId,omitempty"`
+	SequenceNumber string     `json:"sequenceNumber,omitempty"`
+	Records        []Record   `json:"records,omitempty"`
+	Checkpoint     string     `json:"checkpoint,omitempty"`
+	Error          string     `json:"error,omitempty"`
+	Reason         string     `json:"reason,omitempty"`
+	ResponseFor    ActionType `json:"responseFor,omitempty"`
 }
 
 // Record is a struct used to marshal / unmarshal kinesis records from KCL Multilang protocol
 type Record struct {
-	Action		   ActionType `json:"action"`
+	Action             ActionType `json:"action"`
 	ApproximateArrival Timestamp  `json:"approximateArrivalTimestamp"`
 	Data               string     `json:"data,omitempty"`
 	PartitionKey       string     `json:"partitionKey,omitempty"`
@@ -57,7 +57,7 @@ func (t *Timestamp) UnmarshalJSON(b []byte) error {
 
 	milliseconds := ts % 1000
 	seconds := (ts - milliseconds) / 1000
-	t.Time = time.Unix(int64(seconds), int64(milliseconds * 1000))
+	t.Time = time.Unix(int64(seconds), int64(milliseconds*1000))
 
 	return nil
 }
@@ -71,8 +71,8 @@ func (r *Record) ToMessage() *message.Message {
 
 	return &message.Message{
 		ApproximateArrivalTimestamp: &r.ApproximateArrival.Time,
-		Data: b,
-		PartitionKey: &r.PartitionKey,
+		Data:           b,
+		PartitionKey:   &r.PartitionKey,
 		SequenceNumber: &r.SequenceNumber,
 	}
 }
@@ -80,7 +80,7 @@ func (r *Record) ToMessage() *message.Message {
 // NewCheckpointMessage is used to create a new checkpoint message
 func NewCheckpointMessage(seqNum string) *ActionMessage {
 	return &ActionMessage{
-		Action: CHECKPOINT,
+		Action:     CHECKPOINT,
 		Checkpoint: seqNum,
 	}
 }
@@ -88,7 +88,7 @@ func NewCheckpointMessage(seqNum string) *ActionMessage {
 // NewStatusMessage is used to create a new status message
 func NewStatusMessage(actionType ActionType) *ActionMessage {
 	return &ActionMessage{
-		Action: STATUS,
+		Action:      STATUS,
 		ResponseFor: actionType,
 	}
 }

@@ -1,9 +1,9 @@
 package main
 
 import (
+	"log"
 	"sync/atomic"
 	"time"
-	"log"
 )
 
 // ListenerStatsCollector implements the listener's StatsCollector
@@ -17,7 +17,7 @@ type ListenerStatsCollector struct {
 	GetRecordsTimeout             uint64
 	GetRecordsReadTimeout         uint64
 
-	ProcessedDuration	      time.Duration
+	ProcessedDuration             time.Duration
 	GetRecordsDuration            time.Duration
 	GetRecordsReadResonseDuration time.Duration
 	GetRecordsUnmarshalDuration   time.Duration

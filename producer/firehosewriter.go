@@ -43,7 +43,7 @@ func NewFirehoseWriter(c *aws.Config, stream string, fn ...func(*FirehoseWriterC
 		firehoseWriterOptions: cfg.firehoseWriterOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: cfg.LogLevel,
-			Logger:  cfg.AwsConfig.Logger,
+			Logger:   cfg.AwsConfig.Logger,
 		},
 		stream: stream,
 		client: firehose.New(sess),

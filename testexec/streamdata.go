@@ -17,7 +17,7 @@ type StreamData struct {
 // NewStreamData instantiates a new StreamData struct
 func NewStreamData() *StreamData {
 	return &StreamData{
-		mutex: sync.Mutex{},
+		mutex:       sync.Mutex{},
 		Frequencies: make(map[uint64]uint64),
 	}
 }

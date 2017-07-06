@@ -9,7 +9,7 @@ import (
 type Config struct {
 	*listenerOptions
 	AwsConfig *aws.Config
-	LogLevel aws.LogLevelType
+	LogLevel  aws.LogLevelType
 }
 
 // NewConfig creates a new instance of Config

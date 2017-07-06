@@ -8,7 +8,7 @@ import (
 type KclReaderConfig struct {
 	*kclReaderOptions
 	AwsConfig *aws.Config
-	LogLevel aws.LogLevelType
+	LogLevel  aws.LogLevelType
 }
 
 // NewKclReaderConfig creates a new instance of KclReaderConfig

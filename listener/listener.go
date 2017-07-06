@@ -64,9 +64,9 @@ func NewListener(c *aws.Config, r StreamReader, fn ...func(*Config)) (*Listener,
 		listenerOptions: cfg.listenerOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: cfg.LogLevel,
-			Logger: cfg.AwsConfig.Logger,
+			Logger:   cfg.AwsConfig.Logger,
 		},
-		reader: r,
+		reader:         r,
 		concurrencySem: make(chan empty, cfg.concurrency),
 		pipeOfDeath:    make(chan empty),
 	}, nil
@@ -179,7 +179,9 @@ func (l *Listener) consume(ctx context.Context) {
 	// We need to run startConsuming to make sure that we are okay and ready to start consuming.  This is mainly to
 	// avoid a race condition where Listen() will attempt to read the messages channel prior to consume()
 	// initializing it.  We can then launch a goroutine to handle the actual consume operation.
-	if !l.startConsuming() { return }
+	if !l.startConsuming() {
+		return
+	}
 	go func() {
 		defer l.stopConsuming()
 
@@ -201,7 +203,7 @@ func (l *Listener) consume(ctx context.Context) {
 					l.messages <- msg
 
 					return nil
-			})
+				})
 			if err != nil {
 				switch err := err.(type) {
 				case net.Error:
@@ -237,7 +239,9 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 	for {
 		select {
 		case msg, ok := <-l.messages:
-			if !ok { return }
+			if !ok {
+				return
+			}
 			l.Stats.AddDelivered(1)
 			// For simplicity, did not do the pipe of death here. If POD is received, we may deliver a
 			// couple more messages (especially since select is random in which channel is read from).

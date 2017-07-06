@@ -1,8 +1,8 @@
 package kinetic
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"log"
 	"math/rand"
 	"strconv"
@@ -31,9 +31,9 @@ type StreamData struct {
 
 func NewStreamData() *StreamData {
 	return &StreamData{
-		mutex: sync.Mutex{},
+		mutex:       sync.Mutex{},
 		Frequencies: make(map[int]int),
-		Messages: make(map[int][]string),
+		Messages:    make(map[int][]string),
 	}
 }
 
@@ -151,7 +151,7 @@ func TestKineticIntegration(t *testing.T) {
 	r, err := listener.NewKinesisReader(k.Session.Config, stream, shards[0],
 		func(krc *listener.KinesisReaderConfig) {
 			krc.SetResponseReadTimeout(time.Second)
-	})
+		})
 	assert.NotNil(t, r)
 	assert.NoError(t, err)
 
@@ -166,7 +166,6 @@ func TestKineticIntegration(t *testing.T) {
 	numMsg := 1000
 	numSent := 0
 
-
 	// Use the producer to write messages to the kinetic stream
 	wg := sync.WaitGroup{}
 	wg.Add(numMsg + 1)
@@ -174,13 +173,13 @@ func TestKineticIntegration(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < numMsg; i++ {
 			msg := &Message{
-				ID: i,
+				ID:      i,
 				Message: "hello_" + strconv.Itoa(i),
 			}
 			jsonStr, _ := json.Marshal(msg)
-			if err := p.Send(&message.Message {
+			if err := p.Send(&message.Message{
 				PartitionKey: aws.String("key"),
-				Data: []byte(jsonStr),
+				Data:         []byte(jsonStr),
 			}); err == nil {
 				*sent++
 			}

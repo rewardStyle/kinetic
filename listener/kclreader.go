@@ -10,10 +10,10 @@ import (
 	"os"
 	"sync"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
 	"github.com/rewardStyle/kinetic/multilang"
-	"github.com/rewardStyle/kinetic/logging"
-	"github.com/aws/aws-sdk-go/aws"
 )
 
 type kclReaderOptions struct {
@@ -21,7 +21,6 @@ type kclReaderOptions struct {
 	onCheckpointCallbackFn func() error
 	onShutdownCallbackFn   func() error
 	Stats                  StatsCollector
-
 }
 
 // KclReader handles the KCL Multilang Protocol to read records from KCL
@@ -46,10 +45,10 @@ func NewKclReader(c *aws.Config, fn ...func(*KclReaderConfig)) (*KclReader, erro
 		kclReaderOptions: cfg.kclReaderOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: cfg.LogLevel,
-			Logger:  cfg.AwsConfig.Logger,
+			Logger:   cfg.AwsConfig.Logger,
 		},
 		throttleSem: make(chan empty, 5),
-		msgBuffer: []message.Message{},
+		msgBuffer:   []message.Message{},
 	}, nil
 }
 
@@ -59,7 +58,7 @@ func NewKclReader(c *aws.Config, fn ...func(*KclReaderConfig)) (*KclReader, erro
 // has been received / processed
 func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, error) {
 	// Define the batchSize
-	batchSize := 0;
+	batchSize := 0
 	if len(r.msgBuffer) > 0 {
 		if numRecords < 0 {
 			batchSize = len(r.msgBuffer)

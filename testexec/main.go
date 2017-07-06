@@ -22,20 +22,20 @@ import (
 	"github.com/rewardStyle/kinetic/message"
 	"github.com/rewardStyle/kinetic/producer"
 
-	_ "net/http/pprof"
 	"net/http"
+	_ "net/http/pprof"
 )
 
 // Define constants for Kinesis stream location
 const (
 	LocationLocal = "local"
-	LocationAws = "aws"
+	LocationAws   = "aws"
 )
 
 // Define operation modes
 const (
-	ModeRead = "read"
-	ModeWrite = "write"
+	ModeRead      = "read"
+	ModeWrite     = "write"
 	ModeReadWrite = "readwrite"
 )
 
@@ -103,7 +103,7 @@ func main() {
 		k = newDefaultKinetic()
 	case LocationAws:
 		k = newAwsKinetic()
-	default :
+	default:
 		log.Fatalf("Unknown location for kinesis stream: %s\n", *cfg.Location)
 	}
 
@@ -273,7 +273,7 @@ func newKineticListener(k *kinetic.Kinetic, streamName string) *listener.Listene
 		func(krc *listener.KinesisReaderConfig) {
 			krc.SetResponseReadTimeout(1000 * time.Millisecond)
 			krc.SetStatsCollector(lsc)
-	})
+		})
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis reader due to: %v\n", err)
 	}
@@ -383,7 +383,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 			jsonStr, _ := json.Marshal(NewMessage())
 			if err := p.Send(&message.Message{
 				PartitionKey: aws.String("key"),
-				Data: []byte(jsonStr),
+				Data:         []byte(jsonStr),
 			}); err == nil {
 				sd.incrementMsgCount()
 			} else {
@@ -395,7 +395,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 	// Control when to exit produce
 	produceWg := sync.WaitGroup{}
 	produceWg.Add(1)
-	go func(){
+	go func() {
 		defer produceWg.Done()
 
 		var sent uint64
@@ -452,7 +452,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 				}
 				return
 			case <-time.After(time.Second):
-				newSent := atomic.LoadUint64(&p.Stats.(*ProducerStatsCollector).Sent);
+				newSent := atomic.LoadUint64(&p.Stats.(*ProducerStatsCollector).Sent)
 				if sent != newSent {
 					staleTime.Reset(staleTimeout)
 					sent = newSent
@@ -482,7 +482,7 @@ func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
 	}()
 
 	// Call Listen within a go routine
-	go func(){
+	go func() {
 		l.Listen(func(m *message.Message, wg *sync.WaitGroup) error {
 			defer wg.Done()
 
@@ -507,7 +507,7 @@ func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
 	// Control when to exit listen
 	listenWg := sync.WaitGroup{}
 	listenWg.Add(1)
-	go func(){
+	go func() {
 		defer listenWg.Done()
 
 		var staleTimeout time.Duration
@@ -535,7 +535,7 @@ func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
 				}
 				return
 			case <-time.After(time.Second):
-				newConsumed := atomic.LoadUint64(&l.Stats.(*ListenerStatsCollector).Consumed);
+				newConsumed := atomic.LoadUint64(&l.Stats.(*ListenerStatsCollector).Consumed)
 				if consumed != newConsumed {
 					staleTime.Reset(staleTimeout)
 					consumed = newConsumed

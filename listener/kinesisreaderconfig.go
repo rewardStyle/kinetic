@@ -10,7 +10,7 @@ import (
 type KinesisReaderConfig struct {
 	*kinesisReaderOptions
 	AwsConfig *aws.Config
-	LogLevel aws.LogLevelType
+	LogLevel  aws.LogLevelType
 }
 
 // NewKinesisReaderConfig creates a new instance of KinesisReaderConfig
@@ -18,10 +18,10 @@ func NewKinesisReaderConfig(cfg *aws.Config) *KinesisReaderConfig {
 	return &KinesisReaderConfig{
 		AwsConfig: cfg,
 		kinesisReaderOptions: &kinesisReaderOptions{
-			batchSize: 10000,
-			shardIterator: NewShardIterator(),
+			batchSize:           10000,
+			shardIterator:       NewShardIterator(),
 			responseReadTimeout: time.Second,
-			Stats: &NilStatsCollector{},
+			Stats:               &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
 	}

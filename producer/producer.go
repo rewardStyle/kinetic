@@ -39,7 +39,7 @@ type producerOptions struct {
 	queueDepth       int
 	maxRetryAttempts int
 	concurrency      int
-	Stats 		 StatsCollector
+	Stats            StatsCollector
 }
 
 // Producer sends records to Kinesis or Firehose.
@@ -69,9 +69,9 @@ func NewProducer(c *aws.Config, w StreamWriter, fn ...func(*Config)) (*Producer,
 		producerOptions: cfg.producerOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: cfg.LogLevel,
-			Logger: cfg.AwsConfig.Logger,
+			Logger:   cfg.AwsConfig.Logger,
 		},
-		writer: w,
+		writer:         w,
 		concurrencySem: make(chan empty, cfg.concurrency),
 		pipeOfDeath:    make(chan empty),
 	}, nil
@@ -118,7 +118,7 @@ stop:
 		err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
 			if msg.FailCount <= p.maxRetryAttempts {
 				// Apply a delay before retrying
-				time.Sleep(time.Duration(msg.FailCount * msg.FailCount) * time.Second)
+				time.Sleep(time.Duration(msg.FailCount*msg.FailCount) * time.Second)
 
 				select {
 				case p.retries <- msg:
@@ -186,7 +186,7 @@ stop:
 		atomic.AddUint64(&attempts, 1)
 
 		// Apply a delay before retrying
-		time.Sleep(time.Duration(attempts * attempts) * time.Second)
+		time.Sleep(time.Duration(attempts*attempts) * time.Second)
 	}
 
 	// This frees up another sendBatch to run to allow drainage of the messages / retry queue.  This should

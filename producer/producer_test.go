@@ -56,7 +56,7 @@ func TestProducer(t *testing.T) {
 		r, err := listener.NewKinesisReader(k.Session.Config, stream, shards[0],
 			func(krc *listener.KinesisReaderConfig) {
 				krc.SetResponseReadTimeout(1000 * time.Millisecond)
-		})
+			})
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -79,12 +79,12 @@ func TestProducer(t *testing.T) {
 			})
 		})
 
-		Convey("check that we can send and receive a single message", func(){
+		Convey("check that we can send and receive a single message", func() {
 			start := time.Now()
 			data := "hello"
 			p.Send(&message.Message{
 				PartitionKey: aws.String("key"),
-				Data: []byte(data),
+				Data:         []byte(data),
 			})
 			msg, err := l.RetrieveWithContext(context.TODO())
 			elapsed := time.Since(start)

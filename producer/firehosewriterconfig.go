@@ -8,7 +8,7 @@ import (
 type FirehoseWriterConfig struct {
 	*firehoseWriterOptions
 	AwsConfig *aws.Config
-	LogLevel aws.LogLevelType
+	LogLevel  aws.LogLevelType
 }
 
 // NewFirehoseWriterConfig creates a new instance of FirehoseWriterConfig

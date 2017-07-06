@@ -53,12 +53,12 @@ func NewKinesisReader(c *aws.Config, stream string, shard string, fn ...func(*Ki
 		kinesisReaderOptions: cfg.kinesisReaderOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: cfg.LogLevel,
-			Logger:  cfg.AwsConfig.Logger,
+			Logger:   cfg.AwsConfig.Logger,
 		},
-		stream: stream,
-		shard: shard,
+		stream:      stream,
+		shard:       shard,
 		throttleSem: make(chan empty, 5),
-		client: kinesis.New(sess),
+		client:      kinesis.New(sess),
 	}, nil
 }
 

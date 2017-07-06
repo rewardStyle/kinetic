@@ -12,7 +12,7 @@ import (
 type Config struct {
 	*producerOptions
 	AwsConfig *aws.Config
-	LogLevel aws.LogLevelType
+	LogLevel  aws.LogLevelType
 }
 
 // NewConfig creates a new instance of Config.

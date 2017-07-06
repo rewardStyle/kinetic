@@ -10,7 +10,7 @@ import (
 type KinesisWriterConfig struct {
 	*kinesisWriterOptions
 	AwsConfig *aws.Config
-	LogLevel aws.LogLevelType
+	LogLevel  aws.LogLevelType
 }
 
 // NewKinesisWriterConfig creates a new instance of KinesisWriterConfig
@@ -19,7 +19,7 @@ func NewKinesisWriterConfig(cfg *aws.Config) *KinesisWriterConfig {
 		AwsConfig: cfg,
 		kinesisWriterOptions: &kinesisWriterOptions{
 			responseReadTimeout: time.Second,
-			Stats: &NilStatsCollector{},
+			Stats:               &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
 	}

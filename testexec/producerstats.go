@@ -1,9 +1,9 @@
 package main
 
 import (
+	"log"
 	"sync/atomic"
 	"time"
-	"log"
 )
 
 // ProducerStatsCollector implements the producer's StatsCollector
@@ -19,9 +19,9 @@ type ProducerStatsCollector struct {
 	ProvisionedThroughputExceeded           uint64
 	PutRecordsTimeout                       uint64
 
-	PutRecordsDuration                      time.Duration
-	PutRecordsBuildDuration                 time.Duration
-	PutRecordsSendDuration                  time.Duration
+	PutRecordsDuration      time.Duration
+	PutRecordsBuildDuration time.Duration
+	PutRecordsSendDuration  time.Duration
 }
 
 // GetSent returns the number of messages sent to AWS Kinesis by the producer.
