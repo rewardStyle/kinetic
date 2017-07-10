@@ -1,5 +1,5 @@
-hash: 16ed7c907af98983bf7cbe350e9ff03fb1208a4ad54664a83e488935889e6207
-updated: 2017-06-27T15:49:17.807220643-05:00
+hash: 70d3e36401b9615bc762c364243c4177b3b4b51d36e3fdeaa3ec923996430e24
+updated: 2017-07-06T15:44:39.094878239-05:00
 imports:
 - name: github.com/aws/aws-sdk-go
   version: 72e42b13da62269f68308fb6068b7ea691a416a4
@@ -44,6 +44,8 @@ imports:
   version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
 - name: github.com/jtolds/gls
   version: f1ac7f4f24f50328e6bc838ca4437d1612a0243c
+- name: github.com/rcrowley/go-metrics
+  version: ab2277b1c5d15c3cba104e9cbddbdfc622df5ad8
 - name: github.com/smartystreets/assertions
   version: c9ee7d9e9a2aeec0bee7c4a516f3e0ad7cb7e558
   subpackages:

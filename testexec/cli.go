@@ -37,7 +37,7 @@ func parseCommandLineArgs() *Config {
 	throttlePtr := flag.Bool("throttle", true, "used to specify whether to throttle PutRecord requests by 1 ms.  ")
 	cleanupPtr := flag.Bool("cleanup", true, "used to specify whether or not to delete the kinesis stream after "+
 		"processing is complete.")
-	verbosePtr := flag.Bool("verbose", false, "used to specify whether or not to log in verbose mode")
+	verbosePtr := flag.Bool("verbose", true, "used to specify whether or not to log in verbose mode")
 
 	// Parse command line arguments
 	flag.Parse()

@@ -17,6 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/rcrowley/go-metrics"
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/listener"
 	"github.com/rewardStyle/kinetic/message"
@@ -49,6 +50,7 @@ var stopDisplay chan struct{}
 var stopProduce chan struct{}
 var stopListen chan struct{}
 var cfg *Config
+var registry metrics.Registry
 
 func init() {
 	// Set up Http server for pprof
@@ -70,6 +72,9 @@ func init() {
 
 	// Set up pipeOfDeath channel to receive os signals
 	signal.Notify(pipeOfDeath, os.Interrupt)
+
+	// Set up rcrowley metrics registry
+	registry = metrics.NewRegistry()
 }
 
 func cleanup(k *kinetic.Kinetic, stream string) {
@@ -232,7 +237,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		log.Println("Creating a kinetic producer ...")
 	}
 
-	psc := new(ProducerStatsCollector)
+	psc := producer.NewDefaultStatsCollector(registry)
 	w, err := producer.NewKinesisWriter(k.Session.Config, streamName, func(kwc *producer.KinesisWriterConfig) {
 		kwc.SetLogLevel(aws.LogDebug)
 		kwc.SetResponseReadTimeout(time.Second)
@@ -268,7 +273,7 @@ func newKineticListener(k *kinetic.Kinetic, streamName string) *listener.Listene
 		log.Fatalf("Unable to get shards for stream %s due to: %v\n", streamName, err)
 	}
 
-	lsc := new(ListenerStatsCollector)
+	lsc := listener.NewDefaultStatsCollector(registry)
 	r, err := listener.NewKinesisReader(k.Session.Config, streamName, shards[0],
 		func(krc *listener.KinesisReaderConfig) {
 			krc.SetResponseReadTimeout(1000 * time.Millisecond)
@@ -322,10 +327,10 @@ func display(sd *StreamData, p *producer.Producer, l *listener.Listener, wg *syn
 			log.Println()
 			log.Println("***** Stream Data Summary *****")
 			if *cfg.Mode != ModeRead {
-				p.Stats.(*ProducerStatsCollector).PrintStats()
+				p.Stats.(*producer.DefaultStatsCollector).PrintStats()
 			}
 			if *cfg.Mode != ModeWrite {
-				l.Stats.(*ListenerStatsCollector).PrintStats()
+				l.Stats.(*listener.DefaultStatsCollector).PrintStats()
 				sd.printSummary()
 			}
 			return
@@ -336,10 +341,10 @@ func display(sd *StreamData, p *producer.Producer, l *listener.Listener, wg *syn
 			log.Println()
 			log.Println("***** Stream Data Stats *****")
 			if *cfg.Mode != ModeRead {
-				p.Stats.(*ProducerStatsCollector).PrintStats()
+				p.Stats.(*producer.DefaultStatsCollector).PrintStats()
 			}
 			if *cfg.Mode != ModeWrite {
-				l.Stats.(*ListenerStatsCollector).PrintStats()
+				l.Stats.(*listener.DefaultStatsCollector).PrintStats()
 				sd.printStats()
 			}
 		}
@@ -452,10 +457,11 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 				}
 				return
 			case <-time.After(time.Second):
-				newSent := atomic.LoadUint64(&p.Stats.(*ProducerStatsCollector).Sent)
-				if sent != newSent {
+				//newSent := atomic.LoadUint64(&p.Stats.(*ProducerStatsCollector).Sent)
+				newSent := p.Stats.(*producer.DefaultStatsCollector).Sent.Count()
+				if sent != uint64(newSent) {
 					staleTime.Reset(staleTimeout)
-					sent = newSent
+					sent = uint64(newSent)
 				}
 			}
 		}
@@ -535,10 +541,10 @@ func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
 				}
 				return
 			case <-time.After(time.Second):
-				newConsumed := atomic.LoadUint64(&l.Stats.(*ListenerStatsCollector).Consumed)
-				if consumed != newConsumed {
+				newConsumed := l.Stats.(*listener.DefaultStatsCollector).Consumed.Count()
+				if consumed != uint64(newConsumed) {
 					staleTime.Reset(staleTimeout)
-					consumed = newConsumed
+					consumed = uint64(newConsumed)
 				}
 			}
 		}
