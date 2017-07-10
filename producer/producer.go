@@ -111,18 +111,16 @@ func (p *Producer) sendBatch(batch []*message.Message) {
 	}()
 
 	var attempts uint64
-	var failed uint64
 
 stop:
 	for {
 		err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
 			if msg.FailCount <= p.maxRetryAttempts {
 				// Apply a delay before retrying
-				time.Sleep(time.Duration(msg.FailCount*msg.FailCount) * time.Second)
+				time.Sleep(time.Duration(msg.FailCount * msg.FailCount) * time.Second)
 
 				select {
 				case p.retries <- msg:
-					atomic.AddUint64(&failed, 1)
 				case <-p.pipeOfDeath:
 					return errs.ErrPipeOfDeath
 				}
@@ -133,8 +131,6 @@ stop:
 
 			return nil
 		})
-		p.Stats.AddSent(len(batch) - int(failed))
-		p.Stats.AddFailed(int(failed))
 		if err == nil {
 			break stop
 		}

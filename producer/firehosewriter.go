@@ -104,14 +104,12 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 	sent := attempted - failed
 	w.LogDebug(fmt.Sprintf("Finished PutRecords request, %d records attempted, %d records successful, %d records failed, took %v\n", attempted, sent, failed, time.Since(start)))
 
-	var retries int
 	for idx, record := range resp.RequestResponses {
 		if record.RecordId != nil {
 			// TODO: per-shard metrics
 			messages[idx].RecordID = record.RecordId
+			w.Stats.AddSent(1)
 		} else {
-			retries++
-
 			switch aws.StringValue(record.ErrorCode) {
 			case firehose.ErrCodeLimitExceededException:
 				w.Stats.AddProvisionedThroughputExceeded(1)
@@ -120,6 +118,8 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 			}
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
+			messages[idx].FailCount++
+			w.Stats.AddFailed(1)
 
 			go fn(messages[idx])
 		}

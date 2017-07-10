@@ -111,6 +111,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 			// TODO: per-shard metrics
 			messages[idx].SequenceNumber = record.SequenceNumber
 			messages[idx].ShardID = record.ShardId
+			w.Stats.AddSent(1)
 		} else {
 			switch aws.StringValue(record.ErrorCode) {
 			case kinesis.ErrCodeProvisionedThroughputExceededException:
@@ -121,6 +122,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
 			messages[idx].FailCount++
+			w.Stats.AddFailed(1)
 
 			go fn(messages[idx])
 		}
