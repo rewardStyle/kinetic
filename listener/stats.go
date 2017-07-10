@@ -80,6 +80,22 @@ func (nsc *NilStatsCollector) AddGetRecordsReadResponseDuration(time.Duration) {
 // the response body of a GetRecords API request.
 func (nsc *NilStatsCollector) AddGetRecordsUnmarshalDuration(time.Duration) {}
 
+// Metric names to be exported
+const (
+	MetricsConsumed                       = "kinetic.listener.consumed"
+	MetricsDelivered                      = "kinetic.listener.delivered"
+	MetricsProcessed                      = "kinetic.listener.processed"
+	MetricsBatchSize                      = "kinetic.listener.batchsize"
+	MetricsSent                           = "kinetic.listener.sent"
+	MetricsProvisionedThroughputExceeded  = "kinetic.listener.provisionedthroughputexceeded"
+	MetricsGetRecordsTimeout              = "kinetic.listener.getrecords.timeout"
+	MetricsGetRecordsReadTimeout          = "kinetic.listener.getrecords.readtimeout"
+	MetricsProcessedDuration              = "kinetic.listener.processed.duration"
+	MetricsGetRecordsDuration             = "kinetic.listener.getrecords.duration"
+	MetricsGetRecordsReadResponseDuration = "kinetic.listener.getrecords.readresponse.duration"
+	MetricsGetRecordsUnmarshalDuration    = "kinetic.listener.getrecords.unmarshal.duration"
+)
+
 // DefaultStatsCollector is a type that implements the listener's StatsCollector interface using the
 // rcrowley/go-metrics library
 type DefaultStatsCollector struct {
@@ -100,18 +116,18 @@ type DefaultStatsCollector struct {
 // NewDefaultStatsCollector instantiates a new DefaultStatsCollector object
 func NewDefaultStatsCollector(r metrics.Registry) *DefaultStatsCollector {
 	return &DefaultStatsCollector{
-		Consumed:                       metrics.GetOrRegisterCounter("listener.consumed", r),
-		Delivered:                      metrics.GetOrRegisterCounter("listener.delivered", r),
-		Processed:                      metrics.GetOrRegisterCounter("listener.processed", r),
-		BatchSize:                      metrics.GetOrRegisterCounter("listener.batchsize", r),
-		GetRecordsCalled:               metrics.GetOrRegisterCounter("listener.sent", r),
-		ProvisionedThroughputExceeded:  metrics.GetOrRegisterCounter("listener.provisionedthroughputexceeded", r),
-		GetRecordsTimeout:              metrics.GetOrRegisterCounter("listener.getrecords.timeout", r),
-		GetRecordsReadTimeout:          metrics.GetOrRegisterCounter("listener.getrecords.readtimeout", r),
-		ProcessedDuration:              metrics.GetOrRegisterGauge("listener.processed.duration", r),
-		GetRecordsDuration:             metrics.GetOrRegisterGauge("listener.getrecords.duration", r),
-		GetRecordsReadResponseDuration: metrics.GetOrRegisterGauge("listener.getrecords.readresponse.duration", r),
-		GetRecordsUnmarshalDuration:    metrics.GetOrRegisterGauge("listener.getrecords.unmarshal.duration", r),
+		Consumed:                       metrics.GetOrRegisterCounter(MetricsConsumed, r),
+		Delivered:                      metrics.GetOrRegisterCounter(MetricsDelivered, r),
+		Processed:                      metrics.GetOrRegisterCounter(MetricsProcessed, r),
+		BatchSize:                      metrics.GetOrRegisterCounter(MetricsBatchSize, r),
+		GetRecordsCalled:               metrics.GetOrRegisterCounter(MetricsSent, r),
+		ProvisionedThroughputExceeded:  metrics.GetOrRegisterCounter(MetricsProvisionedThroughputExceeded, r),
+		GetRecordsTimeout:              metrics.GetOrRegisterCounter(MetricsGetRecordsTimeout, r),
+		GetRecordsReadTimeout:          metrics.GetOrRegisterCounter(MetricsGetRecordsReadTimeout, r),
+		ProcessedDuration:              metrics.GetOrRegisterGauge(MetricsProcessedDuration, r),
+		GetRecordsDuration:             metrics.GetOrRegisterGauge(MetricsGetRecordsDuration, r),
+		GetRecordsReadResponseDuration: metrics.GetOrRegisterGauge(MetricsGetRecordsReadResponseDuration, r),
+		GetRecordsUnmarshalDuration:    metrics.GetOrRegisterGauge(MetricsGetRecordsUnmarshalDuration, r),
 	}
 }
 
@@ -198,8 +214,11 @@ func (dsc *DefaultStatsCollector) PrintStats() {
 	log.Printf("Listener stats: Processed: [%d]\n", dsc.Processed.Count())
 	log.Printf("Listener stats: Batch Size: [%d]\n", dsc.BatchSize.Count())
 	log.Printf("Listener stats: GetRecords Called: [%d]\n", dsc.GetRecordsCalled.Count())
-	log.Printf("Listener stats: Provisioned Throughput Exceeded: [%d]\n", dsc.ProvisionedThroughputExceeded.Count())
 	log.Printf("Listener stats: GetRecords Timeout: [%d]\n", dsc.GetRecordsTimeout.Count())
 	log.Printf("Listener stats: GetRecords Read Timeout: [%d]\n", dsc.GetRecordsReadTimeout.Count())
+	log.Printf("Listener stats: Provisioned Throughput Exceeded: [%d]\n", dsc.ProvisionedThroughputExceeded.Count())
+	log.Printf("Listener stats: ProcessedDuration (ns): [%d]\n", dsc.ProcessedDuration.Value())
+	log.Printf("Listener stats: GetRecordsDuration (ns): [%d]\n", dsc.GetRecordsDuration.Value())
+	log.Printf("Listener stats: GetRecordsReadResponseDuration (ns): [%d]\n", dsc.GetRecordsReadResponseDuration.Value())
+	log.Printf("Listener stats: GetRecordsUnmarshalDuration (ns): [%d]\n", dsc.GetRecordsUnmarshalDuration.Value())
 }
-
