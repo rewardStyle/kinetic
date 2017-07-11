@@ -457,8 +457,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 				}
 				return
 			case <-time.After(time.Second):
-				//newSent := atomic.LoadUint64(&p.Stats.(*ProducerStatsCollector).Sent)
-				newSent := p.Stats.(*producer.DefaultStatsCollector).Sent.Count()
+				newSent := p.Stats.(*producer.DefaultStatsCollector).SentSuccess.Count()
 				if sent != uint64(newSent) {
 					staleTime.Reset(staleTimeout)
 					sent = uint64(newSent)

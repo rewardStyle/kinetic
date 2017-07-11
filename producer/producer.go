@@ -117,7 +117,7 @@ stop:
 		err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
 			if msg.FailCount <= p.maxRetryAttempts {
 				// Apply a delay before retrying
-				time.Sleep(time.Duration(msg.FailCount * msg.FailCount) * time.Second)
+				time.Sleep(time.Duration(msg.FailCount*msg.FailCount) * time.Second)
 
 				select {
 				case p.retries <- msg:
@@ -230,7 +230,7 @@ func (p *Producer) produce() {
 			p.shutdownCond.L.Lock()
 			if len(batch) > 0 {
 				p.outstanding++
-				p.Stats.AddBatchSize(len(batch))
+				p.Stats.AddSentTotal(len(batch))
 				p.concurrencySem <- empty{}
 				go p.sendBatch(batch)
 			} else if len(batch) == 0 {

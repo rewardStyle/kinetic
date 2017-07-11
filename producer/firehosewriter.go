@@ -108,7 +108,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 		if record.RecordId != nil {
 			// TODO: per-shard metrics
 			messages[idx].RecordID = record.RecordId
-			w.Stats.AddSent(1)
+			w.Stats.AddSentSuccess(1)
 		} else {
 			switch aws.StringValue(record.ErrorCode) {
 			case firehose.ErrCodeLimitExceededException:
@@ -119,7 +119,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
 			messages[idx].FailCount++
-			w.Stats.AddFailed(1)
+			w.Stats.AddSentFailed(1)
 
 			go fn(messages[idx])
 		}

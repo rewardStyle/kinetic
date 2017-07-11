@@ -18,12 +18,16 @@ func TestStatsCollector(t *testing.T) {
 		var sc StatsCollector = &NilStatsCollector{}
 		So(sc, ShouldNotBeNil)
 
-		Convey("check that AddSent does not error", func() {
-			sc.AddSent(1)
+		Convey("check that AddSentTotal does not error", func() {
+			sc.AddSentTotal(1)
 		})
 
-		Convey("check that AddFailed does not error", func() {
-			sc.AddFailed(1)
+		Convey("check that AddSentSuccess does not error", func() {
+			sc.AddSentSuccess(1)
+		})
+
+		Convey("check that AddSentFailed does not error", func() {
+			sc.AddSentFailed(1)
 		})
 
 		Convey("check that AddDroppedTotal does not error", func() {
@@ -36,10 +40,6 @@ func TestStatsCollector(t *testing.T) {
 
 		Convey("check that AddDroppedRetries does not error", func() {
 			sc.AddDroppedRetries(1)
-		})
-
-		Convey("check that AddBatchSize does not error", func() {
-			sc.AddBatchSize(1)
 		})
 
 		Convey("check that AddPutRecordsProvisionedThroughputExceeded does not error", func() {
@@ -76,16 +76,22 @@ func TestStatsCollector(t *testing.T) {
 		var sc StatsCollector = NewDefaultStatsCollector(r)
 		So(sc, ShouldNotBeNil)
 
-		Convey("check that AddSent does not error", func() {
+		Convey("check that AddSentTotal does not error", func() {
 			count := rand.Int()
-			sc.AddSent(count)
-			So(sc.(*DefaultStatsCollector).Sent.Count(), ShouldEqual, int64(count))
+			sc.AddSentTotal(count)
+			So(sc.(*DefaultStatsCollector).SentTotal.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddFailed does not error", func() {
+		Convey("check that AddSentSuccess does not error", func() {
 			count := rand.Int()
-			sc.AddFailed(count)
-			So(sc.(*DefaultStatsCollector).Failed.Count(), ShouldEqual, int64(count))
+			sc.AddSentSuccess(count)
+			So(sc.(*DefaultStatsCollector).SentSuccess.Count(), ShouldEqual, int64(count))
+		})
+
+		Convey("check that AddSentFailed does not error", func() {
+			count := rand.Int()
+			sc.AddSentFailed(count)
+			So(sc.(*DefaultStatsCollector).SentFailed.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddDroppedTotal does not error", func() {
@@ -104,12 +110,6 @@ func TestStatsCollector(t *testing.T) {
 			count := rand.Int()
 			sc.AddDroppedRetries(count)
 			So(sc.(*DefaultStatsCollector).DroppedRetries.Count(), ShouldEqual, int64(count))
-		})
-
-		Convey("check that AddBatchSize does not error", func() {
-			count := rand.Int()
-			sc.AddBatchSize(count)
-			So(sc.(*DefaultStatsCollector).BatchSize.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddPutRecordsProvisionedThroughputExceeded does not error", func() {
