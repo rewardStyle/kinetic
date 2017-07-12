@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/logging"
 )
@@ -28,55 +26,31 @@ func (l *DebugStatsCollector) AddGetRecordsDuration(time.Duration)             {
 func (l *DebugStatsCollector) AddGetRecordsReadResponseDuration(time.Duration) {}
 func (l *DebugStatsCollector) AddGetRecordsUnmarshalDuration(time.Duration)    {}
 
-func getSession(config *Config) *session.Session {
-	sess, err := config.GetSession()
-	So(err, ShouldBeNil)
-	So(sess, ShouldNotBeNil)
-	return sess
-}
-
 func TestNewConfig(t *testing.T) {
 	Convey("given a new listener config", t, func() {
-		config := NewConfig()
+		k, err := kinetic.New(func(c *kinetic.Config) {
+			c.SetEndpoint("bogus-endpoint")
+		})
+		So(k, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+		config := NewConfig(k.Session.Config)
 
 		Convey("check the default values for its non-zero config", func() {
+			So(config.queueDepth, ShouldEqual, 10000)
 			So(config.concurrency, ShouldEqual, 10000)
-			So(config.getRecordsReadTimeout, ShouldEqual, 1*time.Second)
 			So(config.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
 			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
-		})
-
-		Convey("check that we can retrieve an aws.Session from it ", func() {
-			getSession(config)
 		})
 
 		Convey("check that we can set both the sdk and kinetic log level", func() {
 			ll := aws.LogDebug | aws.LogDebugWithSigning | logging.LogDebug
 			config.SetLogLevel(ll)
-			sess := getSession(config)
-			So(sess.Config.LogLevel.AtLeast(aws.LogDebug), ShouldBeTrue)
-			So(sess.Config.LogLevel.Matches(aws.LogDebugWithSigning), ShouldBeTrue)
 			So(config.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
-		})
-
-		Convey("check that we can set the AWS configuration", func() {
-			k, err := kinetic.New(func(c *kinetic.Config) {
-				c.SetEndpoint("bogus-endpoint")
-			})
-			So(err, ShouldBeNil)
-			config.SetAwsConfig(k.Session.Config)
-			sess := getSession(config)
-			So(aws.StringValue(sess.Config.Endpoint), ShouldEqual, "bogus-endpoint")
 		})
 
 		Convey("check that we can set the concurrency limit", func() {
 			config.SetConcurrency(50)
 			So(config.concurrency, ShouldEqual, 50)
-		})
-
-		Convey("check that we can set the read timeout for the GetRecords request", func() {
-			config.SetGetRecordsReadTimeout(10 * time.Second)
-			So(config.getRecordsReadTimeout, ShouldEqual, 10*time.Second)
 		})
 
 		Convey("check that we can configure a stats collector", func() {

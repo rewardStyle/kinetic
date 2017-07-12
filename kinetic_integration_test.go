@@ -1,8 +1,8 @@
 package kinetic
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"log"
 	"math/rand"
 	"strconv"
@@ -31,9 +31,9 @@ type StreamData struct {
 
 func NewStreamData() *StreamData {
 	return &StreamData{
-		mutex: sync.Mutex{},
+		mutex:       sync.Mutex{},
 		Frequencies: make(map[int]int),
-		Messages: make(map[int][]string),
+		Messages:    make(map[int][]string),
 	}
 }
 
@@ -129,31 +129,42 @@ func TestKineticIntegration(t *testing.T) {
 	log.Printf("Stream Name: %s\n", stream)
 	log.Printf("Shard Name: %s\n", shards[0])
 
+	// Create a new kinesis stream writer
+	w, err := producer.NewKinesisWriter(k.Session.Config, stream, func(kwc *producer.KinesisWriterConfig) {
+		kwc.SetLogLevel(aws.LogDebug)
+		kwc.SetResponseReadTimeout(time.Second)
+	})
+	if err != nil {
+		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
+	}
+
 	// Create a new kinetic producer
-	p, err := producer.NewProducer(func(c *producer.Config) {
-		c.SetAwsConfig(k.Session.Config)
-		c.SetKinesisStream(stream)
+	p, err := producer.NewProducer(k.Session.Config, w, func(c *producer.Config) {
 		c.SetBatchSize(5)
 		c.SetBatchTimeout(1000 * time.Millisecond)
 	})
 	assert.NotNil(t, p)
 	assert.Nil(t, err)
 
+	assert.NotNil(t, k.Session)
+	assert.NotNil(t, k.Session.Config)
+	r, err := listener.NewKinesisReader(k.Session.Config, stream, shards[0],
+		func(krc *listener.KinesisReaderConfig) {
+			krc.SetResponseReadTimeout(time.Second)
+		})
+	assert.NotNil(t, r)
+	assert.NoError(t, err)
+
 	// Create a new kinetic listener
-	l, err := listener.NewListener(func(c *listener.Config) {
-		c.SetAwsConfig(k.Session.Config)
-		c.SetReader(listener.NewKinesisReader(stream, shards[0]))
+	l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {
 		c.SetQueueDepth(20)
 		c.SetConcurrency(10)
-		c.SetGetRecordsReadTimeout(1000 * time.Millisecond)
-		//c.SetLogLevel(aws.LogDebug)
 	})
 	assert.NotNil(t, l)
 	assert.Nil(t, err)
 
 	numMsg := 1000
 	numSent := 0
-
 
 	// Use the producer to write messages to the kinetic stream
 	wg := sync.WaitGroup{}
@@ -162,13 +173,13 @@ func TestKineticIntegration(t *testing.T) {
 		defer wg.Done()
 		for i := 0; i < numMsg; i++ {
 			msg := &Message{
-				ID: i,
+				ID:      i,
 				Message: "hello_" + strconv.Itoa(i),
 			}
 			jsonStr, _ := json.Marshal(msg)
-			if err := p.Send(&message.Message {
+			if err := p.Send(&message.Message{
 				PartitionKey: aws.String("key"),
-				Data: []byte(jsonStr),
+				Data:         []byte(jsonStr),
 			}); err == nil {
 				*sent++
 			}
@@ -177,11 +188,11 @@ func TestKineticIntegration(t *testing.T) {
 
 	// Use the listener to read messages from the kinetic stream
 	go func() {
-		l.Listen(func(b []byte, fnwg *sync.WaitGroup) {
+		l.Listen(func(m *message.Message, fnwg *sync.WaitGroup) error {
 			defer fnwg.Done()
 
 			msg := &Message{}
-			json.Unmarshal(b, msg)
+			json.Unmarshal(m.Data, msg)
 
 			if !streamData.exists(msg.ID) {
 				wg.Done()
@@ -190,6 +201,8 @@ func TestKineticIntegration(t *testing.T) {
 			}
 
 			streamData.put(msg.ID, msg.Message)
+
+			return nil
 		})
 	}()
 

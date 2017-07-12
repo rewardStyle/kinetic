@@ -1,8 +1,8 @@
 package listener
 
 import (
-	. "github.com/smartystreets/goconvey/convey"
 	"github.com/aws/aws-sdk-go/aws"
+	. "github.com/smartystreets/goconvey/convey"
 
 	"testing"
 	"time"

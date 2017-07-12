@@ -18,10 +18,10 @@ import (
 
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/errs"
+	"github.com/rewardStyle/kinetic/message"
 )
 
 func putRecord(l *Listener, b []byte) (*string, error) {
-	l.reader.ensureClient()
 	resp, err := l.reader.(*KinesisReader).client.PutRecord(&kinesis.PutRecordInput{
 		Data:         b,
 		PartitionKey: aws.String("dummy"),
@@ -46,16 +46,23 @@ func TestListener(t *testing.T) {
 		err = k.CreateStream(stream, 1)
 		So(err, ShouldBeNil)
 
-		err = k.WaitUntilStreamExists(context.TODO(), stream, request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
+		err = k.WaitUntilStreamExists(context.TODO(), stream,
+			request.WithWaiterDelay(request.ConstantWaiterDelay(time.Second)))
 		So(err, ShouldBeNil)
 
 		shards, err := k.GetShards(stream)
 		So(err, ShouldBeNil)
 		So(len(shards), ShouldEqual, 1)
 
-		l, err := NewListener(func(c *Config) {
-			c.SetAwsConfig(k.Session.Config)
-			c.SetReader(NewKinesisReader(stream, shards[0]))
+		So(k.Session, ShouldNotBeNil)
+		So(k.Session.Config, ShouldNotBeNil)
+		r, err := NewKinesisReader(k.Session.Config, stream, shards[0], func(krc *KinesisReaderConfig) {
+			krc.SetResponseReadTimeout(time.Second)
+		})
+		So(r, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		l, err := NewListener(k.Session.Config, r, func(c *Config) {
 			c.SetQueueDepth(10)
 			c.SetConcurrency(10)
 		})
@@ -69,17 +76,8 @@ func TestListener(t *testing.T) {
 				So(r.stream, ShouldEqual, stream)
 			})
 
-			Convey("check that the reader has a valid reference to the listener", func() {
-				So(r.listener, ShouldEqual, l)
-			})
-
-			Convey("check that calling ensureClient twice doesn't overwrite existing client", func() {
-				So(r.client, ShouldBeNil)
-				r.ensureClient()
+			Convey("check that the kinesis client was initialized correctly", func() {
 				So(r.client, ShouldNotBeNil)
-				client := r.client
-				r.ensureClient()
-				So(r.client, ShouldEqual, client)
 			})
 		})
 
@@ -174,7 +172,7 @@ func TestListener(t *testing.T) {
 			var wg sync.WaitGroup
 			wg.Add(1)
 			go func() {
-				ctx, cancel := context.WithTimeout(context.TODO(), 1*time.Second)
+				ctx, cancel := context.WithTimeout(context.TODO(), 1000*time.Millisecond)
 				defer cancel()
 				_, err := l.RetrieveWithContext(ctx)
 				c.So(err, ShouldNotBeNil)
@@ -187,12 +185,35 @@ func TestListener(t *testing.T) {
 			wg.Wait()
 		})
 
+		Convey("check that listen and retrieve can not be called concurrently", func(c C) {
+			var wg sync.WaitGroup
+			wg.Add(1)
+			go func() {
+				ctx, cancel := context.WithTimeout(context.TODO(), 1000*time.Millisecond)
+				defer cancel()
+				l.ListenWithContext(ctx, func(msg *message.Message, wg *sync.WaitGroup) error {
+					defer wg.Done()
+					return nil
+				})
+				wg.Done()
+			}()
+			<-time.After(10 * time.Millisecond)
+			_, err := l.Retrieve()
+			So(err, ShouldEqual, errs.ErrAlreadyConsuming)
+			wg.Wait()
+		})
+
+		// TODO: Move this test to kinesisreader_test.go
 		Convey("check that throttle mechanism prevents more than 5 calls to get records", func() {
 			start := time.Now()
 			secs := []float64{}
 			for i := 1; i <= 6; i++ {
 				start := time.Now()
-				l.reader.GetRecord()
+				l.reader.GetRecord(context.TODO(), func(msg *message.Message, wg *sync.WaitGroup) error {
+					defer wg.Done()
+
+					return nil
+				})
 				secs = append(secs, time.Since(start).Seconds())
 			}
 			elapsed := time.Since(start).Seconds()
@@ -205,12 +226,15 @@ func TestListener(t *testing.T) {
 			data := "retrieved"
 			_, err := putRecord(l, []byte(data))
 			So(err, ShouldBeNil)
-			err = l.RetrieveFn(func(b []byte, wg *sync.WaitGroup) {
+			err = l.RetrieveFn(func(msg *message.Message, wg *sync.WaitGroup) error {
+				defer wg.Done()
+
 				called = true
 				// Note that because this is called in a goroutine, we have to use
 				// the goconvey context
-				c.So(string(b), ShouldEqual, data)
-				wg.Done()
+				c.So(string(msg.Data), ShouldEqual, data)
+
+				return nil
 			})
 			So(err, ShouldBeNil)
 			So(called, ShouldBeTrue)
@@ -223,9 +247,11 @@ func TestListener(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				l.Listen(func(b []byte, wg *sync.WaitGroup) {
+				l.Listen(func(msg *message.Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					atomic.AddInt64(&count, 1)
+
+					return nil
 				})
 			}()
 			for _, planet := range planets {
@@ -269,24 +295,24 @@ func TestListener(t *testing.T) {
 			go func() {
 				ctx, cancel := context.WithCancel(context.TODO())
 				defer wg.Done()
-				l.ListenWithContext(ctx, func(b []byte, wg *sync.WaitGroup) {
+				l.ListenWithContext(ctx, func(m *message.Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					time.AfterFunc(time.Duration(rand.Intn(10))*time.Second, func() {
-						n, err := strconv.Atoi(string(b))
+						n, err := strconv.Atoi(string(m.Data))
 						c.So(err, ShouldBeNil)
 						atomic.AddInt64(&count, 1)
 						if n == 15 {
 							cancel()
 						}
 					})
+
+					return nil
 				})
 			}()
 			wg.Wait()
 			So(atomic.LoadInt64(&count), ShouldBeBetweenOrEqual, 1, 20)
 			Printf("(count was %d)", atomic.LoadInt64(&count))
 		})
-
-		// TODO: test get records read timeout
 
 		Reset(func() {
 			k.DeleteStream(stream)

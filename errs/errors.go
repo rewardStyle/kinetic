@@ -83,4 +83,7 @@ var (
 
 	// ErrDroppedMessage is returned when the message channel is full and messages are being dropped
 	ErrDroppedMessage = errors.New("Channel is full, dropped message")
+
+	// ErrInvalidBatchSize is returned when the batchSize is invalid
+	ErrInvalidBatchSize = errors.New("PutRecordsBatch supports batch sizes less than or equal to 500")
 )

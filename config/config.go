@@ -19,7 +19,7 @@ func DefaultAwsOptions() *AwsOptions {
 	return &AwsOptions{
 		AwsConfig: aws.NewConfig().WithHTTPClient(
 			&http.Client{
-				Timeout: 10 * time.Minute,
+				Timeout: 2 * time.Minute,
 			},
 		),
 	}

@@ -28,28 +28,41 @@ func TestProducer(t *testing.T) {
 		err = k.CreateStream(stream, 1)
 		So(err, ShouldBeNil)
 
-		err = k.WaitUntilStreamExists(context.TODO(), stream, request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
+		err = k.WaitUntilStreamExists(context.TODO(), stream,
+			request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
 		So(err, ShouldBeNil)
 
 		shards, err := k.GetShards(stream)
 		So(err, ShouldBeNil)
 		So(len(shards), ShouldEqual, 1)
 
-		p, err := NewProducer(func(c *Config) {
-			c.SetAwsConfig(k.Session.Config)
-			c.SetKinesisStream(stream)
+		So(k.Session, ShouldNotBeNil)
+		So(k.Session.Config, ShouldNotBeNil)
+		w, err := NewKinesisWriter(k.Session.Config, stream)
+		So(w, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		p, err := NewProducer(k.Session.Config, w, func(c *Config) {
 			c.SetBatchSize(5)
 			c.SetBatchTimeout(1000 * time.Millisecond)
+			c.SetConcurrency(10)
+			c.SetQueueDepth(10)
 		})
 		So(p, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		l, err := listener.NewListener(func(c *listener.Config) {
-			c.SetAwsConfig(k.Session.Config)
-			c.SetReader(listener.NewKinesisReader(stream, shards[0]))
+		So(k.Session, ShouldNotBeNil)
+		So(k.Session.Config, ShouldNotBeNil)
+		r, err := listener.NewKinesisReader(k.Session.Config, stream, shards[0],
+			func(krc *listener.KinesisReaderConfig) {
+				krc.SetResponseReadTimeout(1000 * time.Millisecond)
+			})
+		So(r, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
+		l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {
 			c.SetQueueDepth(10)
 			c.SetConcurrency(10)
-			c.SetGetRecordsReadTimeout(100 * time.Millisecond)
 		})
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -61,26 +74,17 @@ func TestProducer(t *testing.T) {
 				So(w.stream, ShouldEqual, stream)
 			})
 
-			Convey("check that the writer has a valid reference to the producer", func() {
-				So(w.producer, ShouldEqual, p)
-			})
-
-			Convey("check that calling ensureClient twice doesn't overwrite existing client", func() {
-				So(w.client, ShouldBeNil)
-				w.ensureClient()
+			Convey("check that the writer was initialized correctly", func() {
 				So(w.client, ShouldNotBeNil)
-				client := w.client
-				w.ensureClient()
-				So(w.client, ShouldEqual, client)
 			})
 		})
 
-		Convey("check that we can send and receive a single message", func(){
+		Convey("check that we can send and receive a single message", func() {
 			start := time.Now()
 			data := "hello"
 			p.Send(&message.Message{
 				PartitionKey: aws.String("key"),
-				Data: []byte(data),
+				Data:         []byte(data),
 			})
 			msg, err := l.RetrieveWithContext(context.TODO())
 			elapsed := time.Since(start)

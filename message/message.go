@@ -39,9 +39,8 @@ func FromRecord(record *kinesis.Record) *Message {
 	}
 }
 
-// MakeRequestEntry creates a kinesis.PutRecordsRequestEntry to be used in the
-// kinesis.PutRecords API call.
-func (m *Message) MakeRequestEntry() *kinesis.PutRecordsRequestEntry {
+// ToRequestEntry creates a kinesis.PutRecordsRequestEntry to be used in the kinesis.PutRecords API call.
+func (m *Message) ToRequestEntry() *kinesis.PutRecordsRequestEntry {
 	return &kinesis.PutRecordsRequestEntry{
 		Data:            m.Data,
 		ExplicitHashKey: m.ExplicitHashKey,
@@ -49,9 +48,8 @@ func (m *Message) MakeRequestEntry() *kinesis.PutRecordsRequestEntry {
 	}
 }
 
-// MakeFirehoseRecord creates a firehose.Record to be used in the
-// firehose.PutRecordBatch API call.
-func (m *Message) MakeFirehoseRecord() *firehose.Record {
+// ToFirehoseRecord creates a firehose.Record to be used in the firehose.PutRecordBatch API call.
+func (m *Message) ToFirehoseRecord() *firehose.Record {
 	return &firehose.Record{
 		Data: m.Data,
 	}

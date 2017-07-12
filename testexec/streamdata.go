@@ -17,7 +17,7 @@ type StreamData struct {
 // NewStreamData instantiates a new StreamData struct
 func NewStreamData() *StreamData {
 	return &StreamData{
-		mutex: sync.Mutex{},
+		mutex:       sync.Mutex{},
 		Frequencies: make(map[uint64]uint64),
 	}
 }
@@ -68,25 +68,17 @@ func (m *StreamData) printStats() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	log.Println()
-	log.Println("***** Stream Data Stats *****")
-	log.Printf("Messages sent: [%d]\n", m.MsgCount)
-	log.Printf("Messages received: [%d]\n", len(m.Frequencies))
-	log.Printf("Number of duplicated messages: [%d]\n", m.Duplicates)
+	log.Printf("Stream Data: Number Duplicated: [%d]\n", m.Duplicates)
 }
 
 func (m *StreamData) printSummary() {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
 
-	log.Println()
-	log.Println("***** Stream Data Summary *****")
-	log.Printf("Total messages sent: [%d]\n", m.MsgCount)
-	log.Printf("Total messages received: [%d]\n", len(m.Frequencies))
-	log.Printf("Total Number of duplicated messages: [%d]\n", m.Duplicates)
+	log.Printf("Stream Data: Total Number of duplicated messages: [%d]\n", m.Duplicates)
 	for index, freq := range m.Frequencies {
 		if freq > 1 {
-			log.Printf("Message [%d] was received [%d] times\n", index, freq)
+			log.Printf("Stream Data: Message [%d] was received [%d] times\n", index, freq)
 		}
 	}
 }

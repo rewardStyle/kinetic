@@ -1,8 +1,8 @@
 package main
 
 import (
-	"sync/atomic"
 	"strconv"
+	"sync/atomic"
 )
 
 var msgCount uint64
@@ -18,7 +18,7 @@ func NewMessage() *Message {
 	atomic.AddUint64(&msgCount, 1)
 	id := atomic.LoadUint64(&msgCount)
 	return &Message{
-		ID: id,
+		ID:      id,
 		Message: "hello_" + strconv.Itoa(int(id)),
 	}
 }
