@@ -217,8 +217,8 @@ func (dsc *DefaultStatsCollector) PrintStats() {
 	log.Printf("Listener stats: GetRecords Timeout: [%d]\n", dsc.GetRecordsTimeout.Count())
 	log.Printf("Listener stats: GetRecords Read Timeout: [%d]\n", dsc.GetRecordsReadTimeout.Count())
 	log.Printf("Listener stats: Provisioned Throughput Exceeded: [%d]\n", dsc.ProvisionedThroughputExceeded.Count())
-	log.Printf("Listener stats: ProcessedDuration (ns): [%d]\n", dsc.ProcessedDuration.Value())
-	log.Printf("Listener stats: GetRecordsDuration (ns): [%d]\n", dsc.GetRecordsDuration.Value())
-	log.Printf("Listener stats: GetRecordsReadResponseDuration (ns): [%d]\n", dsc.GetRecordsReadResponseDuration.Value())
-	log.Printf("Listener stats: GetRecordsUnmarshalDuration (ns): [%d]\n", dsc.GetRecordsUnmarshalDuration.Value())
+	log.Printf("Listener stats: Processed Duration (ns): [%d]\n", dsc.ProcessedDuration.Value())
+	log.Printf("Listener stats: GetRecords Duration (ns): [%d]\n", dsc.GetRecordsDuration.Value())
+	log.Printf("Listener stats: GetRecords Read Response Duration (ns): [%d]\n", dsc.GetRecordsReadResponseDuration.Value())
+	log.Printf("Listener stats: GetRecords Unmarshal Duration (ns): [%d]\n", dsc.GetRecordsUnmarshalDuration.Value())
 }

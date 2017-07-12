@@ -248,12 +248,17 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 	}
 
 	p, err := producer.NewProducer(k.Session.Config, w, func(c *producer.Config) {
-		c.SetBatchSize(500)
 		c.SetBatchTimeout(1000 * time.Millisecond)
-		c.SetConcurrency(10)
-		c.SetMaxRetryAttempts(2)
-		c.SetQueueDepth(100)
+		c.SetBatchSize(500)
+		c.SetMaxRetryAttempts(3)
 		c.SetStatsCollector(psc)
+		if *cfg.Deadlock {
+			c.SetConcurrency(10)
+			c.SetQueueDepth(1)
+		} else {
+			c.SetConcurrency(10)
+			c.SetQueueDepth(10000)
+		}
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new producer due to: %v\n", err)

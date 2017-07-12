@@ -30,6 +30,10 @@ func TestStatsCollector(t *testing.T) {
 			sc.AddSentFailed(1)
 		})
 
+		Convey("check that AddSentRetried does not error", func() {
+			sc.AddSentRetried(1)
+		})
+
 		Convey("check that AddDroppedTotal does not error", func() {
 			sc.AddDroppedTotal(1)
 		})
@@ -92,6 +96,12 @@ func TestStatsCollector(t *testing.T) {
 			count := rand.Int()
 			sc.AddSentFailed(count)
 			So(sc.(*DefaultStatsCollector).SentFailed.Count(), ShouldEqual, int64(count))
+		})
+
+		Convey("check that AddSentRetried does not error", func() {
+			count := rand.Int()
+			sc.AddSentRetried(count)
+			So(sc.(*DefaultStatsCollector).SentRetried.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddDroppedTotal does not error", func() {

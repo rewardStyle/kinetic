@@ -14,6 +14,7 @@ type StatsCollector interface {
 	AddSentTotal(int)
 	AddSentSuccess(int)
 	AddSentFailed(int)
+	AddSentRetried(int)
 	AddDroppedTotal(int)
 	AddDroppedCapacity(int)
 	AddDroppedRetries(int)
@@ -37,6 +38,10 @@ func (nsc *NilStatsCollector) AddSentSuccess(int) {}
 
 // AddSentFailed records a count of the number of messages that failed to be sent to AWS Kinesis by the producer.
 func (nsc *NilStatsCollector) AddSentFailed(int) {}
+
+// AddSentRetried records a count of the number of messages that were retried after some error occurred when sending
+// to AWS Kinesis by the producer.
+func (nsc *NilStatsCollector) AddSentRetried(int) {}
 
 // AddDroppedTotal records a count of the total number of messages dropped by the application after multiple failures.
 func (nsc *NilStatsCollector) AddDroppedTotal(int) {}
@@ -79,6 +84,7 @@ const (
 	MetricsSentTotal                               = "kinetic.producer.sent.total"
 	MetricsSentSuccess                             = "kinetic.producer.sent.success"
 	MetricsSentFailed                              = "kinetic.producer.sent.failed"
+	MetricsSentRetried			       = "kinetic.producer.sent.retried"
 	MetricsDroppedTotal                            = "kinetic.producer.dropped.total"
 	MetricsDroppedCapacity                         = "kinetic.producer.dropped.capacity"
 	MetricsDroppedRetries                          = "kinetic.producer.dropped.retries"
@@ -97,6 +103,7 @@ type DefaultStatsCollector struct {
 	SentTotal                               metrics.Counter
 	SentSuccess                             metrics.Counter
 	SentFailed                              metrics.Counter
+	SentRetried                             metrics.Counter
 	DroppedTotal                            metrics.Counter
 	DroppedCapacity                         metrics.Counter
 	DroppedRetries                          metrics.Counter
@@ -115,6 +122,7 @@ func NewDefaultStatsCollector(r metrics.Registry) *DefaultStatsCollector {
 		SentTotal:                               metrics.GetOrRegisterCounter(MetricsSentTotal, r),
 		SentSuccess:                             metrics.GetOrRegisterCounter(MetricsSentSuccess, r),
 		SentFailed:                              metrics.GetOrRegisterCounter(MetricsSentFailed, r),
+		SentRetried:                             metrics.GetOrRegisterCounter(MetricsSentRetried, r),
 		DroppedTotal:                            metrics.GetOrRegisterCounter(MetricsDroppedTotal, r),
 		DroppedCapacity:                         metrics.GetOrRegisterCounter(MetricsDroppedCapacity, r),
 		DroppedRetries:                          metrics.GetOrRegisterCounter(MetricsDroppedRetries, r),
@@ -141,6 +149,12 @@ func (dsc *DefaultStatsCollector) AddSentSuccess(count int) {
 // AddSentFailed records a count of the number of messages that failed to be sent to AWS Kinesis by the producer.
 func (dsc *DefaultStatsCollector) AddSentFailed(count int) {
 	dsc.SentFailed.Inc(int64(count))
+}
+
+// AddSentRetried records a count of the number of messages that were retried after some error occurred when sending
+// to AWS Kinesis by the producer.
+func (dsc *DefaultStatsCollector) AddSentRetried(count int) {
+	dsc.SentRetried.Inc(int64(count))
 }
 
 // AddDroppedTotal records a count of the total number of messages dropped by the application after multiple failures.
@@ -204,6 +218,7 @@ func (dsc *DefaultStatsCollector) PrintStats() {
 	log.Printf("Producer Stats: Sent Total: [%d]\n", dsc.SentTotal.Count())
 	log.Printf("Producer Stats: Sent Success: [%d]\n", dsc.SentSuccess.Count())
 	log.Printf("Producer Stats: Sent Failed: [%d]\n", dsc.SentFailed.Count())
+	log.Printf("Producer Stats: Sent Retried: [%d]\n", dsc.SentRetried.Count())
 	log.Printf("Producer Stats: Dropped Total: [%d]\n", dsc.DroppedTotal.Count())
 	log.Printf("Producer Stats: Dropped Retries: [%d]\n", dsc.DroppedRetries.Count())
 	log.Printf("Producer Stats: Dropped Capacity: [%d]\n", dsc.DroppedCapacity.Count())

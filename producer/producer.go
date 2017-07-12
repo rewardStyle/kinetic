@@ -5,12 +5,10 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/service/kinesis"
 
 	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/logging"
@@ -110,7 +108,7 @@ func (p *Producer) sendBatch(batch []*message.Message) {
 		p.shutdownCond.L.Unlock()
 	}()
 
-	var attempts uint64
+	var retryAttempts int
 
 stop:
 	for {
@@ -121,6 +119,7 @@ stop:
 
 				select {
 				case p.retries <- msg:
+					p.Stats.AddSentRetried(1)
 				case <-p.pipeOfDeath:
 					return errs.ErrPipeOfDeath
 				}
@@ -132,6 +131,7 @@ stop:
 			return nil
 		})
 		if err == nil {
+			p.Stats.AddSentTotal(len(batch))
 			break stop
 		}
 
@@ -146,16 +146,6 @@ stop:
 			}
 		case awserr.Error:
 			switch err.Code() {
-			case kinesis.ErrCodeProvisionedThroughputExceededException:
-				// FIXME: It is not clear to me whether PutRecords would ever return a
-				// ProvisionedThroughputExceeded error.  It seems that it would instead return a valid
-				// response in which some or all the records within the response will contain an error
-				// code and error message of ProvisionedThroughputExceeded.  The current assumption is
-				// that if we receive an ProvisionedThroughputExceeded error, that the entire batch
-				// should be retried.  Note we only increment the PutRecord stat, instead of the per-
-				// message stat.  Furthermore, we do not increment the FailCount of the messages (as
-				// the retry mechanism is different).
-				p.Stats.AddPutRecordsProvisionedThroughputExceeded(1)
 			default:
 				p.LogError("Received AWS error:", err.Error())
 			}
@@ -173,16 +163,16 @@ stop:
 		// batch to be retried rather than retrying the batch as-is.  With this approach, we can kill the "stop"
 		// for loop, and set the entire batch to retries to allow the below code to handle retrying the
 		// messages.
-		if atomic.LoadUint64(&attempts) > uint64(p.maxRetryAttempts) {
-			p.LogError(fmt.Sprintf("Dropping batch after %d failed attempts to deliver to stream", attempts))
+		if retryAttempts > p.maxRetryAttempts {
+			p.LogError(fmt.Sprintf("Dropping batch after %d failed attempts to deliver to stream", retryAttempts))
 			p.Stats.AddDroppedTotal(len(batch))
 			p.Stats.AddDroppedRetries(len(batch))
 			break stop
 		}
-		atomic.AddUint64(&attempts, 1)
+		retryAttempts++
 
 		// Apply a delay before retrying
-		time.Sleep(time.Duration(attempts*attempts) * time.Second)
+		time.Sleep(time.Duration(retryAttempts * retryAttempts) * time.Second)
 	}
 
 	// This frees up another sendBatch to run to allow drainage of the messages / retry queue.  This should
@@ -230,7 +220,6 @@ func (p *Producer) produce() {
 			p.shutdownCond.L.Lock()
 			if len(batch) > 0 {
 				p.outstanding++
-				p.Stats.AddSentTotal(len(batch))
 				p.concurrencySem <- empty{}
 				go p.sendBatch(batch)
 			} else if len(batch) == 0 {

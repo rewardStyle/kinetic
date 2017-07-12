@@ -14,6 +14,7 @@ type Config struct {
 	NumMsgs    *int
 	Duration   *int
 	Throttle   *bool
+	Deadlock   *bool
 	Cleanup    *bool
 	Verbose    *bool
 }
@@ -34,7 +35,8 @@ func parseCommandLineArgs() *Config {
 	durationPtr := flag.Int("duration", 0, "used to specify the duration (in seconds) the program should run. "+
 		"This flag is only applicable to 'write' and 'readwrite' modes.  Use zero or negative number to run "+
 		"indefinitely.")
-	throttlePtr := flag.Bool("throttle", true, "used to specify whether to throttle PutRecord requests by 1 ms.  ")
+	throttlePtr := flag.Bool("throttle", true, "used to specify whether to throttle PutRecord requests by 1 ms.")
+	deadlockPtr := flag.Bool("deadlock", false, "used to test potential deadlock condition for the producer.")
 	cleanupPtr := flag.Bool("cleanup", true, "used to specify whether or not to delete the kinesis stream after "+
 		"processing is complete.")
 	verbosePtr := flag.Bool("verbose", true, "used to specify whether or not to log in verbose mode")
@@ -76,6 +78,7 @@ func parseCommandLineArgs() *Config {
 		NumMsgs:    numMsgsPtr,
 		Location:   locationPtr,
 		Throttle:   throttlePtr,
+		Deadlock:   deadlockPtr,
 		Cleanup:    cleanupPtr,
 		Verbose:    verbosePtr,
 	}
@@ -97,11 +100,12 @@ func (c *Config) printConfigs() {
 			log.Println("-num-msgs: (unbounded)")
 		}
 		if c.Duration != nil {
-			log.Println("-duration: ", *c.Duration)
+			log.Printf("-duration: [%d] (s)", *c.Duration)
 		} else {
 			log.Println("-duration: (indefinite)")
 		}
 		log.Println("-throttle: ", *c.Throttle)
+		log.Println("-deadlock: ", *c.Deadlock)
 		log.Println("-cleanup: ", *c.Cleanup)
 		log.Println("-verbose: ", *c.Verbose)
 		log.Println()
