@@ -9,7 +9,7 @@ import (
 
 // StreamWriter is an interface that abstracts the differences in API between Kinesis and Firehose.
 type StreamWriter interface {
-	PutRecords(context.Context, []*message.Message, MessageHandlerAsync) error
+	PutRecords(context.Context, []*message.Message, MessageHandler) error
 }
 
 // sendBatchFn defines the signature for the sendBatch function defined by the producer and passed to the worker as a

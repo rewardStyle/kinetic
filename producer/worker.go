@@ -12,7 +12,7 @@ import (
 const (
 	workerStateActive 	   = "active"
 	workerStateIdle 	   = "idle"
-	workerStateIdleWithRetries = "idleWithErrors"
+	workerStateIdleWithRetries = "idleWithRetries"
 	workerStateBusy 	   = "busy"
 	workerStateDecommissioned  = "decommissioned"
 	workerStateInactive 	   = "inactive"

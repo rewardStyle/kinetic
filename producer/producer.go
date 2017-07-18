@@ -112,7 +112,6 @@ func (p *Producer) produce() {
 						decommissioned = true
 					} else {
 						tokenCount := p.rateLimiter.getTokenCount()
-
 						timeout := time.After(req.timeout)
 
 						fillBatch:
@@ -121,7 +120,9 @@ func (p *Producer) produce() {
 							case <-timeout:
 								break fillBatch
 							case msg := <-p.messages:
-								batch = append(batch, msg)
+								if msg != nil {
+									batch = append(batch, msg)
+								}
 							}
 							if len(batch) + req.failed >= tokenCount {
 								break fillBatch
@@ -249,7 +250,9 @@ func (p *Producer) resizeWorkerPool(desiredWorkerCount int) {
 // messages to send and returns a slice of messages that failed to send
 func (p *Producer) sendBatch(batch []*message.Message) []*message.Message {
 	var failed []*message.Message
-	err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
+	err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message, wg *sync.WaitGroup) error {
+		defer wg.Done()
+
 		if msg.FailCount <= p.maxRetryAttempts {
 			failed = append(failed, msg)
 			p.Stats.AddSentRetried(1)
