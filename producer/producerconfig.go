@@ -24,7 +24,10 @@ func NewConfig(cfg *aws.Config) *Config {
 			batchTimeout:     time.Second,
 			queueDepth:       500,
 			maxRetryAttempts: 10,
-			concurrency:      1,
+			workersPerShard:  5,
+			shardCount:       1,
+			rateLimit:        1000,
+			resetFrequency:   time.Second,
 			Stats:            &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
@@ -57,9 +60,24 @@ func (c *Config) SetMaxRetryAttempts(attempts int) {
 	c.maxRetryAttempts = attempts
 }
 
-// SetConcurrency controls the number of outstanding PutRecords calls may be active at a time.
-func (c *Config) SetConcurrency(concurrency int) {
-	c.concurrency = concurrency
+// SetWorkersPerShard defines the number of concurrent workers to run per active shard
+func (c *Config) SetWorkersPerShard(count int) {
+	c.workersPerShard = count
+}
+
+// SetShardCount defines the initial shard size
+func (c *Config) SetShardCount(count int) {
+	c.shardCount = count
+}
+
+// SetRateLimit defines the maximum number of message to send per cycle
+func (c *Config) SetRateLimit(limit int) {
+	c.rateLimit = limit
+}
+
+// SetResetFrequency defines the frequency at which the rateLimiter resets
+func (c *Config) SetResetFrequency(freq time.Duration) {
+	c.resetFrequency = freq
 }
 
 // SetStatsCollector configures a listener to handle producer metrics.

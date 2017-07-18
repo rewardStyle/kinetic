@@ -253,10 +253,10 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		c.SetMaxRetryAttempts(3)
 		c.SetStatsCollector(psc)
 		if *cfg.Deadlock {
-			c.SetConcurrency(10)
+			//c.SetConcurrency(10)
 			c.SetQueueDepth(1)
 		} else {
-			c.SetConcurrency(10)
+			//c.SetConcurrency(10)
 			c.SetQueueDepth(10000)
 		}
 	})

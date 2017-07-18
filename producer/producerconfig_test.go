@@ -48,7 +48,10 @@ func TestNewConfig(t *testing.T) {
 			So(cfg.batchTimeout, ShouldEqual, 1*time.Second)
 			So(cfg.queueDepth, ShouldEqual, 500)
 			So(cfg.maxRetryAttempts, ShouldEqual, 10)
-			So(cfg.concurrency, ShouldEqual, 1)
+			So(cfg.workersPerShard, ShouldEqual, 5)
+			So(cfg.shardCount, ShouldEqual, 1)
+			So(cfg.rateLimit, ShouldEqual, 1000)
+			So(cfg.resetFrequency, ShouldEqual, time.Second)
 			So(cfg.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
 			So(cfg.LogLevel.Value(), ShouldEqual, logging.LogOff)
 		})
@@ -79,10 +82,7 @@ func TestNewConfig(t *testing.T) {
 			So(cfg.maxRetryAttempts, ShouldEqual, 100)
 		})
 
-		Convey("check that we can set the concurrency limit", func() {
-			cfg.SetConcurrency(50)
-			So(cfg.concurrency, ShouldEqual, 50)
-		})
+		// TODO:  Add tests for setting new producer options
 
 		Convey("check that we can configure a stats collector", func() {
 			cfg.SetStatsCollector(&DebugStatsCollector{})

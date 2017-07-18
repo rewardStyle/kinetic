@@ -2,59 +2,46 @@ package producer
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-
-	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic/errs"
 )
 
-// StreamWriter is an interface that abstracts the differences in API between Kinesis and Firehose.
-type StreamWriter interface {
-	PutRecords(context.Context, []*message.Message, MessageHandlerAsync) error
-}
-
-// empty is used a as a dummy type for counting semaphore channels.
-type empty struct{}
-
-// MessageHandler defines the signature of a message handler used by PutRecords().  MessageHandler accepts a WaitGroup
-// so the function can be run as a blocking operation as opposed to MessageHandlerAsync.
-type MessageHandler func(*message.Message, *sync.WaitGroup) error
-
-// MessageHandlerAsync defines the signature of a message handler used by PutRecords().  MessageHandlerAsync is meant to
-// be run asynchronously.
-type MessageHandlerAsync func(*message.Message) error
-
+// producerOptions holds all of the configurable settings for a Producer
 type producerOptions struct {
-	batchSize        int
-	batchTimeout     time.Duration
-	queueDepth       int
-	maxRetryAttempts int
-	concurrency      int
-	Stats            StatsCollector
+	batchSize        int            // maximum message capacity per request
+	batchTimeout     time.Duration  // maximum time duration to wait for incoming messages
+	queueDepth       int            // maximum number of messages to enqueue in the message queue
+	maxRetryAttempts int            // maximum number of retry attempts for failed messages
+	workersPerShard  int            // number of concurrent workers per shard
+	shardCount       int            // initial shard size
+	rateLimit        int            // maximum records to be sent per cycle for the rate limiting model
+	resetFrequency   time.Duration  // duration of a cycle for the rate limiting model
+	Stats            StatsCollector // stats collection mechanism
 }
 
-// Producer sends records to Kinesis or Firehose.
+// Producer sends records to AWS Kinesis or Firehose.
 type Producer struct {
-	*producerOptions
-	*logging.LogHelper
-
-	writer         StreamWriter
-	messages       chan *message.Message
-	retries        chan *message.Message
-	concurrencySem chan empty
-	pipeOfDeath    chan empty
-	outstanding    int
-	shutdownCond   *sync.Cond
-	producerWg     *sync.WaitGroup
-	producing      bool
-	producingMu    sync.Mutex
+	*producerOptions			// contains all of the configuration settings for the Producer
+	*logging.LogHelper			// object for help with logging
+	writer         StreamWriter		// interface for abstracting the PutRecords call
+	rateLimiter    *rateLimiter		// throttles the number of messages sent based on total count and size
+	workerRegistry map[string]*worker	// roster of workers in the worker pool
+	messages       chan *message.Message	// channel for enqueuing messages to be put on the stream
+	statusChannel  chan *statusReport	// channel for workers to communicate their current status
+	decommChannel  chan empty		// channel for handling the decommissioning of a surplus of workers
+	stopChannel    chan empty		// channel for handling shutdown
+	pipeOfDeath    chan empty		// channel for handling pipe of death
+	startupOnce    sync.Once		// used to ensure that the startup function is called once
+	shutdownOnce   sync.Once		// used to ensure that the shutdown function is called once
+	resizeMu       sync.Mutex		// used to prevent resizeWorkerPool from being called synchronously with itself
+	noCopy         noCopy			// prevents the Producer from being copied
 }
 
 // NewProducer creates a new producer for writing records to a Kinesis or Firehose stream.
@@ -67,202 +54,255 @@ func NewProducer(c *aws.Config, w StreamWriter, fn ...func(*Config)) (*Producer,
 		producerOptions: cfg.producerOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: cfg.LogLevel,
-			Logger:   cfg.AwsConfig.Logger,
+			Logger: cfg.AwsConfig.Logger,
 		},
-		writer:         w,
-		concurrencySem: make(chan empty, cfg.concurrency),
-		pipeOfDeath:    make(chan empty),
+		writer: w,
+		workerRegistry: make(map[string]*worker),
+		rateLimiter: newRateLimiter(cfg.rateLimit, cfg.resetFrequency),
+		messages: make(chan *message.Message, cfg.queueDepth),
+		statusChannel: make(chan *statusReport),
+		decommChannel: make(chan empty),
+		stopChannel: make(chan empty),
+		pipeOfDeath: make(chan empty),
 	}, nil
 }
 
-// startConsuming will initialize the producer and set producing to true if there is not already another consume loop
-// running.
-func (p *Producer) startProducing() bool {
-	p.producingMu.Lock()
-	defer p.producingMu.Unlock()
-	if !p.producing {
-		p.producing = true
-		p.messages = make(chan *message.Message, p.queueDepth)
-		p.retries = make(chan *message.Message, p.queueDepth)
-		p.shutdownCond = sync.NewCond(new(sync.Mutex))
-		p.producerWg = new(sync.WaitGroup)
-		return true
-	}
-	return false
-}
-
-// stopProducing handles any cleanup after a producing has stopped.
-func (p *Producer) stopProducing() {
-	p.producingMu.Lock()
-	defer p.producingMu.Unlock()
-	if p.messages != nil {
-		close(p.messages)
-	}
-	p.producing = false
-}
-
-func (p *Producer) sendBatch(batch []*message.Message) {
-	defer func() {
-		p.shutdownCond.L.Lock()
-		p.outstanding--
-		p.shutdownCond.L.Unlock()
-	}()
-
-	var retryAttempts int
-
-stop:
-	for {
-		err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
-			if msg.FailCount <= p.maxRetryAttempts {
-				// Apply a delay before retrying
-				time.Sleep(time.Duration(msg.FailCount*msg.FailCount) * time.Second)
-
-				select {
-				case p.retries <- msg:
-					p.Stats.AddSentRetried(1)
-				case <-p.pipeOfDeath:
-					return errs.ErrPipeOfDeath
-				}
-			} else {
-				p.Stats.AddDroppedTotal(1)
-				p.Stats.AddDroppedRetries(1)
-			}
-
-			return nil
-		})
-		if err == nil {
-			p.Stats.AddSentTotal(len(batch))
-			break stop
-		}
-
-		// The call failed so we need to retry the batch
-		switch err := err.(type) {
-		case net.Error:
-			if err.Timeout() {
-				p.Stats.AddPutRecordsTimeout(1)
-				p.LogError("Received net error:", err.Error())
-			} else {
-				p.LogError("Received unknown net error:", err.Error())
-			}
-		case awserr.Error:
-			switch err.Code() {
-			default:
-				p.LogError("Received AWS error:", err.Error())
-			}
-		case error:
-			switch err {
-			case errs.ErrRetryRecords:
-				break stop
-			default:
-				p.LogError("Received error:", err.Error())
-			}
-		default:
-			p.LogError("Received unknown error:", err.Error())
-		}
-		// NOTE: We may want to go through and increment the FailCount for each of the records and allow the
-		// batch to be retried rather than retrying the batch as-is.  With this approach, we can kill the "stop"
-		// for loop, and set the entire batch to retries to allow the below code to handle retrying the
-		// messages.
-		if retryAttempts > p.maxRetryAttempts {
-			p.LogError(fmt.Sprintf("Dropping batch after %d failed attempts to deliver to stream", retryAttempts))
-			p.Stats.AddDroppedTotal(len(batch))
-			p.Stats.AddDroppedRetries(len(batch))
-			break stop
-		}
-		retryAttempts++
-
-		// Apply a delay before retrying
-		time.Sleep(time.Duration(retryAttempts * retryAttempts) * time.Second)
-	}
-
-	// This frees up another sendBatch to run to allow drainage of the messages / retry queue.  This should
-	// improve throughput as well as prevent a potential deadlock in which all batches are blocked on
-	// sending retries to the retries channel, and thus no batches are allowed to drain the retry channel.
-	<-p.concurrencySem
-}
-
-// produce calls the underlying writer's PutRecords implementation to deliver batches of messages to the target stream
-// until the producer is stopped.
+// produce is called once to initialize a pool of workers which send batches of messages concurrently
 func (p *Producer) produce() {
-	if !p.startProducing() {
-		return
-	}
-	p.producerWg.Add(1)
-	go func() {
-		defer func() {
-			p.stopProducing()
-			p.producerWg.Done()
-		}()
+	p.startupOnce.Do(func() {
+		// Reset shutdownOnce to allow the shut down sequence to happen again
+		p.shutdownOnce = sync.Once{}
 
-		for {
-			var batch []*message.Message
-			timer := time.After(p.batchTimeout)
-		batch:
-			for len(batch) < p.batchSize {
+		// Instantiate and register new workers
+		p.resizeWorkerPool(p.shardCount * p.workersPerShard)
+
+		// Instantiate and start a new rate limiter
+		p.rateLimiter.start()
+
+		go func(){
+			// Dispatch messages to each worker depending on the worker's capacity and the rate limit
+			for {
 				select {
-				// Using the select, retry messages will interleave with new messages.  This is
-				// preferable to putting the messages at the end of the channel as it minimizes the
-				// delay in the delivery of retry messages.
-				case msg, ok := <-p.messages:
-					if !ok {
-						p.messages = nil
-					} else {
-						batch = append(batch, msg)
-					}
-				case msg := <-p.retries:
-					batch = append(batch, msg)
-				case <-timer:
-					break batch
 				case <-p.pipeOfDeath:
 					return
+				case <-p.stopChannel:
+					return
+				case req := <-p.statusChannel:
+					// Use the worker registry to find the worker by workerID
+					worker, ok := p.workerRegistry[req.workerID];
+					if !ok {
+						// move on to the next status if a bogus workerID is provided
+						break
+					}
+
+					// Verify that worker is in the right state for handling a new batch of messages
+					workerState := worker.getWorkerState()
+					if !(workerState == workerStateIdle ||
+						workerState == workerStateIdleWithRetries) {
+						// otherwise on to the next one
+						break
+					}
+
+					// If we need to decommission some workers distribute the decommission command
+				        // to idle workers, otherwise try to fill the workers capacity
+					var batch []*message.Message
+					var decommissioned bool
+					if len(p.decommChannel) > 0 && workerState == workerStateIdle {
+						<-p.decommChannel
+						decommissioned = true
+					} else {
+						tokenCount := p.rateLimiter.getTokenCount()
+
+						timeout := time.After(req.timeout)
+
+						fillBatch:
+						for len(batch) < req.capacity {
+							select {
+							case <-timeout:
+								break fillBatch
+							case msg := <-p.messages:
+								batch = append(batch, msg)
+							}
+							if len(batch) + req.failed >= tokenCount {
+								break fillBatch
+							}
+						}
+						p.rateLimiter.claimTokens(len(batch) + req.failed)
+					}
+
+					// Send the command to the worker's command channel
+					worker.commands <-&workerCommand{
+						batchMsgs: batch,
+						decommissioned: decommissioned,
+					}
 				}
 			}
-			p.shutdownCond.L.Lock()
-			if len(batch) > 0 {
-				p.outstanding++
-				p.concurrencySem <- empty{}
-				go p.sendBatch(batch)
-			} else if len(batch) == 0 {
-				// We did not get any records -- check if we may be (gracefully) shutting down the
-				// producer.  We can exit when:
-				//   - The messages channel is nil and no new messages can be enqueued
-				//   - There are no outstanding sendBatch goroutines and can therefore not produce any
-				//     more messages to retry
-				//   - The retry channel is empty
-				if p.messages == nil && p.outstanding == 0 && len(p.retries) == 0 {
-					close(p.retries)
-					p.shutdownCond.Broadcast()
-					p.shutdownCond.L.Unlock()
+		}()
+	})
+}
+
+// shutdown is called once to handle the graceful shutdown of the produce function
+func (p *Producer) shutdown() {
+	p.shutdownOnce.Do(func() {
+		// Close the messages channel to prevent any more incoming messages
+		if p.messages != nil {
+			close(p.messages)
+		}
+
+		// Allow the workers to drain the message channel first
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		go func(){
+			defer wg.Done()
+
+			staleTimeout := time.Duration(3 * time.Second)
+			timer := time.NewTimer(staleTimeout)
+			remaining := len(p.messages)
+			for remaining > 0 {
+				select {
+				case <-time.After(time.Second):
+					newRemaining := len(p.messages)
+					if newRemaining != remaining {
+						timer.Reset(staleTimeout)
+						remaining = newRemaining
+					}
+				case <-timer.C:
 					return
 				}
 			}
-			p.shutdownCond.L.Unlock()
+		}()
+		wg.Wait()
+
+		// Decommission all the workers
+		p.resizeWorkerPool(0)
+
+		// Close the decommission channel
+		if p.decommChannel != nil {
+			close(p.decommChannel)
 		}
-	}()
+
+		// Close the status channel
+		if p.statusChannel != nil {
+			close(p.statusChannel)
+		}
+
+		// Stop the rate limiter
+		p.rateLimiter.stop()
+
+		// Stop the running go routine in produce
+		p.stopChannel <- empty{}
+
+		// Reset startupOnce to allow the start up sequence to happen again
+		p.startupOnce = sync.Once{}
+	})
 }
 
-// CloseWithContext shuts down the producer, waiting for all outstanding messages and retries to flush.  Cancellation
-// is supported through contexts.
-func (p *Producer) CloseWithContext(ctx context.Context) {
-	c := make(chan empty, 1)
-	close(p.messages)
-	go func() {
-		p.shutdownCond.L.Lock()
-		for p.outstanding != 0 {
-			p.shutdownCond.Wait()
+// resizeWorkerPool is called to instantiate new workers, decommission workers or recommission workers that have been
+// deactivated
+func (p *Producer) resizeWorkerPool(desiredWorkerCount int) {
+	p.resizeMu.Lock()
+	defer p.resizeMu.Unlock()
+
+	// Get the number of total workers in the registry
+	totalWorkerCount := len(p.workerRegistry)
+
+
+	// Create a map of available workers
+	availableWorkers := make(map[string]*worker, totalWorkerCount)
+	for id, worker := range p.workerRegistry {
+		workerState := worker.getWorkerState()
+		if workerState == workerStateInactive || workerState == workerStateDecommissioned {
+			availableWorkers[id] = worker
 		}
-		p.shutdownCond.L.Unlock()
-		p.producerWg.Wait()
-		c <- empty{}
-	}()
-	select {
-	case <-c:
-	case <-ctx.Done():
-		close(p.pipeOfDeath)
+	}
+	activeWorkerCount := totalWorkerCount - len(availableWorkers)
+
+	// We have too many workers at present than we actually need
+	if desiredWorkerCount < activeWorkerCount {
+		// Decommission the workers that we don't need
+		for i := activeWorkerCount; i <= desiredWorkerCount; i-- {
+			p.decommChannel <-empty{}
+		}
+	// We need more workers than are presently active or commissioned
+	} else if activeWorkerCount < desiredWorkerCount {
+		// Recommission those workers that are inactive
+		var activated int
+		for _, worker := range availableWorkers {
+			if activated > desiredWorkerCount - activeWorkerCount {
+				break
+			}
+			worker.start()
+			activated++
+		}
+
+		// Spawn new workers if still not enough
+		if desiredWorkerCount > totalWorkerCount {
+			for i := totalWorkerCount; i < desiredWorkerCount; i++ {
+				worker := newWorker(p.producerOptions, p.sendBatch, p.reportStatus)
+				p.workerRegistry[worker.workerID] = worker
+			}
+		}
 	}
 }
 
-// Close shuts down the producer, waiting for all outstanding messages and retries to flush.
+// sendBatch is the function that is called by each worker to put records on the stream. sendBatch accepts a slice of
+// messages to send and returns a slice of messages that failed to send
+func (p *Producer) sendBatch(batch []*message.Message) []*message.Message {
+	var failed []*message.Message
+	err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
+		if msg.FailCount <= p.maxRetryAttempts {
+			failed = append(failed, msg)
+			p.Stats.AddSentRetried(1)
+		} else {
+			p.Stats.AddDroppedTotal(1)
+			p.Stats.AddDroppedRetries(1)
+		}
+		return nil
+	})
+	if err == nil {
+		p.Stats.AddSentTotal(len(batch))
+		return failed
+	}
+
+	// Beyond this point the PutRecords API call failed for some reason
+	switch err := err.(type) {
+	case net.Error:
+		if err.Timeout() {
+			p.Stats.AddPutRecordsTimeout(1)
+			p.LogError("Received net error:", err.Error())
+		} else {
+			p.LogError("Received unknown net error:", err.Error())
+		}
+	case awserr.Error:
+		p.LogError("Received AWS error:", err.Error())
+	case error:
+		switch err {
+		case errs.ErrRetryRecords:
+			break
+		default:
+			p.LogError("Received error:", err.Error())
+		}
+	default:
+		p.LogError("Received unknown error:", err.Error())
+	}
+
+	return batch
+}
+
+// reportStatus is used as a closure for the workers to report status to
+func (p *Producer) reportStatus(report *statusReport) {
+	p.statusChannel <- report
+}
+
+// CloseWithContext initiates the graceful shutdown of the produce function, waiting for all outstanding messages and to
+// flush.  Cancellation is supported through contexts.
+func (p *Producer) CloseWithContext(ctx context.Context) {
+	p.shutdown()
+	<-ctx.Done()
+	close(p.pipeOfDeath)
+}
+
+// Close initiates the graceful shutdown of the produce function, waiting for all outstanding messages and to flush.
 func (p *Producer) Close() {
 	p.CloseWithContext(context.TODO())
 }
@@ -286,6 +326,7 @@ func (p *Producer) Send(msg *message.Message) error {
 // TryToSend will attempt to send a message to the stream if the channel has capacity for a message, or will immediately
 // return with an error if the channel is full.
 func (p *Producer) TryToSend(msg *message.Message) error {
+	p.produce()
 	select {
 	case p.messages <- msg:
 		return nil

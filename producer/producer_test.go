@@ -45,7 +45,7 @@ func TestProducer(t *testing.T) {
 		p, err := NewProducer(k.Session.Config, w, func(c *Config) {
 			c.SetBatchSize(5)
 			c.SetBatchTimeout(1000 * time.Millisecond)
-			c.SetConcurrency(10)
+			//c.SetConcurrency(10)
 			c.SetQueueDepth(10)
 		})
 		So(p, ShouldNotBeNil)
