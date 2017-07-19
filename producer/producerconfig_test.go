@@ -46,7 +46,7 @@ func TestNewConfig(t *testing.T) {
 		Convey("check the default values for its non-zero config", func() {
 			So(cfg.batchSize, ShouldEqual, 500)
 			So(cfg.batchTimeout, ShouldEqual, 1*time.Second)
-			So(cfg.queueDepth, ShouldEqual, 500)
+			So(cfg.queueDepth, ShouldEqual, 10000)
 			So(cfg.maxRetryAttempts, ShouldEqual, 10)
 			So(cfg.workersPerShard, ShouldEqual, 5)
 			So(cfg.shardCount, ShouldEqual, 1)
