@@ -239,7 +239,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 
 	psc := producer.NewDefaultStatsCollector(registry)
 	w, err := producer.NewKinesisWriter(k.Session.Config, streamName, func(kwc *producer.KinesisWriterConfig) {
-		kwc.SetLogLevel(aws.LogDebug)
+		//kwc.SetLogLevel(logging.LogDebug)
 		kwc.SetResponseReadTimeout(time.Second)
 		kwc.SetStatsCollector(psc)
 	})
@@ -253,6 +253,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		c.SetMaxRetryAttempts(3)
 		c.SetStatsCollector(psc)
 		c.SetQueueDepth(10000)
+		c.SetWorkersPerShard(2)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new producer due to: %v\n", err)
@@ -385,13 +386,11 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 		for {
 			<-sendSignal
 			jsonStr, _ := json.Marshal(NewMessage())
-			if err := p.Send(&message.Message{
+			if err := p.TryToSend(&message.Message{
 				PartitionKey: aws.String("key"),
 				Data:         []byte(jsonStr),
 			}); err == nil {
 				sd.incrementMsgCount()
-			} else {
-				log.Println("producer: Uh oh, something bad happened!!!!")
 			}
 		}
 	}()

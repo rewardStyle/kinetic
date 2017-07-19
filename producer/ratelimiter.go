@@ -9,13 +9,14 @@ import (
 
 // rateLimiter is used by the producer to rate limit the total number and size of records sent per cycle.
 type rateLimiter struct {
-	limit       int           // upper limit of throughput per cycle
-	duration    time.Duration // frequency with which to reset the remaining tokens count
-	tokenCount  int           // remaining tokens available for the cycle
-	tokenMu     sync.Mutex    // mutex to protect remaining token count
-	stopChannel chan empty    // channel for communicating when to stop rate limiting
-	startOnce   sync.Once     // startOnce is used to ensure that start is called once and only once
-	stopOnce    sync.Once     // stopOnce is used to ensure that stop is called once and only once
+	limit        int           // upper limit of throughput per cycle
+	duration     time.Duration // frequency with which to reset the remaining tokens count
+	tokenCount   int           // remaining tokens available for the cycle
+	tokenMu      sync.Mutex    // mutex to protect remaining token count
+	stopChannel  chan empty    // channel for communicating when to stop rate limiting
+	resetChannel chan empty    // channel for communicating when the rate limiter has been reset
+	startOnce    sync.Once     // startOnce is used to ensure that start is called once and only once
+	stopOnce     sync.Once     // stopOnce is used to ensure that stop is called once and only once
 }
 
 // newRateLimiter creates a new rateLimiter.
@@ -34,6 +35,7 @@ func (r *rateLimiter) start() {
 		r.stopOnce = sync.Once{}
 
 		r.stopChannel = make(chan empty)
+		r.resetChannel = make(chan empty)
 		ticker := time.NewTicker(r.duration)
 		go func(){
 			for {
@@ -53,6 +55,9 @@ func (r *rateLimiter) start() {
 func (r *rateLimiter) stop() {
 	r.stopOnce.Do(func(){
 		r.stopChannel <- empty{}
+
+		close(r.stopChannel)
+		close(r.resetChannel)
 
 		// Reset startOnce to allow the rateLimiter to be started again
 		r.startOnce = sync.Once{}
@@ -80,6 +85,16 @@ func (r *rateLimiter) reset() {
 	r.tokenMu.Lock()
 	defer r.tokenMu.Unlock()
 	r.tokenCount = r.limit
+
+	// Send a signal to the resetChanel and remove it immediately if no one picked it up
+	select {
+	case r.resetChannel <-empty{}:
+	default:
+		select {
+		case <-r.resetChannel:
+		default:
+		}
+	}
 }
 
 // getTokenCount is used to retrieve the current token count.  Be aware of thread safety when trying to use

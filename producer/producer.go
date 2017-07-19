@@ -89,8 +89,14 @@ func (p *Producer) produce() {
 				case <-p.stop:
 					return
 				case status := <-p.status:
+					var tokenCount int
+					for tokenCount = p.rateLimiter.getTokenCount(); tokenCount == 0; {
+						// Wait for a reset notification from the rateLimiter if needed
+						<-p.rateLimiter.resetChannel
+						tokenCount = p.rateLimiter.getTokenCount()
+					}
+
 					var batch []*message.Message
-					tokenCount := p.rateLimiter.getTokenCount()
 					timeout := time.After(p.batchTimeout)
 
 					fillBatch:
@@ -104,8 +110,13 @@ func (p *Producer) produce() {
 							}
 						}
 					}
-					p.rateLimiter.claimTokens(len(batch) + status.failed)
 
+					// Claim tokens only if needed
+					if len(batch) + status.failed > 0 {
+						p.rateLimiter.claimTokens(len(batch) + status.failed)
+					}
+
+					// Send batch regardless if it is empty or not
 					status.channel <-batch
 				}
 			}

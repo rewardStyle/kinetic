@@ -22,7 +22,7 @@ func NewConfig(cfg *aws.Config) *Config {
 		producerOptions: &producerOptions{
 			batchSize:        500,
 			batchTimeout:     time.Second,
-			queueDepth:       500,
+			queueDepth:       10000,
 			maxRetryAttempts: 10,
 			workersPerShard:  5,
 			shardCount:       1,
