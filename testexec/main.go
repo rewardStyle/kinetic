@@ -78,7 +78,7 @@ func init() {
 }
 
 func cleanup(k *kinetic.Kinetic, stream string) {
-	if *cfg.Cleanup {
+	if *cfg.Clean {
 		if *cfg.Verbose {
 			log.Println()
 			log.Printf("Cleaning up by deleting stream [%s] ...\n", stream)
@@ -252,13 +252,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		c.SetBatchSize(500)
 		c.SetMaxRetryAttempts(3)
 		c.SetStatsCollector(psc)
-		if *cfg.Deadlock {
-			//c.SetConcurrency(10)
-			c.SetQueueDepth(1)
-		} else {
-			//c.SetConcurrency(10)
-			c.SetQueueDepth(10000)
-		}
+		c.SetQueueDepth(10000)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new producer due to: %v\n", err)
@@ -410,10 +404,10 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 
 		var sent uint64
 		var sendTicker *time.Ticker
-		if *cfg.Throttle {
-			sendTicker = time.NewTicker(time.Millisecond)
-		} else {
+		if *cfg.Blast {
 			sendTicker = time.NewTicker(time.Nanosecond)
+		} else {
+			sendTicker = time.NewTicker(time.Millisecond)
 		}
 	produce:
 		for {
@@ -432,8 +426,8 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 				break produce
 			case <-sendTicker.C:
 				// Break from the loop if we have sent the correct number of messages
-				if cfg.NumMsgs != nil {
-					if atomic.LoadUint64(&sent) >= uint64(*cfg.NumMsgs) {
+				if cfg.MsgCount != nil {
+					if atomic.LoadUint64(&sent) >= uint64(*cfg.MsgCount) {
 						break produce
 					}
 				}

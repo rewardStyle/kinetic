@@ -33,43 +33,42 @@ go install
 
 ```text
 Usage of ./testexec:
-  -cleanup
+  -blast
+    	used to specify whether to call the producer's send function at full blast. (default false)
+  -clean
     	used to specify whether or not to delete the kinesis stream after processing is complete. (default true)
+  -count int
+    	used to specify the number of messages to (attempt to) send.  This flag is only applicable to 'write' and 'readwrite' modes.  Use zero or a negative number to produce indefinitely
   -duration int
-    	used to specify the duration (in seconds) the program should run. This flag is only applicable to 'write' and 'readwrite' modes.  Use zero or negative number to run indefinitely. (default 0)
+    	used to specify the duration (in seconds) the program should run. This flag is only applicable to 'write' and 'readwrite' modes.  Use zero or negative number to run indefinitely.
   -location string
     	used to specify the location of the kinesis stream.  Accepted values are (local|aws).  For local, run kinesalite on http://127.0.0.1:4567. For aws, your aws credentials and configuration need to be defined at ~/.aws (default "local")
   -mode string
     	used to specify the mode in which to run; either 'r', 'read', 'w', 'write', 'rw' or 'readwrite' (default "readwrite")
-  -num-msgs int
-    	used to specify the number of messages to (attempt to) send.  This flag is only applicable to 'write' and 'readwrite' modes.  Use zero or a negative number to produce indefinitely (default 0)
-  -stream-name string
-    	used to specify a pre-existing stream to be used for testing.  A new stream will be created if not defined.
-  -throttle
-    	used to specify whether to throttle PutRecord requests by 1 ms.   (default true)
+  -stream string
+    	used to specify a specific stream to write to / read from for testing. The stream will be created if a stream name is given but does not exist.  A random stream will be created if the stream is undefined.
   -verbose
-    	used to specify whether or not to log in verbose mode.  (default false)
+      	used to specify whether or not to log in verbose mode (default true)
 ```
 
 ## Examples
 
-To run kinetic testexec on a local kinesalite instance to stream a fixed number of messages to a new kinesis stream:
+To run kinetic testexec to stream to / from a local kinesalite instance indefinitely to a new Kinesis stream:
 ```sh
-./testexec -num-msgs 1000 -verbose
+./testexec
 ```
 
-To run kinetic testexec on a local kinesalite instance to stream for a fixed duration of time to an existing kinesis stream:
+To run kinetic testexec to stream a fixed number of messages to / from a new Kinesis stream:
 ```sh
-./testexec -location local -stream-name some-stream -duration 1000
+./testexec -location aws -count 1000
 ```
 
-To run kinetic testexec on an AWS Kinesis Stream to stream indefinitely (Ctrl-C to stop producing):
+To run a stress test on the kinetic testexec to stream to / from a specific Kinesis stream and save the stream for confirmation later (Ctrl-C to stop producing):
 ```sh
-./testexec -location aws -duration -1 -mode write -stream-name test-stream -cleanup=false -verbose
+./testexec -location aws -stream my-stress-test-stream -blast=true -clean=false
 ```
 
-To run kinetic testexec in read mode an AWS KinesisStream:
-To run kinetic testexec on an AWS Kinesis Stream to stream indefinitely (Ctrl-C to stop producing):
+To run kinetic testexec in listen-only mode on an existing Kinesis stream:
 ```sh
-./testexec -location aws -mode read -stream-name test-stream -cleanup=false -verbose
+./testexec -location aws -mode read -stream my-stress-test-stream -clean=false
 ```

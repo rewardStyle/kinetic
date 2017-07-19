@@ -11,11 +11,10 @@ type Config struct {
 	Mode       *string
 	Location   *string
 	StreamName *string
-	NumMsgs    *int
+	MsgCount   *int
 	Duration   *int
-	Throttle   *bool
-	Deadlock   *bool
-	Cleanup    *bool
+	Blast      *bool
+	Clean      *bool
 	Verbose    *bool
 }
 
@@ -27,17 +26,17 @@ func parseCommandLineArgs() *Config {
 	locationPtr := flag.String("location", "local", "used to specify the location of the kinesis stream.  "+
 		"Accepted values are (local|aws).  For local, run kinesalite on http://127.0.0.1:4567. For aws, your "+
 		"aws credentials and configuration need to be defined at ~/.aws")
-	streamNamePtr := flag.String("stream-name", "", "used to specify a pre-existing stream to be used for "+
-		"testing.  A new stream will be created if not defined.")
-	numMsgsPtr := flag.Int("num-msgs", 0, "used to specify the number of messages to (attempt to) send.  This "+
+	streamNamePtr := flag.String("stream", "", "used to specify a specific stream to write to / read from for " +
+		"testing. The stream will be created if a stream name is given but does not exist.  A random stream will " +
+		"be created if the stream is undefined.")
+	msgCountPtr := flag.Int("count", 0, "used to specify the number of messages to (attempt to) send.  This "+
 		"flag is only applicable to 'write' and 'readwrite' modes.  Use zero or a negative number to produce "+
 		"indefinitely")
 	durationPtr := flag.Int("duration", 0, "used to specify the duration (in seconds) the program should run. "+
 		"This flag is only applicable to 'write' and 'readwrite' modes.  Use zero or negative number to run "+
 		"indefinitely.")
-	throttlePtr := flag.Bool("throttle", true, "used to specify whether to throttle PutRecord requests by 1 ms.")
-	deadlockPtr := flag.Bool("deadlock", false, "used to test potential deadlock condition for the producer.")
-	cleanupPtr := flag.Bool("cleanup", true, "used to specify whether or not to delete the kinesis stream after "+
+	blastPtr := flag.Bool("blast", false, "used to specify whether to call the producer's send function at full blast.")
+	cleanPtr := flag.Bool("clean", true, "used to specify whether or not to delete the kinesis stream after "+
 		"processing is complete.")
 	verbosePtr := flag.Bool("verbose", true, "used to specify whether or not to log in verbose mode")
 
@@ -49,8 +48,8 @@ func parseCommandLineArgs() *Config {
 		durationPtr = nil
 	}
 
-	if *numMsgsPtr <= 0 {
-		numMsgsPtr = nil
+	if *msgCountPtr <= 0 {
+		msgCountPtr = nil
 	}
 
 	var mode string
@@ -75,11 +74,10 @@ func parseCommandLineArgs() *Config {
 		Mode:       &mode,
 		StreamName: streamNamePtr,
 		Duration:   durationPtr,
-		NumMsgs:    numMsgsPtr,
+		MsgCount:    msgCountPtr,
 		Location:   locationPtr,
-		Throttle:   throttlePtr,
-		Deadlock:   deadlockPtr,
-		Cleanup:    cleanupPtr,
+		Blast:      blastPtr,
+		Clean:      cleanPtr,
 		Verbose:    verbosePtr,
 	}
 }
@@ -90,23 +88,22 @@ func (c *Config) printConfigs() {
 		log.Println("-mode: ", *c.Mode)
 		log.Println("-location: ", *c.Location)
 		if len(*c.StreamName) == 0 {
-			log.Println("-stream-name: (randomly generated)")
+			log.Println("-stream: (randomly generated)")
 		} else {
-			log.Println("-stream-name: ", *c.StreamName)
+			log.Println("-stream: ", *c.StreamName)
 		}
-		if c.NumMsgs != nil {
-			log.Println("-num-msgs: ", *c.NumMsgs)
+		if c.MsgCount != nil {
+			log.Println("-count: ", *c.MsgCount)
 		} else {
-			log.Println("-num-msgs: (unbounded)")
+			log.Println("-count: (unbounded)")
 		}
 		if c.Duration != nil {
 			log.Printf("-duration: [%d] (s)", *c.Duration)
 		} else {
 			log.Println("-duration: (indefinite)")
 		}
-		log.Println("-throttle: ", *c.Throttle)
-		log.Println("-deadlock: ", *c.Deadlock)
-		log.Println("-cleanup: ", *c.Cleanup)
+		log.Println("-blast: ", *c.Blast)
+		log.Println("-cleanup: ", *c.Clean)
 		log.Println("-verbose: ", *c.Verbose)
 		log.Println()
 	}
