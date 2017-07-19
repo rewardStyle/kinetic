@@ -3,7 +3,6 @@ package producer
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -53,7 +52,7 @@ func NewKinesisWriter(c *aws.Config, stream string, fn ...func(*KinesisWriterCon
 }
 
 // PutRecords sends a batch of records to Kinesis and returns a list of records that need to be retried.
-func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageHandler) error {
+func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageHandlerAsync) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
@@ -127,10 +126,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 			messages[idx].FailCount++
 			w.Stats.AddSentFailed(1)
 
-			wg := sync.WaitGroup{}
-			wg.Add(1)
-			fn(messages[idx], &wg)
-			wg.Wait()
+			fn(messages[idx])
 		}
 	}
 

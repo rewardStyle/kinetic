@@ -39,6 +39,7 @@ func (r *rateLimiter) start() {
 			for {
 				select {
 				case <-r.stopChannel:
+					ticker.Stop()
 					return
 				case <-ticker.C:
 					r.reset()
@@ -58,6 +59,22 @@ func (r *rateLimiter) stop() {
 	})
 }
 
+// restart calls stop then start to restart the rate limiter
+func (r *rateLimiter) restart() {
+	r.stop()
+	r.start()
+}
+
+// resize updates the maximum message size and reset frequency
+func (r *rateLimiter) resize(limit int, duration time.Duration) {
+	r.tokenMu.Lock()
+	defer r.tokenMu.Unlock()
+	r.limit = limit
+	r.duration = duration
+
+	r.restart()
+}
+
 // reset is called to reset the rateLimiter's tokens to the initial values
 func (r *rateLimiter) reset() {
 	r.tokenMu.Lock()
@@ -65,16 +82,35 @@ func (r *rateLimiter) reset() {
 	r.tokenCount = r.limit
 }
 
-// getTokenCount is used to retrieve the current token count
+// getTokenCount is used to retrieve the current token count.  Be aware of thread safety when trying to use
+// getTokenCount and claimToken back to back as they are not tread safe with each other (use tryToClaimToken instead)
 func (r *rateLimiter) getTokenCount() int {
 	r.tokenMu.Lock()
 	defer r.tokenMu.Unlock()
 	return r.tokenCount
 }
 
-// claimTokens is used to claim tokens prior to sending messages
+// claimTokens is used to claim tokens prior to sending messages. Be aware of thread safety when trying to use
+// getTokenCount and claimToken back to back as they are not tread safe with each other (use tryToClaimToken instead)
 func (r *rateLimiter) claimTokens(count int) {
 	r.tokenMu.Lock()
 	defer r.tokenMu.Unlock()
 	r.tokenCount -= count
+}
+
+
+// tryToClaim attempts to claim the wanted number of tokens and returns the actual number claimed based on the
+// number of tokens actually availab
+func (r *rateLimiter) tryToClaimTokens(want int) (got int) {
+	r.tokenMu.Lock()
+	defer r.tokenMu.Unlock()
+
+	if want <= r.tokenCount {
+		r.tokenCount -= want
+		got = want
+	} else {
+		r.tokenCount = 0
+		got = r.tokenCount
+	}
+	return got
 }

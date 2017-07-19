@@ -3,7 +3,6 @@ package producer
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -52,7 +51,7 @@ func NewFirehoseWriter(c *aws.Config, stream string, fn ...func(*FirehoseWriterC
 }
 
 // PutRecords sends a batch of records to Firehose and returns a list of records that need to be retried.
-func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageHandler) error {
+func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageHandlerAsync) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
@@ -124,10 +123,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 			messages[idx].FailCount++
 			w.Stats.AddSentFailed(1)
 
-			wg := sync.WaitGroup{}
-			wg.Add(1)
-			fn(messages[idx], &wg)
-			wg.Wait()
+			fn(messages[idx])
 		}
 	}
 

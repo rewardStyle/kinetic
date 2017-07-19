@@ -28,20 +28,20 @@ type producerOptions struct {
 
 // Producer sends records to AWS Kinesis or Firehose.
 type Producer struct {
-	*producerOptions			// contains all of the configuration settings for the Producer
-	*logging.LogHelper			// object for help with logging
-	writer         StreamWriter		// interface for abstracting the PutRecords call
-	rateLimiter    *rateLimiter		// throttles the number of messages sent based on total count and size
-	workerRegistry map[string]*worker	// roster of workers in the worker pool
-	messages       chan *message.Message	// channel for enqueuing messages to be put on the stream
-	statusChannel  chan *statusReport	// channel for workers to communicate their current status
-	decommChannel  chan empty		// channel for handling the decommissioning of a surplus of workers
-	stopChannel    chan empty		// channel for handling shutdown
-	pipeOfDeath    chan empty		// channel for handling pipe of death
-	startupOnce    sync.Once		// used to ensure that the startup function is called once
-	shutdownOnce   sync.Once		// used to ensure that the shutdown function is called once
-	resizeMu       sync.Mutex		// used to prevent resizeWorkerPool from being called synchronously with itself
-	noCopy         noCopy			// prevents the Producer from being copied
+	*producerOptions                            // contains all of the configuration settings for the Producer
+	*logging.LogHelper                          // object for help with logging
+	writer         StreamWriter                 // interface for abstracting the PutRecords call
+	rateLimiter    *rateLimiter                 // throttles the number of messages sent based on total count and size
+	workerCount    int                          // number of concurrent workers sending batch messages for the producer
+	messages       chan *message.Message        // channel for enqueuing messages to be put on the stream
+	status         chan *statusReport           // channel for workers to communicate their current status
+	dismiss        chan empty                   // channel for handling the decommissioning of a surplus of workers
+	stop           chan empty                   // channel for handling shutdown
+	pipeOfDeath    chan empty                   // channel for handling pipe of death
+	startupOnce    sync.Once                    // used to ensure that the startup function is called once
+	shutdownOnce   sync.Once                    // used to ensure that the shutdown function is called once
+	resizeMu       sync.Mutex                   // used to prevent resizeWorkerPool from being called synchronously with itself
+	noCopy         noCopy                       // prevents the Producer from being copied
 }
 
 // NewProducer creates a new producer for writing records to a Kinesis or Firehose stream.
@@ -57,13 +57,6 @@ func NewProducer(c *aws.Config, w StreamWriter, fn ...func(*Config)) (*Producer,
 			Logger: cfg.AwsConfig.Logger,
 		},
 		writer: w,
-		workerRegistry: make(map[string]*worker),
-		rateLimiter: newRateLimiter(cfg.rateLimit, cfg.resetFrequency),
-		messages: make(chan *message.Message, cfg.queueDepth),
-		statusChannel: make(chan *statusReport),
-		decommChannel: make(chan empty),
-		stopChannel: make(chan empty),
-		pipeOfDeath: make(chan empty),
 	}, nil
 }
 
@@ -72,6 +65,14 @@ func (p *Producer) produce() {
 	p.startupOnce.Do(func() {
 		// Reset shutdownOnce to allow the shut down sequence to happen again
 		p.shutdownOnce = sync.Once{}
+
+		// Create communication channels
+		p.rateLimiter = newRateLimiter(p.rateLimit, p.resetFrequency)
+		p.messages = make(chan *message.Message, p.queueDepth)
+		p.status = make(chan *statusReport)
+		p.dismiss = make(chan empty)
+		p.stop = make(chan empty)
+		p.pipeOfDeath = make(chan empty)
 
 		// Instantiate and register new workers
 		p.resizeWorkerPool(p.shardCount * p.workersPerShard)
@@ -85,57 +86,27 @@ func (p *Producer) produce() {
 				select {
 				case <-p.pipeOfDeath:
 					return
-				case <-p.stopChannel:
+				case <-p.stop:
 					return
-				case req := <-p.statusChannel:
-					// Use the worker registry to find the worker by workerID
-					worker, ok := p.workerRegistry[req.workerID];
-					if !ok {
-						// move on to the next status if a bogus workerID is provided
-						break
-					}
-
-					// Verify that worker is in the right state for handling a new batch of messages
-					workerState := worker.getWorkerState()
-					if !(workerState == workerStateIdle ||
-						workerState == workerStateIdleWithRetries) {
-						// otherwise on to the next one
-						break
-					}
-
-					// If we need to decommission some workers distribute the decommission command
-				        // to idle workers, otherwise try to fill the workers capacity
+				case status := <-p.status:
 					var batch []*message.Message
-					var decommissioned bool
-					if len(p.decommChannel) > 0 && workerState == workerStateIdle {
-						<-p.decommChannel
-						decommissioned = true
-					} else {
-						tokenCount := p.rateLimiter.getTokenCount()
-						timeout := time.After(req.timeout)
+					tokenCount := p.rateLimiter.getTokenCount()
+					timeout := time.After(p.batchTimeout)
 
-						fillBatch:
-						for len(batch) < req.capacity {
-							select {
-							case <-timeout:
-								break fillBatch
-							case msg := <-p.messages:
-								if msg != nil {
-									batch = append(batch, msg)
-								}
-							}
-							if len(batch) + req.failed >= tokenCount {
-								break fillBatch
+					fillBatch:
+					for len(batch) < status.capacity && len(batch) + status.failed < tokenCount {
+						select {
+						case <-timeout:
+							break fillBatch
+						case msg := <-p.messages:
+							if msg != nil {
+								batch = append(batch, msg)
 							}
 						}
-						p.rateLimiter.claimTokens(len(batch) + req.failed)
 					}
+					p.rateLimiter.claimTokens(len(batch) + status.failed)
 
-					// Send the command to the worker's command channel
-					worker.commands <-&workerCommand{
-						batchMsgs: batch,
-						decommissioned: decommissioned,
-					}
+					status.channel <-batch
 				}
 			}
 		}()
@@ -151,47 +122,46 @@ func (p *Producer) shutdown() {
 		}
 
 		// Allow the workers to drain the message channel first
-		wg := sync.WaitGroup{}
-		wg.Add(1)
-		go func(){
-			defer wg.Done()
+		staleTimeout := time.Duration(3 * time.Second)
+		timer := time.NewTimer(staleTimeout)
+		remaining := len(p.messages)
 
-			staleTimeout := time.Duration(3 * time.Second)
-			timer := time.NewTimer(staleTimeout)
-			remaining := len(p.messages)
-			for remaining > 0 {
-				select {
-				case <-time.After(time.Second):
-					newRemaining := len(p.messages)
-					if newRemaining != remaining {
-						timer.Reset(staleTimeout)
-						remaining = newRemaining
-					}
-				case <-timer.C:
-					return
+		drain:
+		for remaining > 0 {
+			select {
+			case <-time.After(time.Second):
+				newRemaining := len(p.messages)
+				if newRemaining != remaining {
+					timer.Reset(staleTimeout)
+					remaining = newRemaining
 				}
+			case <-timer.C:
+				timer.Stop()
+				if remaining > 0 {
+					// TODO:  Send remaining messages to the data spill
+				}
+				break drain
 			}
-		}()
-		wg.Wait()
+		}
 
 		// Decommission all the workers
 		p.resizeWorkerPool(0)
 
 		// Close the decommission channel
-		if p.decommChannel != nil {
-			close(p.decommChannel)
+		if p.dismiss != nil {
+			close(p.dismiss)
 		}
 
 		// Close the status channel
-		if p.statusChannel != nil {
-			close(p.statusChannel)
+		if p.status != nil {
+			close(p.status)
 		}
 
 		// Stop the rate limiter
 		p.rateLimiter.stop()
 
 		// Stop the running go routine in produce
-		p.stopChannel <- empty{}
+		p.stop <- empty{}
 
 		// Reset startupOnce to allow the start up sequence to happen again
 		p.startupOnce = sync.Once{}
@@ -204,45 +174,60 @@ func (p *Producer) resizeWorkerPool(desiredWorkerCount int) {
 	p.resizeMu.Lock()
 	defer p.resizeMu.Unlock()
 
-	// Get the number of total workers in the registry
-	totalWorkerCount := len(p.workerRegistry)
-
-
-	// Create a map of available workers
-	availableWorkers := make(map[string]*worker, totalWorkerCount)
-	for id, worker := range p.workerRegistry {
-		workerState := worker.getWorkerState()
-		if workerState == workerStateInactive || workerState == workerStateDecommissioned {
-			availableWorkers[id] = worker
+	if p.workerCount < desiredWorkerCount {
+		for p.workerCount < desiredWorkerCount {
+			go p.newWorker()
+			p.workerCount++
+		}
+	} else {
+		for p.workerCount > desiredWorkerCount {
+			p.dismiss <- empty{}
+			p.workerCount--
 		}
 	}
-	activeWorkerCount := totalWorkerCount - len(availableWorkers)
+}
 
-	// We have too many workers at present than we actually need
-	if desiredWorkerCount < activeWorkerCount {
-		// Decommission the workers that we don't need
-		for i := activeWorkerCount; i <= desiredWorkerCount; i-- {
-			p.decommChannel <-empty{}
-		}
-	// We need more workers than are presently active or commissioned
-	} else if activeWorkerCount < desiredWorkerCount {
-		// Recommission those workers that are inactive
-		var activated int
-		for _, worker := range availableWorkers {
-			if activated > desiredWorkerCount - activeWorkerCount {
-				break
-			}
-			worker.start()
-			activated++
-		}
+// newWorker is a (blocking) helper function that increases the number of concurrent go routines calling the
+// sendBatch function.  Communications between the produce function and the newWorker function occurs on the status
+// channel where the "worker" provides information regarding its previously failed message count, its capacity for
+// new messages and the "worker's" channel to which the produce function should send the batches.  The "workers" also
+// listen on the dismiss channel which upon receiving a signal will continue sending previously failed messages only
+// until all failed messages have been sent successfully or aged out.
+func (p *Producer) newWorker() {
+	batches := make(chan []*message.Message)
+	defer close(batches)
 
-		// Spawn new workers if still not enough
-		if desiredWorkerCount > totalWorkerCount {
-			for i := totalWorkerCount; i < desiredWorkerCount; i++ {
-				worker := newWorker(p.producerOptions, p.sendBatch, p.reportStatus)
-				p.workerRegistry[worker.workerID] = worker
+	var retries []*message.Message
+	var dismissed bool
+	for ok := true; ok; ok = !dismissed || len(retries) != 0 {
+		// Check to see if there were any signals to dismiss workers (if eligible)
+		if !dismissed {
+			select {
+			case <-p.dismiss:
+				dismissed = true
+			default:
 			}
 		}
+
+		// Send a status report to the status channel based on the number of previously failed messages and
+		// whether the worker has been dismissed
+		var capacity int
+		if !dismissed {
+			capacity = p.batchSize - len(retries)
+		}
+		status := &statusReport {
+			capacity: capacity,
+			failed: len(retries),
+			channel: batches,
+		}
+		p.status <-status
+
+		// Receive a batch of messages and call the producer's sendBatch function
+		batch := <-batches
+		if len(batch) + len(retries) > 0 {
+			retries = p.sendBatch(append(retries, batch...))
+		}
+
 	}
 }
 
@@ -250,9 +235,7 @@ func (p *Producer) resizeWorkerPool(desiredWorkerCount int) {
 // messages to send and returns a slice of messages that failed to send
 func (p *Producer) sendBatch(batch []*message.Message) []*message.Message {
 	var failed []*message.Message
-	err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message, wg *sync.WaitGroup) error {
-		defer wg.Done()
-
+	err := p.writer.PutRecords(context.TODO(), batch, func(msg *message.Message) error {
 		if msg.FailCount <= p.maxRetryAttempts {
 			failed = append(failed, msg)
 			p.Stats.AddSentRetried(1)
@@ -290,11 +273,6 @@ func (p *Producer) sendBatch(batch []*message.Message) []*message.Message {
 	}
 
 	return batch
-}
-
-// reportStatus is used as a closure for the workers to report status to
-func (p *Producer) reportStatus(report *statusReport) {
-	p.statusChannel <- report
 }
 
 // CloseWithContext initiates the graceful shutdown of the produce function, waiting for all outstanding messages and to
