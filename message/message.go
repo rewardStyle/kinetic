@@ -1,6 +1,7 @@
 package message
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/aws/aws-sdk-go/service/firehose"
@@ -37,6 +38,16 @@ func FromRecord(record *kinesis.Record) *Message {
 		PartitionKey:   record.PartitionKey,
 		SequenceNumber: record.SequenceNumber,
 	}
+}
+
+// RequestEntrySize calculates what the size (in bytes) of the message will be after calling ToRequestEntry on it and
+// marshalling it to json
+func (m *Message) RequestEntrySize() int {
+	buf, err := json.Marshal(m.ToRequestEntry())
+	if err != nil {
+
+	}
+	return len(buf)
 }
 
 // ToRequestEntry creates a kinesis.PutRecordsRequestEntry to be used in the kinesis.PutRecords API call.

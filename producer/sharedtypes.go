@@ -22,9 +22,10 @@ type MessageHandlerAsync func(*message.Message) error
 
 // statusReport is used to communicate a worker's capacity for new messages and to which channel they should be sent.
 type statusReport struct {
-	capacity int                     // maximum message capacity the worker can handle
-	failed   int                     // number of previous messages that failed to send
-	channel  chan []*message.Message // channel of the worker to which the batch messages should be sent
+	capacity    int                     // maximum message capacity the worker can handle
+	failedCount int                     // number of previous messages that failed to send
+	failedSize  int	   		    // size in bytes of the previous messages that failed to send
+	channel     chan []*message.Message // channel of the worker to which the batch messages should be sent
 }
 
 // empty is used a as a dummy type for counting semaphore channels.

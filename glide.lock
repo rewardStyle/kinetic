@@ -1,5 +1,5 @@
-hash: 70d3e36401b9615bc762c364243c4177b3b4b51d36e3fdeaa3ec923996430e24
-updated: 2017-07-06T15:44:39.094878239-05:00
+hash: 478410f2430633b92c3939e14a69e21c2f95684bae1e74250640ccb998d23f48
+updated: 2017-07-20T11:57:12.855440218-05:00
 imports:
 - name: github.com/aws/aws-sdk-go
   version: 72e42b13da62269f68308fb6068b7ea691a416a4
@@ -36,6 +36,8 @@ imports:
   - service/sts
 - name: github.com/go-ini/ini
   version: 1730955e3146956d6a087861380f9b4667ed5071
+- name: github.com/golang/time
+  version: 8be79e1e0910c292df4e79c241bb7e8f7e725959
 - name: github.com/gopherjs/gopherjs
   version: 0cc212b4ef1943b61e894a7d56490575b3216439
   subpackages:

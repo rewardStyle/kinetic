@@ -50,8 +50,8 @@ func TestNewConfig(t *testing.T) {
 			So(cfg.maxRetryAttempts, ShouldEqual, 10)
 			So(cfg.workersPerShard, ShouldEqual, 5)
 			So(cfg.shardCount, ShouldEqual, 1)
-			So(cfg.rateLimit, ShouldEqual, 1000)
-			So(cfg.resetFrequency, ShouldEqual, time.Second)
+			So(cfg.msgCountLimit, ShouldEqual, 1000)
+			So(cfg.msgSizeLimit, ShouldEqual, 1000000)
 			So(cfg.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
 			So(cfg.LogLevel.Value(), ShouldEqual, logging.LogOff)
 		})
@@ -82,7 +82,20 @@ func TestNewConfig(t *testing.T) {
 			So(cfg.maxRetryAttempts, ShouldEqual, 100)
 		})
 
-		// TODO:  Add tests for setting new producer options
+		Convey("check that we can set the workers per shard", func() {
+			cfg.SetWorkersPerShard(10)
+			So(cfg.workersPerShard, ShouldEqual, 10)
+		})
+
+		Convey("check that we can set the message count rate limit", func() {
+			cfg.SetMsgCountLimit(100)
+			So(cfg.msgCountLimit, ShouldEqual, 100)
+		})
+
+		Convey("check that we can set the message size rate limit", func() {
+			cfg.SetMsgSizeLimit(10)
+			So(cfg.msgSizeLimit, ShouldEqual, 10)
+		})
 
 		Convey("check that we can configure a stats collector", func() {
 			cfg.SetStatsCollector(&DebugStatsCollector{})

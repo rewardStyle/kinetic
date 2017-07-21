@@ -26,8 +26,8 @@ func NewConfig(cfg *aws.Config) *Config {
 			maxRetryAttempts: 10,
 			workersPerShard:  5,
 			shardCount:       1,
-			rateLimit:        1000,
-			resetFrequency:   time.Second,
+			msgCountLimit:    1000,
+			msgSizeLimit:     1000000,
 			Stats:            &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
@@ -70,14 +70,14 @@ func (c *Config) SetShardCount(count int) {
 	c.shardCount = count
 }
 
-// SetRateLimit defines the maximum number of message to send per cycle
-func (c *Config) SetRateLimit(limit int) {
-	c.rateLimit = limit
+// SetMsgCountLimit defines the maximum number of message that can be sent per second
+func (c *Config) SetMsgCountLimit(limit int) {
+	c.msgCountLimit = limit
 }
 
-// SetResetFrequency defines the frequency at which the rateLimiter resets
-func (c *Config) SetResetFrequency(freq time.Duration) {
-	c.resetFrequency = freq
+// SetMsgSizeLimit defines the maximum size (in bytes) that can be sent per second
+func (c *Config) SetMsgSizeLimit(limit int) {
+	c.msgSizeLimit = limit
 }
 
 // SetStatsCollector configures a listener to handle producer metrics.

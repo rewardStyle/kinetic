@@ -8,6 +8,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/golang/time/rate"
 	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
 	"github.com/rewardStyle/kinetic/errs"
@@ -21,27 +22,28 @@ type producerOptions struct {
 	maxRetryAttempts int            // maximum number of retry attempts for failed messages
 	workersPerShard  int            // number of concurrent workers per shard
 	shardCount       int            // initial shard size
-	rateLimit        int            // maximum records to be sent per cycle for the rate limiting model
-	resetFrequency   time.Duration  // duration of a cycle for the rate limiting model
+	msgCountLimit    int            // maximum records to be sent per cycle for the rate limiting model
+	msgSizeLimit     int            // maximum records to be sent per cycle for the rate limiting model
 	Stats            StatsCollector // stats collection mechanism
 }
 
 // Producer sends records to AWS Kinesis or Firehose.
 type Producer struct {
-	*producerOptions                            // contains all of the configuration settings for the Producer
-	*logging.LogHelper                          // object for help with logging
-	writer         StreamWriter                 // interface for abstracting the PutRecords call
-	rateLimiter    *rateLimiter                 // throttles the number of messages sent based on total count and size
-	workerCount    int                          // number of concurrent workers sending batch messages for the producer
-	messages       chan *message.Message        // channel for enqueuing messages to be put on the stream
-	status         chan *statusReport           // channel for workers to communicate their current status
-	dismiss        chan empty                   // channel for handling the decommissioning of a surplus of workers
-	stop           chan empty                   // channel for handling shutdown
-	pipeOfDeath    chan empty                   // channel for handling pipe of death
-	startupOnce    sync.Once                    // used to ensure that the startup function is called once
-	shutdownOnce   sync.Once                    // used to ensure that the shutdown function is called once
-	resizeMu       sync.Mutex                   // used to prevent resizeWorkerPool from being called synchronously with itself
-	noCopy         noCopy                       // prevents the Producer from being copied
+	*producerOptions                             // contains all of the configuration settings for the Producer
+	*logging.LogHelper                           // object for help with logging
+	writer          StreamWriter                 // interface for abstracting the PutRecords call
+	msgCountLimiter *rate.Limiter		     //
+	msgSizeLimiter  *rate.Limiter		     //
+	workerCount     int                          // number of concurrent workers sending batch messages for the producer
+	messages        chan *message.Message        // channel for enqueuing messages to be put on the stream
+	status          chan *statusReport           // channel for workers to communicate their current status
+	dismiss         chan empty                   // channel for handling the decommissioning of a surplus of workers
+	stop            chan empty                   // channel for handling shutdown
+	pipeOfDeath     chan empty                   // channel for handling pipe of death
+	startupOnce     sync.Once                    // used to ensure that the startup function is called once
+	shutdownOnce    sync.Once                    // used to ensure that the shutdown function is called once
+	resizeMu        sync.Mutex                   // used to prevent resizeWorkerPool from being called synchronously with itself
+	noCopy          noCopy                       // prevents the Producer from being copied
 }
 
 // NewProducer creates a new producer for writing records to a Kinesis or Firehose stream.
@@ -66,8 +68,11 @@ func (p *Producer) produce() {
 		// Reset shutdownOnce to allow the shut down sequence to happen again
 		p.shutdownOnce = sync.Once{}
 
+		// Instantiate rate limiters
+		p.msgCountLimiter = rate.NewLimiter(rate.Limit(float64(p.msgCountLimit)), p.batchSize)
+		p.msgSizeLimiter = rate.NewLimiter(rate.Limit(float64(p.msgSizeLimit)), p.msgSizeLimit)
+
 		// Create communication channels
-		p.rateLimiter = newRateLimiter(p.rateLimit, p.resetFrequency)
 		p.messages = make(chan *message.Message, p.queueDepth)
 		p.status = make(chan *statusReport)
 		p.dismiss = make(chan empty)
@@ -76,9 +81,6 @@ func (p *Producer) produce() {
 
 		// Instantiate and register new workers
 		p.resizeWorkerPool(p.shardCount * p.workersPerShard)
-
-		// Instantiate and start a new rate limiter
-		p.rateLimiter.start()
 
 		go func(){
 			// Dispatch messages to each worker depending on the worker's capacity and the rate limit
@@ -89,32 +91,64 @@ func (p *Producer) produce() {
 				case <-p.stop:
 					return
 				case status := <-p.status:
-					var tokenCount int
-					for tokenCount = p.rateLimiter.getTokenCount(); tokenCount == 0; {
-						// Wait for a reset notification from the rateLimiter if needed
-						<-p.rateLimiter.resetChannel
-						tokenCount = p.rateLimiter.getTokenCount()
-					}
-
 					var batch []*message.Message
-					timeout := time.After(p.batchTimeout)
 
-					fillBatch:
-					for len(batch) < status.capacity && len(batch) + status.failed < tokenCount {
-						select {
-						case <-timeout:
-							break fillBatch
-						case msg := <-p.messages:
-							if msg != nil {
+					// Start pulling from the message channel and waiting for the bucket token to
+					// fill at the same time
+					wg := sync.WaitGroup{}
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+
+						var batchMsgSize int
+						timeout := time.After(p.batchTimeout)
+
+						fillBatch:
+						for len(batch) < status.capacity {
+							select {
+							case <-timeout:
+								break fillBatch
+							case msg := <-p.messages:
+								if msg == nil {
+									// Drop nil message
+									break
+								}
+
+								var msgSize int
+								if msgSize = msg.RequestEntrySize(); msgSize > p.msgSizeLimit {
+									// TODO: Send this huge message to data spill
+									break
+								}
+								batchMsgSize += msgSize
 								batch = append(batch, msg)
 							}
 						}
-					}
 
-					// Claim tokens only if needed
-					if len(batch) + status.failed > 0 {
-						p.rateLimiter.claimTokens(len(batch) + status.failed)
-					}
+						// Request and wait for the message size (transmission) rate limiter to
+						// allow this payload
+						ctx, cancel := context.WithTimeout(context.TODO(), p.batchTimeout)
+						if err := p.msgSizeLimiter.WaitN(ctx, batchMsgSize + status.failedSize); err != nil {
+
+						}
+						cancel()
+					}()
+
+					wg.Add(1)
+					go func() {
+						defer wg.Done()
+
+						// Request and wait for the message counter rate limiter to allow this
+						// payload
+						ctx, cancel := context.WithTimeout(context.TODO(), p.batchTimeout)
+						err := p.msgCountLimiter.WaitN(ctx, status.capacity + status.failedCount);
+						if err != nil {
+							// TODO: handle error properly
+						}
+						cancel()
+					}()
+
+					// Wait until the batch is ready and the rate limiter gives the go ahead
+					wg.Wait()
 
 					// Send batch regardless if it is empty or not
 					status.channel <-batch
@@ -168,9 +202,6 @@ func (p *Producer) shutdown() {
 			close(p.status)
 		}
 
-		// Stop the rate limiter
-		p.rateLimiter.stop()
-
 		// Stop the running go routine in produce
 		p.stop <- empty{}
 
@@ -223,12 +254,18 @@ func (p *Producer) newWorker() {
 		// Send a status report to the status channel based on the number of previously failed messages and
 		// whether the worker has been dismissed
 		var capacity int
+		failedCount := len(retries)
 		if !dismissed {
-			capacity = p.batchSize - len(retries)
+			capacity = p.batchSize - failedCount
+		}
+		var failedSize int
+		for _, msg := range retries {
+			failedSize += msg.RequestEntrySize()
 		}
 		status := &statusReport {
 			capacity: capacity,
-			failed: len(retries),
+			failedCount: failedCount,
+			failedSize: failedSize,
 			channel: batches,
 		}
 		p.status <-status

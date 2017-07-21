@@ -253,7 +253,9 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		c.SetMaxRetryAttempts(3)
 		c.SetStatsCollector(psc)
 		c.SetQueueDepth(10000)
-		c.SetWorkersPerShard(2)
+		c.SetWorkersPerShard(3)
+		c.SetMsgCountLimit(1000)
+		c.SetMsgSizeLimit(1000000)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new producer due to: %v\n", err)
