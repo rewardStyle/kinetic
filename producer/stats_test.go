@@ -62,16 +62,20 @@ func TestStatsCollector(t *testing.T) {
 			sc.AddPutRecordsTimeout(1)
 		})
 
-		Convey("check that AddPutRecordsDuration does not error", func() {
-			sc.AddPutRecordsDuration(time.Second)
+		Convey("check that UpdatePutRecordsDuration does not error", func() {
+			sc.UpdatePutRecordsDuration(time.Second)
 		})
 
-		Convey("check that AddPutRecordsBuildDuration does not error", func() {
-			sc.AddPutRecordsBuildDuration(time.Second)
+		Convey("check that UpdatePutRecordsBuildDuration does not error", func() {
+			sc.UpdatePutRecordsBuildDuration(time.Second)
 		})
 
-		Convey("check that AddPutRecordsSendDuration does not error", func() {
-			sc.AddPutRecordsSendDuration(time.Second)
+		Convey("check that UpdatePutRecordsSendDuration does not error", func() {
+			sc.UpdatePutRecordsSendDuration(time.Second)
+		})
+
+		Convey("check that UpdateProducerConcurrency does not error", func() {
+			sc.UpdateProducerConcurrency(5)
 		})
 	})
 
@@ -146,19 +150,24 @@ func TestStatsCollector(t *testing.T) {
 			So(sc.(*DefaultStatsCollector).PutRecordsTimeout.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddPutRecordsDuration does not error", func() {
-			sc.AddPutRecordsDuration(time.Second)
+		Convey("check that UpdatePutRecordsDuration does not error", func() {
+			sc.UpdatePutRecordsDuration(time.Second)
 			So(sc.(*DefaultStatsCollector).PutRecordsDuration.Value(), ShouldEqual, 1000000000)
 		})
 
-		Convey("check that AddPutRecordsBuildDuration does not error", func() {
-			sc.AddPutRecordsBuildDuration(time.Second)
+		Convey("check that UpdatePutRecordsBuildDuration does not error", func() {
+			sc.UpdatePutRecordsBuildDuration(time.Second)
 			So(sc.(*DefaultStatsCollector).PutRecordsBuildDuration.Value(), ShouldEqual, 1000000000)
 		})
 
-		Convey("check that AddPutRecordsSendDuration does not error", func() {
-			sc.AddPutRecordsSendDuration(time.Second)
+		Convey("check that UpdatePutRecordsSendDuration does not error", func() {
+			sc.UpdatePutRecordsSendDuration(time.Second)
 			So(sc.(*DefaultStatsCollector).PutRecordsSendDuration.Value(), ShouldEqual, 1000000000)
+		})
+
+		Convey("check that UpdateProducerConcurrency does not error", func() {
+			sc.UpdateProducerConcurrency(5)
+			So(sc.(*DefaultStatsCollector).ProducerConcurrency.Value(), ShouldEqual, 5)
 		})
 	})
 }

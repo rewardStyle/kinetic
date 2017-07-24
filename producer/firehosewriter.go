@@ -75,7 +75,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 	})
 
 	req.Handlers.Build.PushBack(func(r *request.Request) {
-		w.Stats.AddPutRecordsBuildDuration(time.Since(startBuildTime))
+		w.Stats.UpdatePutRecordsBuildDuration(time.Since(startBuildTime))
 		w.LogDebug("Finished PutRecords Build, took", time.Since(start))
 	})
 
@@ -85,7 +85,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 	})
 
 	req.Handlers.Send.PushBack(func(r *request.Request) {
-		w.Stats.AddPutRecordsSendDuration(time.Since(startSendTime))
+		w.Stats.UpdatePutRecordsSendDuration(time.Since(startSendTime))
 		w.LogDebug("Finished PutRecords Send, took", time.Since(start))
 	})
 
@@ -95,7 +95,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 		w.LogError("Error putting records:", err.Error())
 		return err
 	}
-	w.Stats.AddPutRecordsDuration(time.Since(start))
+	w.Stats.UpdatePutRecordsDuration(time.Since(start))
 
 	if resp == nil {
 		return errs.ErrNilPutRecordsResponse

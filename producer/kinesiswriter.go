@@ -77,7 +77,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 	})
 
 	req.Handlers.Build.PushBack(func(r *request.Request) {
-		w.Stats.AddPutRecordsBuildDuration(time.Since(startBuildTime))
+		w.Stats.UpdatePutRecordsBuildDuration(time.Since(startBuildTime))
 		w.LogDebug("Finished PutRecords Build, took", time.Since(start))
 	})
 
@@ -87,7 +87,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 	})
 
 	req.Handlers.Send.PushBack(func(r *request.Request) {
-		w.Stats.AddPutRecordsSendDuration(time.Since(startSendTime))
+		w.Stats.UpdatePutRecordsSendDuration(time.Since(startSendTime))
 		w.LogDebug("Finished PutRecords Send, took", time.Since(start))
 	})
 
@@ -97,7 +97,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 		w.LogError("Error putting records:", err.Error())
 		return err
 	}
-	w.Stats.AddPutRecordsDuration(time.Since(start))
+	w.Stats.UpdatePutRecordsDuration(time.Since(start))
 
 	if resp == nil {
 		return errs.ErrNilPutRecordsResponse
@@ -161,11 +161,41 @@ func (w *KinesisWriter) getConcurrencyMultiplier() (int, error) {
 	if resp.StreamDescription == nil {
 		return 0, errs.ErrNilStreamDescription
 	}
-	var shards []string
+
+	// maps shardID to a boolean that indicates whether or not the shard is a parent shard or an adjacent parent shard
+	shardMap := make(map[string]bool)
 	for _, shard := range resp.StreamDescription.Shards {
 		if shard.ShardId != nil {
-			shards = append(shards, aws.StringValue(shard.ShardId))
+			shardID := aws.StringValue(shard.ShardId)
+			if _, ok := shardMap[shardID]; !ok {
+				shardMap[shardID] = false
+			}
 		}
 	}
-	return len(shards), nil
+
+	// Loop through all the shards and mark which ones are parents
+	for _, shard := range resp.StreamDescription.Shards {
+		if shard.ParentShardId != nil {
+			shardID := aws.StringValue(shard.ParentShardId)
+			if _, ok := shardMap[shardID]; ok {
+				shardMap[shardID] = true
+			}
+		}
+		if shard.AdjacentParentShardId != nil {
+			shardID := aws.StringValue(shard.AdjacentParentShardId)
+			if _, ok := shardMap[shardID]; ok {
+				shardMap[shardID] = true
+			}
+		}
+	}
+
+	// Determine the number of open shards by removing those shards that are reported as parents
+	openShardCount := len(shardMap)
+	for _, isParent := range shardMap {
+		if isParent {
+			openShardCount--
+		}
+	}
+
+	return openShardCount, nil
 }

@@ -22,9 +22,10 @@ type StatsCollector interface {
 	AddPutRecordsTimeout(int)
 	AddProvisionedThroughputExceeded(int)
 	AddPutRecordsProvisionedThroughputExceeded(int)
-	AddPutRecordsDuration(time.Duration)
-	AddPutRecordsBuildDuration(time.Duration)
-	AddPutRecordsSendDuration(time.Duration)
+	UpdatePutRecordsDuration(time.Duration)
+	UpdatePutRecordsBuildDuration(time.Duration)
+	UpdatePutRecordsSendDuration(time.Duration)
+	UpdateProducerConcurrency(int)
 }
 
 // NilStatsCollector is a stats listener that ignores all metrics.
@@ -69,15 +70,18 @@ func (nsc *NilStatsCollector) AddProvisionedThroughputExceeded(int) {}
 // ErrCodeProvisionedThroughputExceededException by the producer.
 func (nsc *NilStatsCollector) AddPutRecordsProvisionedThroughputExceeded(int) {}
 
-// AddPutRecordsDuration records the duration that the PutRecords API request took.  Only the times of successful calls
+// UpdatePutRecordsDuration records the duration that the PutRecords API request took.  Only the times of successful calls
 // are measured.
-func (nsc *NilStatsCollector) AddPutRecordsDuration(time.Duration) {}
+func (nsc *NilStatsCollector) UpdatePutRecordsDuration(time.Duration) {}
 
-// AddPutRecordsBuildDuration records the duration that it took to build the PutRecords API request payload.
-func (nsc *NilStatsCollector) AddPutRecordsBuildDuration(time.Duration) {}
+// UpdatePutRecordsBuildDuration records the duration that it took to build the PutRecords API request payload.
+func (nsc *NilStatsCollector) UpdatePutRecordsBuildDuration(time.Duration) {}
 
-// AddPutRecordsSendDuration records the duration that it took to send the PutRecords API request payload.
-func (nsc *NilStatsCollector) AddPutRecordsSendDuration(time.Duration) {}
+// UpdatePutRecordsSendDuration records the duration that it took to send the PutRecords API request payload.
+func (nsc *NilStatsCollector) UpdatePutRecordsSendDuration(time.Duration) {}
+
+// UpdateProducerConcurrency records the number of concurrent workers that the producer has.
+func (nsc *NilStatsCollector) UpdateProducerConcurrency(int) {}
 
 // Metric names to be exported
 const (
@@ -95,6 +99,7 @@ const (
 	MetricsPutRecordsDuration                      = "kinetic.producer.putrecords.duration"
 	MetricsPutRecordsBuildDuration                 = "kinetic.producer.putrecords.build.duration"
 	MetricsPutRecordsSendDuration                  = "kinetic.producer.putrecords.send.duration"
+	MetricsProducerConcurrency                     = "kinetic.producer.concurrency"
 )
 
 // DefaultStatsCollector is a type that implements the producers's StatsCollector interface using the
@@ -114,6 +119,7 @@ type DefaultStatsCollector struct {
 	PutRecordsDuration                      metrics.Gauge
 	PutRecordsBuildDuration                 metrics.Gauge
 	PutRecordsSendDuration                  metrics.Gauge
+	ProducerConcurrency                     metrics.Gauge
 }
 
 // NewDefaultStatsCollector instantiates a new DefaultStatsCollector object
@@ -133,6 +139,7 @@ func NewDefaultStatsCollector(r metrics.Registry) *DefaultStatsCollector {
 		PutRecordsDuration:                      metrics.GetOrRegisterGauge(MetricsPutRecordsDuration, r),
 		PutRecordsBuildDuration:                 metrics.GetOrRegisterGauge(MetricsPutRecordsBuildDuration, r),
 		PutRecordsSendDuration:                  metrics.GetOrRegisterGauge(MetricsPutRecordsSendDuration, r),
+		ProducerConcurrency:                     metrics.GetOrRegisterGauge(MetricsProducerConcurrency, r),
 	}
 }
 
@@ -197,20 +204,25 @@ func (dsc *DefaultStatsCollector) AddPutRecordsProvisionedThroughputExceeded(cou
 	dsc.PutRecordsProvisionedThroughputExceeded.Inc(int64(count))
 }
 
-// AddPutRecordsDuration records the duration that the PutRecords API request took.  Only the times of successful calls
+// UpdatePutRecordsDuration records the duration that the PutRecords API request took.  Only the times of successful calls
 // are measured.
-func (dsc *DefaultStatsCollector) AddPutRecordsDuration(duration time.Duration) {
+func (dsc *DefaultStatsCollector) UpdatePutRecordsDuration(duration time.Duration) {
 	dsc.PutRecordsDuration.Update(duration.Nanoseconds())
 }
 
-// AddPutRecordsBuildDuration records the duration that it took to build the PutRecords API request payload.
-func (dsc *DefaultStatsCollector) AddPutRecordsBuildDuration(duration time.Duration) {
+// UpdatePutRecordsBuildDuration records the duration that it took to build the PutRecords API request payload.
+func (dsc *DefaultStatsCollector) UpdatePutRecordsBuildDuration(duration time.Duration) {
 	dsc.PutRecordsBuildDuration.Update(duration.Nanoseconds())
 }
 
-// AddPutRecordsSendDuration records the duration that it took to send the PutRecords API request payload.
-func (dsc *DefaultStatsCollector) AddPutRecordsSendDuration(duration time.Duration) {
+// UpdatePutRecordsSendDuration records the duration that it took to send the PutRecords API request payload.
+func (dsc *DefaultStatsCollector) UpdatePutRecordsSendDuration(duration time.Duration) {
 	dsc.PutRecordsSendDuration.Update(duration.Nanoseconds())
+}
+
+// UpdateProducerConcurrency records the number of concurrent workers that the producer has.
+func (dsc *DefaultStatsCollector) UpdateProducerConcurrency(count int) {
+	dsc.ProducerConcurrency.Update(int64(count))
 }
 
 // PrintStats logs the stats
@@ -229,4 +241,5 @@ func (dsc *DefaultStatsCollector) PrintStats() {
 	log.Printf("Producer Stats: PutRecords Duration (ns): [%d]\n", dsc.PutRecordsDuration.Value())
 	log.Printf("Producer Stats: PutRecords Build Duration (ns): [%d]\n", dsc.PutRecordsBuildDuration.Value())
 	log.Printf("Producer Stats: PutRecords Send Duration (ns): [%d]\n", dsc.PutRecordsSendDuration.Value())
+	log.Printf("Producer Stats: Producer Concurrency: [%d]\n", dsc.ProducerConcurrency.Value())
 }

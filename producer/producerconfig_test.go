@@ -25,9 +25,10 @@ func (l *DebugStatsCollector) AddPutRecordsProvisionedThroughputExceeded(int) {}
 func (l *DebugStatsCollector) AddPutRecordsCalled(int)                        {}
 func (l *DebugStatsCollector) AddProvisionedThroughputExceeded(int)           {}
 func (l *DebugStatsCollector) AddPutRecordsTimeout(int)                       {}
-func (l *DebugStatsCollector) AddPutRecordsDuration(time.Duration)            {}
-func (l *DebugStatsCollector) AddPutRecordsBuildDuration(time.Duration)       {}
-func (l *DebugStatsCollector) AddPutRecordsSendDuration(time.Duration)        {}
+func (l *DebugStatsCollector) UpdatePutRecordsDuration(time.Duration)         {}
+func (l *DebugStatsCollector) UpdatePutRecordsBuildDuration(time.Duration)    {}
+func (l *DebugStatsCollector) UpdatePutRecordsSendDuration(time.Duration)     {}
+func (l *DebugStatsCollector) UpdateProducerConcurrency(int)                  {}
 
 type DebugStreamWriter struct{}
 

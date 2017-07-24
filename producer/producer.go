@@ -92,6 +92,7 @@ func (p *Producer) produce() {
 				}
 				if newMult != mult && newMult > 0 {
 					p.resizeWorkerPool(newMult * p.concurrency)
+					p.Stats.UpdateProducerConcurrency(newMult * p.concurrency)
 					mult = newMult
 				}
 
