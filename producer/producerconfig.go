@@ -24,10 +24,8 @@ func NewConfig(cfg *aws.Config) *Config {
 			batchTimeout:     time.Second,
 			queueDepth:       10000,
 			maxRetryAttempts: 10,
-			workersPerShard:  5,
-			shardCount:       1,
-			msgCountLimit:    1000,
-			msgSizeLimit:     1000000,
+			concurrency:      3,
+			shardCheckFreq:   time.Minute,
 			Stats:            &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
@@ -60,24 +58,14 @@ func (c *Config) SetMaxRetryAttempts(attempts int) {
 	c.maxRetryAttempts = attempts
 }
 
-// SetWorkersPerShard defines the number of concurrent workers to run per active shard
-func (c *Config) SetWorkersPerShard(count int) {
-	c.workersPerShard = count
+// SetConcurrency defines the number of concurrent workers to run per active shard (multiplier)
+func (c *Config) SetConcurrency(count int) {
+	c.concurrency = count
 }
 
-// SetShardCount defines the initial shard size
-func (c *Config) SetShardCount(count int) {
-	c.shardCount = count
-}
-
-// SetMsgCountLimit defines the maximum number of message that can be sent per second
-func (c *Config) SetMsgCountLimit(limit int) {
-	c.msgCountLimit = limit
-}
-
-// SetMsgSizeLimit defines the maximum size (in bytes) that can be sent per second
-func (c *Config) SetMsgSizeLimit(limit int) {
-	c.msgSizeLimit = limit
+// SetShardCheckFreq defines a frequency (specified as a duration) with which to check the shard size
+func (c *Config) SetShardCheckFreq(duration time.Duration) {
+	c.shardCheckFreq = duration
 }
 
 // SetStatsCollector configures a listener to handle producer metrics.

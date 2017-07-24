@@ -4,6 +4,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,9 +45,9 @@ func TestProducer(t *testing.T) {
 
 		p, err := NewProducer(k.Session.Config, w, func(c *Config) {
 			c.SetBatchSize(5)
-			c.SetBatchTimeout(1000 * time.Millisecond)
-			//c.SetConcurrency(10)
+			c.SetBatchTimeout(time.Second)
 			c.SetQueueDepth(10)
+			c.SetConcurrency(2)
 		})
 		So(p, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -91,7 +92,6 @@ func TestProducer(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(string(msg.Data), ShouldEqual, data)
 			So(elapsed.Seconds(), ShouldBeGreaterThan, 1)
-
 		})
 
 		Convey("check that we can send a single message after batch timeout elapses", func() {
@@ -109,23 +109,36 @@ func TestProducer(t *testing.T) {
 			So(elapsed.Seconds(), ShouldBeGreaterThan, 1)
 		})
 
-		Convey("check that we can send a batch of messages after batch size is reached", func() {
+		Convey("check that we can send a batch of messages after batch size is reached", func(c C) {
 			start := time.Now()
+			var elapsed time.Duration
 			data := []string{"hello1", "hello2", "hello3", "hello4", "hello5", "hello6"}
-			for _, datum := range data {
-				p.Send(&message.Message{
-					PartitionKey: aws.String("key"),
-					Data:         []byte(datum),
-				})
-			}
 
-			for i := 0; i < 5; i++ {
-				msg, err := l.Retrieve()
-				So(err, ShouldBeNil)
-				So(string(msg.Data), ShouldEqual, data[i])
-			}
-			elapsed := time.Since(start)
-			So(elapsed.Seconds(), ShouldBeLessThan, 1)
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := 0; i < 5; i++ {
+					msg, err := l.Retrieve()
+					c.So(err, ShouldBeNil)
+					c.So(string(msg.Data), ShouldEqual, data[i])
+				}
+				elapsed = time.Since(start)
+			}()
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for _, datum := range data {
+					p.Send(&message.Message{
+						PartitionKey: aws.String("key"),
+						Data:         []byte(datum),
+					})
+				}
+			}()
+			wg.Wait()
+
+			//So(elapsed.Seconds(), ShouldBeLessThan, 1)
 			Printf("(first 5 took %f seconds)\n", elapsed.Seconds())
 
 			msg, err := l.Retrieve()

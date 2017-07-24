@@ -242,6 +242,8 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		//kwc.SetLogLevel(logging.LogDebug)
 		kwc.SetResponseReadTimeout(time.Second)
 		kwc.SetStatsCollector(psc)
+		kwc.SetMsgCountRateLimit(1000)
+		kwc.SetMsgSizeRateLimit(1000000)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
@@ -253,9 +255,8 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		c.SetMaxRetryAttempts(3)
 		c.SetStatsCollector(psc)
 		c.SetQueueDepth(10000)
-		c.SetWorkersPerShard(3)
-		c.SetMsgCountLimit(1000)
-		c.SetMsgSizeLimit(1000000)
+		c.SetConcurrency(3)
+		c.SetShardCheckFreq(time.Minute)
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new producer due to: %v\n", err)

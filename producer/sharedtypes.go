@@ -10,6 +10,9 @@ import (
 // StreamWriter is an interface that abstracts the differences in API between Kinesis and Firehose.
 type StreamWriter interface {
 	PutRecords(context.Context, []*message.Message, MessageHandlerAsync) error
+	getMsgCountRateLimit() int
+	getMsgSizeRateLimit() int
+	getConcurrencyMultiplier() (int, error)
 }
 
 // MessageHandler defines the signature of a message handler used by PutRecords().  MessageHandler accepts a WaitGroup
@@ -24,7 +27,7 @@ type MessageHandlerAsync func(*message.Message) error
 type statusReport struct {
 	capacity    int                     // maximum message capacity the worker can handle
 	failedCount int                     // number of previous messages that failed to send
-	failedSize  int	   		    // size in bytes of the previous messages that failed to send
+	failedSize  int                     // size in bytes of the previous messages that failed to send
 	channel     chan []*message.Message // channel of the worker to which the batch messages should be sent
 }
 

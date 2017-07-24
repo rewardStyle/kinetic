@@ -48,10 +48,8 @@ func TestNewConfig(t *testing.T) {
 			So(cfg.batchTimeout, ShouldEqual, 1*time.Second)
 			So(cfg.queueDepth, ShouldEqual, 10000)
 			So(cfg.maxRetryAttempts, ShouldEqual, 10)
-			So(cfg.workersPerShard, ShouldEqual, 5)
-			So(cfg.shardCount, ShouldEqual, 1)
-			So(cfg.msgCountLimit, ShouldEqual, 1000)
-			So(cfg.msgSizeLimit, ShouldEqual, 1000000)
+			So(cfg.concurrency, ShouldEqual, 3)
+			So(cfg.shardCheckFreq, ShouldEqual, time.Minute)
 			So(cfg.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
 			So(cfg.LogLevel.Value(), ShouldEqual, logging.LogOff)
 		})
@@ -83,18 +81,13 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set the workers per shard", func() {
-			cfg.SetWorkersPerShard(10)
-			So(cfg.workersPerShard, ShouldEqual, 10)
+			cfg.SetConcurrency(10)
+			So(cfg.concurrency, ShouldEqual, 10)
 		})
 
-		Convey("check that we can set the message count rate limit", func() {
-			cfg.SetMsgCountLimit(100)
-			So(cfg.msgCountLimit, ShouldEqual, 100)
-		})
-
-		Convey("check that we can set the message size rate limit", func() {
-			cfg.SetMsgSizeLimit(10)
-			So(cfg.msgSizeLimit, ShouldEqual, 10)
+		Convey("check that we can set the check shard frequency", func() {
+			cfg.SetShardCheckFreq(time.Second)
+			So(cfg.shardCheckFreq, ShouldEqual, time.Second)
 		})
 
 		Convey("check that we can configure a stats collector", func() {

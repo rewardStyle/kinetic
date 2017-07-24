@@ -17,8 +17,10 @@ import (
 )
 
 type kinesisWriterOptions struct {
-	responseReadTimeout time.Duration
-	Stats               StatsCollector
+	responseReadTimeout time.Duration  // maximum time to wait for PutRecords API call before timing out
+	msgCountRateLimit   int            // maximum number of records to be sent per second
+	msgSizeRateLimit    int            // maximum (transmission) size of records to be sent per second
+	Stats               StatsCollector // stats collection mechanism
 }
 
 // KinesisWriter handles the API to send records to Kinesis.
@@ -131,4 +133,39 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 	}
 
 	return nil
+}
+
+// getMsgCountRateLimit returns the writer's message count rate limit
+func (w *KinesisWriter) getMsgCountRateLimit() int {
+	return w.msgCountRateLimit
+}
+
+// getMsgSizeRateLimit returns the writer's message size rate limit
+func (w *KinesisWriter) getMsgSizeRateLimit() int {
+	return w.msgSizeRateLimit
+}
+
+// getConcurrencyMultiplier returns the writer's concurrency multiplier.  For the kinesiswriter the multiplier is the
+// number of active shards for the Kinesis stream
+func (w *KinesisWriter) getConcurrencyMultiplier() (int, error) {
+	resp, err := w.client.DescribeStream(&kinesis.DescribeStreamInput{
+		StreamName: aws.String(w.stream),
+	})
+	if err != nil {
+		w.LogError("Error describing kinesis stream: ", w.stream, err)
+		return 0, err
+	}
+	if resp == nil {
+		return 0, errs.ErrNilDescribeStreamResponse
+	}
+	if resp.StreamDescription == nil {
+		return 0, errs.ErrNilStreamDescription
+	}
+	var shards []string
+	for _, shard := range resp.StreamDescription.Shards {
+		if shard.ShardId != nil {
+			shards = append(shards, aws.StringValue(shard.ShardId))
+		}
+	}
+	return len(shards), nil
 }

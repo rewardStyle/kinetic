@@ -17,7 +17,9 @@ import (
 )
 
 type firehoseWriterOptions struct {
-	Stats StatsCollector
+	msgCountRateLimit int            // maximum number of records to be sent per second
+	msgSizeRateLimit  int            // maximum (transmission) size of records to be sent per second
+	Stats             StatsCollector // stats collection mechanism
 }
 
 // FirehoseWriter handles the API to send records to Kinesis.
@@ -128,4 +130,19 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 	}
 
 	return nil
+}
+
+// getMsgCountRateLimit returns the writer's message count rate limit
+func (w *FirehoseWriter) getMsgCountRateLimit() int {
+	return w.msgCountRateLimit
+}
+
+// getMsgSizeRateLimit returns the writer's message size rate limit
+func (w *FirehoseWriter) getMsgSizeRateLimit() int {
+	return w.msgSizeRateLimit
+}
+
+// getConcurrencyMultiplier returns the writer's concurrency multiplier.  For the firehosewriter the multiplier is 1.
+func (w *FirehoseWriter) getConcurrencyMultiplier() (int, error) {
+	return 1, nil
 }

@@ -26,8 +26,8 @@ func parseCommandLineArgs() *Config {
 	locationPtr := flag.String("location", "local", "used to specify the location of the kinesis stream.  "+
 		"Accepted values are (local|aws).  For local, run kinesalite on http://127.0.0.1:4567. For aws, your "+
 		"aws credentials and configuration need to be defined at ~/.aws")
-	streamNamePtr := flag.String("stream", "", "used to specify a specific stream to write to / read from for " +
-		"testing. The stream will be created if a stream name is given but does not exist.  A random stream will " +
+	streamNamePtr := flag.String("stream", "", "used to specify a specific stream to write to / read from for "+
+		"testing. The stream will be created if a stream name is given but does not exist.  A random stream will "+
 		"be created if the stream is undefined.")
 	msgCountPtr := flag.Int("count", 0, "used to specify the number of messages to (attempt to) send.  This "+
 		"flag is only applicable to 'write' and 'readwrite' modes.  Use zero or a negative number to produce "+
@@ -74,7 +74,7 @@ func parseCommandLineArgs() *Config {
 		Mode:       &mode,
 		StreamName: streamNamePtr,
 		Duration:   durationPtr,
-		MsgCount:    msgCountPtr,
+		MsgCount:   msgCountPtr,
 		Location:   locationPtr,
 		Blast:      blastPtr,
 		Clean:      cleanPtr,

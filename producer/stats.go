@@ -84,7 +84,7 @@ const (
 	MetricsSentTotal                               = "kinetic.producer.sent.total"
 	MetricsSentSuccess                             = "kinetic.producer.sent.success"
 	MetricsSentFailed                              = "kinetic.producer.sent.failed"
-	MetricsSentRetried			       = "kinetic.producer.sent.retried"
+	MetricsSentRetried                             = "kinetic.producer.sent.retried"
 	MetricsDroppedTotal                            = "kinetic.producer.dropped.total"
 	MetricsDroppedCapacity                         = "kinetic.producer.dropped.capacity"
 	MetricsDroppedRetries                          = "kinetic.producer.dropped.retries"

@@ -6,6 +6,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 )
 
+const (
+	kinesisMsgCountRateLimit = 1000    // AWS Kinesis limit of 1000 records/sec
+	kinesisMsgSizeRateLimit  = 1000000 // AWS Kinesis limit of 1 MB/sec
+)
+
 // KinesisWriterConfig is used to configure KinesisWriter
 type KinesisWriterConfig struct {
 	*kinesisWriterOptions
@@ -19,6 +24,8 @@ func NewKinesisWriterConfig(cfg *aws.Config) *KinesisWriterConfig {
 		AwsConfig: cfg,
 		kinesisWriterOptions: &kinesisWriterOptions{
 			responseReadTimeout: time.Second,
+			msgCountRateLimit:   kinesisMsgCountRateLimit,
+			msgSizeRateLimit:    kinesisMsgSizeRateLimit,
 			Stats:               &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
@@ -28,6 +35,22 @@ func NewKinesisWriterConfig(cfg *aws.Config) *KinesisWriterConfig {
 // SetResponseReadTimeout configures the time to wait for each successive Read operation on the GetRecords response payload.
 func (c *KinesisWriterConfig) SetResponseReadTimeout(timeout time.Duration) {
 	c.responseReadTimeout = timeout
+}
+
+// SetMsgCountRateLimit configures the maximum number of messages that can be sent per second
+func (c *KinesisWriterConfig) SetMsgCountRateLimit(limit int) {
+	if limit > kinesisMsgCountRateLimit {
+
+	}
+	c.msgCountRateLimit = limit
+}
+
+// SetMsgSizeRateLimit configures the maximum transmission size of the messages that can be sent per second
+func (c *KinesisWriterConfig) SetMsgSizeRateLimit(limit int) {
+	if limit > kinesisMsgSizeRateLimit {
+
+	}
+	c.msgSizeRateLimit = limit
 }
 
 // SetStatsCollector configures a listener to handle listener metrics.
