@@ -1,9 +1,11 @@
 package producer
 
 import (
+	"log"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/rewardStyle/kinetic/errs"
 )
 
 const (
@@ -39,18 +41,22 @@ func (c *KinesisWriterConfig) SetResponseReadTimeout(timeout time.Duration) {
 
 // SetMsgCountRateLimit configures the maximum number of messages that can be sent per second
 func (c *KinesisWriterConfig) SetMsgCountRateLimit(limit int) {
-	if limit > kinesisMsgCountRateLimit {
-
+	if limit > 0  && limit <= kinesisMsgCountRateLimit {
+		c.msgCountRateLimit = limit
+	} else {
+		log.Fatal("Message Count Rate Limit must be positive and less than ", kinesisMsgCountRateLimit)
+		panic(errs.ErrInvalidMsgCountRateLimit)
 	}
-	c.msgCountRateLimit = limit
 }
 
 // SetMsgSizeRateLimit configures the maximum transmission size of the messages that can be sent per second
 func (c *KinesisWriterConfig) SetMsgSizeRateLimit(limit int) {
-	if limit > kinesisMsgSizeRateLimit {
-
+	if limit > 0 && limit <= kinesisMsgSizeRateLimit {
+		c.msgSizeRateLimit = limit
+	} else {
+		log.Fatal("Message Count Size Limit must be positive and less than ", kinesisMsgSizeRateLimit)
+		panic(errs.ErrInvalidMsgSizeRateLimit)
 	}
-	c.msgSizeRateLimit = limit
 }
 
 // SetStatsCollector configures a listener to handle listener metrics.

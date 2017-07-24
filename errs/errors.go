@@ -86,4 +86,10 @@ var (
 
 	// ErrInvalidBatchSize is returned when the batchSize is invalid
 	ErrInvalidBatchSize = errors.New("PutRecordsBatch supports batch sizes less than or equal to 500")
+
+	// ErrInvalidMsgCountRateLimit is returned when a MsgCountRateLimit is configured incorrectly
+	ErrInvalidMsgCountRateLimit = errors.New("Invalid Message Count Rate Limit")
+
+	// ErrInvalidMsgSizeRateLimit is returned when a MsgCountSizesLimit is configured incorrectly
+	ErrInvalidMsgSizeRateLimit = errors.New("Invalid Message Size Rate Limit")
 )
