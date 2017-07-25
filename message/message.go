@@ -42,12 +42,12 @@ func FromRecord(record *kinesis.Record) *Message {
 
 // RequestEntrySize calculates what the size (in bytes) of the message will be after calling ToRequestEntry on it and
 // marshalling it to json
-func (m *Message) RequestEntrySize() int {
+func (m *Message) RequestEntrySize() (int, error) {
 	buf, err := json.Marshal(m.ToRequestEntry())
 	if err != nil {
-
+		return 0, nil
 	}
-	return len(buf)
+	return len(buf), nil
 }
 
 // ToRequestEntry creates a kinesis.PutRecordsRequestEntry to be used in the kinesis.PutRecords API call.

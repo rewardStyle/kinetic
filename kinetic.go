@@ -36,7 +36,7 @@ type Kinetic struct {
 func New(fn func(*Config)) (*Kinetic, error) {
 	config := NewConfig()
 	fn(config)
-	session, err := config.GetSession()
+	sess, err := config.GetSession()
 	if err != nil {
 		return nil, err
 	}
@@ -44,9 +44,9 @@ func New(fn func(*Config)) (*Kinetic, error) {
 		kineticOptions: config.kineticOptions,
 		LogHelper: &logging.LogHelper{
 			LogLevel: config.LogLevel,
-			Logger:   session.Config.Logger,
+			Logger:   sess.Config.Logger,
 		},
-		Session: session,
+		Session: sess,
 	}, nil
 }
 

@@ -125,46 +125,48 @@ func (p *Producer) produce() {
 					return
 				case status := <-p.status:
 					var batch []*message.Message
+					timeout := time.After(p.batchTimeout)
 
-					// Start pulling from the message channel and waiting for the bucket token to
-					// fill at the same time
+					// Fill batch by pulling from the messages channel or flush after timeout
+				fillBatch:
+					for len(batch) < status.capacity {
+						select {
+						case <-timeout:
+							break fillBatch
+						case msg := <-p.messages:
+							if msg == nil {
+								// Drop nil message
+								break
+							}
+
+							msgSize, err := msg.RequestEntrySize()
+							if err != nil {
+								p.LogError("Unable to retreive message size due to marshalling errors for: ", string(msg.Data))
+								p.sendToDataSpill(msg)
+								break
+							}
+							if msgSize > p.writer.getMsgSizeRateLimit() {
+								p.LogError("Encountered a message that exceeded that message size rate limit: ", string(msg.Data))
+								p.sendToDataSpill(msg)
+								break
+							}
+							batch = append(batch, msg)
+						}
+					}
+
+					// Then wait (if necessary) for the required tokens before sending the batch to the worker
 					wg := sync.WaitGroup{}
 					wg.Add(1)
 					go func() {
 						defer wg.Done()
 
-						var batchMsgSize int
-						timeout := time.After(p.batchTimeout)
-
-					fillBatch:
-						for len(batch) < status.capacity {
-							select {
-							case <-timeout:
-								break fillBatch
-							case msg := <-p.messages:
-								if msg == nil {
-									// Drop nil message
-									break
-								}
-
-								var msgSize int
-								if msgSize = msg.RequestEntrySize(); msgSize > p.writer.getMsgSizeRateLimit() {
-									p.sendToDataSpill(msg)
-									break
-								}
-								batchMsgSize += msgSize
-								batch = append(batch, msg)
-							}
-						}
-
 						// Request and wait for the message size (transmission) rate limiter to
 						// allow this payload
 						ctx, cancel := context.WithTimeout(context.TODO(), p.batchTimeout)
 						defer cancel()
-						if err := p.msgSizeLimiter.WaitN(ctx, batchMsgSize+status.failedSize); err != nil {
-
+						if err := p.msgSizeLimiter.WaitN(ctx, len(batch)+status.failedSize); err != nil {
+							p.LogError("Error occured waiting for message size tokens")
 						}
-						cancel()
 					}()
 
 					wg.Add(1)
@@ -174,14 +176,12 @@ func (p *Producer) produce() {
 						// Request and wait for the message counter rate limiter to allow this
 						// payload
 						ctx, cancel := context.WithTimeout(context.TODO(), p.batchTimeout)
-						err := p.msgCountLimiter.WaitN(ctx, status.capacity+status.failedCount)
+						defer cancel()
+						err := p.msgCountLimiter.WaitN(ctx, len(batch)+status.failedCount)
 						if err != nil {
-							// TODO: handle error properly
+							p.LogError("Error occured waiting for message count tokens")
 						}
-						cancel()
 					}()
-
-					// Wait until the batch is ready and the rate limiter gives the go ahead
 					wg.Wait()
 
 					// Send batch regardless if it is empty or not
@@ -246,15 +246,14 @@ func (p *Producer) shutdown() {
 	})
 }
 
-// resizeWorkerPool is called to instantiate new workers, decommission workers or recommission workers that have been
-// deactivated
+// resizeWorkerPool is called to spawn new go routines or send stop signals to existing workers
 func (p *Producer) resizeWorkerPool(desiredWorkerCount int) {
 	p.resizeMu.Lock()
 	defer p.resizeMu.Unlock()
 
 	if p.workerCount < desiredWorkerCount {
 		for p.workerCount < desiredWorkerCount {
-			go p.newWorker()
+			go p.doWork()
 			p.workerCount++
 		}
 	} else {
@@ -265,13 +264,13 @@ func (p *Producer) resizeWorkerPool(desiredWorkerCount int) {
 	}
 }
 
-// newWorker is a (blocking) helper function that increases the number of concurrent go routines calling the
-// sendBatch function.  Communications between the produce function and the newWorker function occurs on the status
+// doWork is a (blocking) helper function that, when called as a separate go routine, increases the number of concurrent
+// sendBatch functions.  Communications between the produce function and the doWork function occurs on the status
 // channel where the "worker" provides information regarding its previously failed message count, its capacity for
 // new messages and the "worker's" channel to which the produce function should send the batches.  The "workers" also
 // listen on the dismiss channel which upon receiving a signal will continue sending previously failed messages only
 // until all failed messages have been sent successfully or aged out.
-func (p *Producer) newWorker() {
+func (p *Producer) doWork() {
 	batches := make(chan []*message.Message)
 	defer close(batches)
 
@@ -296,15 +295,20 @@ func (p *Producer) newWorker() {
 		}
 		var failedSize int
 		for _, msg := range retries {
-			failedSize += msg.RequestEntrySize()
+			size, err := msg.RequestEntrySize()
+			if err != nil {
+				p.LogError("Unable to retreive message size due to marshalling errors for: ", string(msg.Data))
+				p.sendToDataSpill(msg)
+				continue
+			}
+			failedSize += size
 		}
-		status := &statusReport{
+		p.status <- &statusReport{
 			capacity:    capacity,
 			failedCount: failedCount,
 			failedSize:  failedSize,
 			channel:     batches,
 		}
-		p.status <- status
 
 		// Receive a batch of messages and call the producer's sendBatch function
 		batch := <-batches

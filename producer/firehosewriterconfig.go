@@ -21,9 +21,10 @@ func NewFirehoseWriterConfig(cfg *aws.Config) *FirehoseWriterConfig {
 	return &FirehoseWriterConfig{
 		AwsConfig: cfg,
 		firehoseWriterOptions: &firehoseWriterOptions{
-			msgCountRateLimit: firehoseMsgCountRateLimit,
-			msgSizeRateLimit:  firehoseMsgSizeRateLimit,
-			Stats:             &NilStatsCollector{},
+			msgCountRateLimit:    firehoseMsgCountRateLimit,
+			msgSizeRateLimit:     firehoseMsgSizeRateLimit,
+			throughputMultiplier: 1,
+			Stats:                &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
 	}
@@ -43,6 +44,11 @@ func (c *FirehoseWriterConfig) SetMsgSizeRateLimit(limit int) {
 
 	}
 	c.msgSizeRateLimit = limit
+}
+
+// SetThroughputMultiplier configures the throughput multiplier to increase the streaming rate limits for Firehose
+func (c *FirehoseWriterConfig) SetThroughputMultiplier(count int) {
+	c.throughputMultiplier = count
 }
 
 // SetStatsCollector configures a listener to handle listener metrics.
