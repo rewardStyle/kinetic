@@ -6,6 +6,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/rewardStyle/kinetic/errs"
+	"github.com/rewardStyle/kinetic/message"
 )
 
 // Config is used to configure a Producer instance.
@@ -26,6 +27,7 @@ func NewConfig(cfg *aws.Config) *Config {
 			maxRetryAttempts: 10,
 			concurrency:      3,
 			shardCheckFreq:   time.Minute,
+			dataSpillFn:      func(*message.Message) error { return nil },
 			Stats:            &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
@@ -66,6 +68,11 @@ func (c *Config) SetConcurrency(count int) {
 // SetShardCheckFreq defines a frequency (specified as a duration) with which to check the shard size
 func (c *Config) SetShardCheckFreq(duration time.Duration) {
 	c.shardCheckFreq = duration
+}
+
+// SetDataSpillFn defines a callback function to be called when a message gets dropped by the producer
+func (c *Config) SetDataSpillFn(fn MessageHandlerAsync) {
+	c.dataSpillFn = fn
 }
 
 // SetStatsCollector configures a listener to handle producer metrics.

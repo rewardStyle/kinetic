@@ -86,6 +86,14 @@ func TestNewConfig(t *testing.T) {
 			So(cfg.concurrency, ShouldEqual, 10)
 		})
 
+		Convey("check that we can set the data spill callback function", func() {
+			fn := func(msg *message.Message) error {
+				return nil
+			}
+			cfg.SetDataSpillFn(fn)
+			So(cfg.dataSpillFn, ShouldEqual, fn)
+		})
+
 		Convey("check that we can set the check shard frequency", func() {
 			cfg.SetShardCheckFreq(time.Second)
 			So(cfg.shardCheckFreq, ShouldEqual, time.Second)

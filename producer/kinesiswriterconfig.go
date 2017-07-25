@@ -41,7 +41,7 @@ func (c *KinesisWriterConfig) SetResponseReadTimeout(timeout time.Duration) {
 
 // SetMsgCountRateLimit configures the maximum number of messages that can be sent per second
 func (c *KinesisWriterConfig) SetMsgCountRateLimit(limit int) {
-	if limit > 0  && limit <= kinesisMsgCountRateLimit {
+	if limit > 0 && limit <= kinesisMsgCountRateLimit {
 		c.msgCountRateLimit = limit
 	} else {
 		log.Fatal("Message Count Rate Limit must be positive and less than ", kinesisMsgCountRateLimit)

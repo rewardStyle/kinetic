@@ -16,13 +16,14 @@ import (
 
 // producerOptions holds all of the configurable settings for a Producer
 type producerOptions struct {
-	batchSize        int            // maximum message capacity per request
-	batchTimeout     time.Duration  // maximum time duration to wait for incoming messages
-	queueDepth       int            // maximum number of messages to enqueue in the message queue
-	maxRetryAttempts int            // maximum number of retry attempts for failed messages
-	concurrency      int            // number of concurrent workers per shard
-	shardCheckFreq   time.Duration  // frequency (specified as a duration) with which to check the the shard size
-	Stats            StatsCollector // stats collection mechanism
+	batchSize        int                 // maximum message capacity per request
+	batchTimeout     time.Duration       // maximum time duration to wait for incoming messages
+	queueDepth       int                 // maximum number of messages to enqueue in the message queue
+	maxRetryAttempts int                 // maximum number of retry attempts for failed messages
+	concurrency      int                 // number of concurrent workers per shard
+	shardCheckFreq   time.Duration       // frequency (specified as a duration) with which to check the the shard size
+	dataSpillFn      MessageHandlerAsync // callback function for handling dropped messages that the producer was unable to send to the stream
+	Stats            StatsCollector      // stats collection mechanism
 }
 
 // Producer sends records to AWS Kinesis or Firehose.
@@ -146,7 +147,7 @@ func (p *Producer) produce() {
 
 								var msgSize int
 								if msgSize = msg.RequestEntrySize(); msgSize > p.writer.getMsgSizeRateLimit() {
-									// TODO: Send this huge message to data spill
+									p.sendToDataSpill(msg)
 									break
 								}
 								batchMsgSize += msgSize
@@ -214,7 +215,9 @@ func (p *Producer) shutdown() {
 			case <-timer.C:
 				timer.Stop()
 				if remaining > 0 {
-					// TODO:  Send remaining messages to the data spill
+					for msg := range p.messages {
+						p.sendToDataSpill(msg)
+					}
 				}
 				break drain
 			}
@@ -319,9 +322,7 @@ func (p *Producer) sendBatch(batch []*message.Message) []*message.Message {
 			failed = append(failed, msg)
 			p.Stats.AddSentRetried(1)
 		} else {
-			p.Stats.AddDroppedTotal(1)
-			p.Stats.AddDroppedRetries(1)
-			// TODO:  Add to data spill
+			p.sendToDataSpill(msg)
 		}
 		return nil
 	})
@@ -353,6 +354,15 @@ func (p *Producer) sendBatch(batch []*message.Message) []*message.Message {
 	}
 
 	return batch
+}
+
+// sendToDataSpill is called when the producer is unable to write the message to the stream
+func (p *Producer) sendToDataSpill(msg *message.Message) {
+	p.Stats.AddDroppedTotal(1)
+	p.Stats.AddDroppedCapacity(1)
+	if err := p.dataSpillFn(msg); err != nil {
+		p.LogError("Unable to call data spill function on message: ", string(msg.Data))
+	}
 }
 
 // CloseWithContext initiates the graceful shutdown of the produce function, waiting for all outstanding messages and to
@@ -392,8 +402,7 @@ func (p *Producer) TryToSend(msg *message.Message) error {
 	case p.messages <- msg:
 		return nil
 	default:
-		p.Stats.AddDroppedTotal(1)
-		p.Stats.AddDroppedCapacity(1)
+		p.sendToDataSpill(msg)
 		return errs.ErrDroppedMessage
 	}
 }

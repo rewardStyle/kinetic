@@ -257,6 +257,10 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		c.SetQueueDepth(10000)
 		c.SetConcurrency(3)
 		c.SetShardCheckFreq(time.Minute)
+		c.SetDataSpillFn(func(msg *message.Message) error {
+			//log.Printf("Message was dropped: [%s]\n", string(msg.Data))
+			return nil
+		})
 	})
 	if err != nil {
 		log.Fatalf("Unable to create a new producer due to: %v\n", err)
