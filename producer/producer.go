@@ -92,9 +92,11 @@ func (p *Producer) produce() {
 					p.LogError("Failed to call getConcurrencyMultiplier due to: ", err)
 				}
 				if newMult != mult && newMult > 0 {
-					p.resizeWorkerPool(newMult * p.concurrency)
-					p.Stats.UpdateProducerConcurrency(newMult * p.concurrency)
 					mult = newMult
+					p.msgCountLimiter.SetLimit(rate.Limit(float64(mult * p.writer.getMsgCountRateLimit())))
+					p.msgSizeLimiter.SetLimit(rate.Limit(float64(mult * p.writer.getMsgSizeRateLimit())))
+					p.resizeWorkerPool(mult * p.concurrency)
+					p.Stats.UpdateProducerConcurrency(mult * p.concurrency)
 				}
 
 				select {
