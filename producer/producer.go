@@ -42,7 +42,6 @@ type Producer struct {
 	startupOnce        sync.Once             // used to ensure that the startup function is called once
 	shutdownOnce       sync.Once             // used to ensure that the shutdown function is called once
 	resizeMu           sync.Mutex            // used to prevent resizeWorkerPool from being called synchronously with itself
-	shardCountMu       sync.Mutex            // used to add thread-safe access to the shardCount variable
 	noCopy             noCopy                // prevents the Producer from being copied
 }
 
@@ -127,8 +126,8 @@ func (p *Producer) produce() {
 					var batch []*message.Message
 					timeout := time.After(p.batchTimeout)
 
-					// Fill batch by pulling from the messages channel or flush after timeout
 				fillBatch:
+					// Fill a batch by pulling from the messages channel or flushing after the timeout
 					for len(batch) < status.capacity {
 						select {
 						case <-timeout:
@@ -239,7 +238,15 @@ func (p *Producer) shutdown() {
 		}
 
 		// Stop the running go routine in produce
-		p.stop <- empty{}
+		if p.stop != nil {
+			p.stop <- empty{}
+			close(p.stop)
+		}
+
+		// Close the pipeOfDeath channel
+		if p.pipeOfDeath != nil {
+			close(p.pipeOfDeath)
+		}
 
 		// Reset startupOnce to allow the start up sequence to happen again
 		p.startupOnce = sync.Once{}

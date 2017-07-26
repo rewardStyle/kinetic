@@ -27,7 +27,6 @@ type kclReaderOptions struct {
 type KclReader struct {
 	*kclReaderOptions
 	*logging.LogHelper
-
 	throttleSem chan empty
 	pipeOfDeath chan empty
 	scanner     *bufio.Scanner

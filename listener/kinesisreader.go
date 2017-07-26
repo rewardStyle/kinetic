@@ -30,7 +30,6 @@ type kinesisReaderOptions struct {
 type KinesisReader struct {
 	*kinesisReaderOptions
 	*logging.LogHelper
-
 	stream            string
 	shard             string
 	throttleSem       chan empty

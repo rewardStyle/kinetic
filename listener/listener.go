@@ -45,7 +45,6 @@ type listenerOptions struct {
 type Listener struct {
 	*listenerOptions
 	*logging.LogHelper
-
 	reader         StreamReader
 	messages       chan *message.Message
 	concurrencySem chan empty
@@ -108,6 +107,57 @@ func (l *Listener) stopConsuming() {
 	l.consuming = false
 }
 
+func (l *Listener) enqueueSingle(ctx context.Context) (int, error) {
+	n, err := l.reader.GetRecord(ctx, func(msg *message.Message, wg *sync.WaitGroup) error {
+		defer wg.Done()
+		l.messages <- msg
+
+		return nil
+	})
+	if err != nil {
+		l.handleErrorLogging(err)
+		return 0, err
+	}
+	return n, nil
+}
+
+func (l *Listener) enqueueBatch(ctx context.Context) (int, error) {
+	n, err := l.reader.GetRecords(ctx,
+		func(msg *message.Message, wg *sync.WaitGroup) error {
+			defer wg.Done()
+			l.messages <- msg
+
+			return nil
+		})
+	if err != nil {
+		l.handleErrorLogging(err)
+		return 0, err
+	}
+	return n, nil
+}
+
+func (l *Listener) handleErrorLogging(err error) {
+	switch err := err.(type) {
+	case net.Error:
+		if err.Timeout() {
+			l.Stats.AddGetRecordsTimeout(1)
+			l.LogError("Received net error:", err.Error())
+		} else {
+			l.LogError("Received unknown net error:", err.Error())
+		}
+	case error:
+		switch err {
+		case errs.ErrTimeoutReadResponseBody:
+			l.Stats.AddGetRecordsReadTimeout(1)
+			l.LogError("Received error:", err.Error())
+		default:
+			l.LogError("Received error:", err.Error())
+		}
+	default:
+		l.LogError("Received unknown error:", err.Error())
+	}
+}
+
 // RetrieveWithContext waits for a message from the stream and returns the message. Cancellation is supported through
 // contexts.
 func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, error) {
@@ -126,15 +176,7 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 		if !ok {
 			return nil, err
 		}
-		n, err := l.reader.GetRecord(childCtx, func(msg *message.Message, wg *sync.WaitGroup) error {
-			defer wg.Done()
-			l.messages <- msg
-
-			return nil
-		})
-		if err != nil {
-			return nil, err
-		}
+		n, err := l.enqueueSingle(childCtx)
 		if n > 0 {
 			l.Stats.AddDelivered(n)
 			return <-l.messages, nil
@@ -197,34 +239,7 @@ func (l *Listener) consume(ctx context.Context) {
 				return
 			}
 
-			_, err := l.reader.GetRecords(childCtx,
-				func(msg *message.Message, wg *sync.WaitGroup) error {
-					defer wg.Done()
-					l.messages <- msg
-
-					return nil
-				})
-			if err != nil {
-				switch err := err.(type) {
-				case net.Error:
-					if err.Timeout() {
-						l.Stats.AddGetRecordsTimeout(1)
-						l.LogError("Received net error:", err.Error())
-					} else {
-						l.LogError("Received unknown net error:", err.Error())
-					}
-				case error:
-					switch err {
-					case errs.ErrTimeoutReadResponseBody:
-						l.Stats.AddGetRecordsReadTimeout(1)
-						l.LogError("Received error:", err.Error())
-					default:
-						l.LogError("Received error:", err.Error())
-					}
-				default:
-					l.LogError("Received unknown error:", err.Error())
-				}
-			}
+			l.enqueueBatch(childCtx)
 		}
 	}()
 }

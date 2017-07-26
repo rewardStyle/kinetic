@@ -30,7 +30,7 @@ func TestProducer(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		err = k.WaitUntilStreamExists(context.TODO(), stream,
-			request.WithWaiterDelay(request.ConstantWaiterDelay(1*time.Second)))
+			request.WithWaiterDelay(request.ConstantWaiterDelay(time.Second)))
 		So(err, ShouldBeNil)
 
 		shards, err := k.GetShards(stream)
