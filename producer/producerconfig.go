@@ -5,8 +5,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic/errs"
-	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic"
 )
 
 // Config is used to configure a Producer instance.
@@ -27,7 +26,7 @@ func NewConfig(cfg *aws.Config) *Config {
 			maxRetryAttempts: 10,
 			concurrency:      3,
 			shardCheckFreq:   time.Minute,
-			dataSpillFn:      func(*message.Message) error { return nil },
+			dataSpillFn:      func(*kinetic.Message) error { return nil },
 			Stats:            &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
@@ -41,7 +40,7 @@ func (c *Config) SetBatchSize(batchSize int) {
 	} else {
 		// http://docs.aws.amazon.com/firehose/latest/APIReference/API_PutRecordBatch.html
 		log.Fatal("BatchSize must be less than or equal to 500 ")
-		panic(errs.ErrInvalidBatchSize)
+		panic(kinetic.ErrInvalidBatchSize)
 	}
 }
 

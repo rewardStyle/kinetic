@@ -8,7 +8,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/logging"
 )
 
 type DebugStatsCollector struct{}
@@ -39,13 +38,13 @@ func TestNewConfig(t *testing.T) {
 			So(config.queueDepth, ShouldEqual, 10000)
 			So(config.concurrency, ShouldEqual, 10000)
 			So(config.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
-			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
+			So(config.LogLevel.Value(), ShouldEqual, kinetic.LogOff)
 		})
 
 		Convey("check that we can set both the sdk and kinetic log level", func() {
-			ll := aws.LogDebug | aws.LogDebugWithSigning | logging.LogDebug
+			ll := aws.LogDebug | aws.LogDebugWithSigning | kinetic.LogDebug
 			config.SetLogLevel(ll)
-			So(config.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
+			So(config.LogLevel.AtLeast(kinetic.LogDebug), ShouldBeTrue)
 		})
 
 		Convey("check that we can set the concurrency limit", func() {

@@ -13,9 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 
-	"github.com/rewardStyle/kinetic/errs"
-	"github.com/rewardStyle/kinetic/logging"
-	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic"
 )
 
 // kinesisReaderOptions is used to hold all of the configurable settings of a KinesisReader.
@@ -29,7 +27,7 @@ type kinesisReaderOptions struct {
 // KinesisReader handles the API to read records from Kinesis.
 type KinesisReader struct {
 	*kinesisReaderOptions
-	*logging.LogHelper
+	*kinetic.LogHelper
 	stream            string
 	shard             string
 	throttleSem       chan empty
@@ -50,7 +48,7 @@ func NewKinesisReader(c *aws.Config, stream string, shard string, fn ...func(*Ki
 	}
 	return &KinesisReader{
 		kinesisReaderOptions: cfg.kinesisReaderOptions,
-		LogHelper: &logging.LogHelper{
+		LogHelper: &kinetic.LogHelper{
 			LogLevel: cfg.LogLevel,
 			Logger:   cfg.AwsConfig.Logger,
 		},
@@ -83,10 +81,10 @@ func (r *KinesisReader) ensureShardIterator() error {
 		return err
 	}
 	if resp == nil {
-		return errs.ErrNilGetShardIteratorResponse
+		return kinetic.ErrNilGetShardIteratorResponse
 	}
 	if resp.ShardIterator == nil {
-		return errs.ErrNilShardIterator
+		return kinetic.ErrNilShardIterator
 	}
 	return r.setNextShardIterator(*resp.ShardIterator)
 }
@@ -97,7 +95,7 @@ func (r *KinesisReader) ensureShardIterator() error {
 // be taken to ensure that only one call to Listen and Retrieve/RetrieveFn can be running at a time.
 func (r *KinesisReader) setNextShardIterator(shardIterator string) error {
 	if len(shardIterator) == 0 {
-		return errs.ErrEmptyShardIterator
+		return kinetic.ErrEmptyShardIterator
 	}
 	r.nextShardIterator = shardIterator
 	return nil
@@ -112,7 +110,7 @@ func (r *KinesisReader) setNextShardIterator(shardIterator string) error {
 // time.
 func (r *KinesisReader) setSequenceNumber(sequenceNumber string) error {
 	if len(sequenceNumber) == 0 {
-		return errs.ErrEmptySequenceNumber
+		return kinetic.ErrEmptySequenceNumber
 	}
 	r.shardIterator.AtSequenceNumber(sequenceNumber)
 	return nil
@@ -147,7 +145,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 	req.ApplyOptions(request.WithResponseReadTimeout(r.responseReadTimeout))
 
 	// If debug is turned on, add some handlers for GetRecords logging
-	if r.LogLevel.AtLeast(logging.LogDebug) {
+	if r.LogLevel.AtLeast(kinetic.LogDebug) {
 		req.Handlers.Send.PushBack(func(req *request.Request) {
 			r.LogDebug("Finished getRecords Send, took", time.Since(start))
 		})
@@ -201,7 +199,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 	// Process Records
 	r.LogDebug(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), r.shard, time.Since(start)))
 	if resp == nil {
-		return 0, 0, errs.ErrNilGetRecordsResponse
+		return 0, 0, kinetic.ErrNilGetRecordsResponse
 	}
 	delivered := 0
 	r.Stats.AddBatchSize(len(resp.Records))
@@ -217,7 +215,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 			default:
 				var wg sync.WaitGroup
 				wg.Add(1)
-				go fn(message.FromRecord(record), &wg)
+				go fn(kinetic.FromRecord(record), &wg)
 				wg.Wait()
 				delivered++
 				r.Stats.AddConsumed(1)

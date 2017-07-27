@@ -9,8 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
-
-	"github.com/rewardStyle/kinetic/logging"
 )
 
 func getSession(config *Config) *session.Session {
@@ -27,7 +25,7 @@ func TestNewConfig(t *testing.T) {
 		Convey("check the default values for its non-zero config", func() {
 			So(config.AwsConfig.HTTPClient.Timeout, ShouldEqual, 2*time.Minute)
 			So(config.AwsConfig.LogLevel.Value(), ShouldEqual, aws.LogOff)
-			So(config.LogLevel.Value(), ShouldEqual, logging.LogOff)
+			So(config.LogLevel.Value(), ShouldEqual, LogOff)
 		})
 
 		Convey("check that we can retrieve an aws.Session from it ", func() {
@@ -79,12 +77,12 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set both the sdk and kinetic log level", func() {
-			ll := aws.LogDebug | aws.LogDebugWithSigning | logging.LogDebug
+			ll := aws.LogDebug | aws.LogDebugWithSigning | LogDebug
 			config.SetLogLevel(ll)
 			sess := getSession(config)
 			So(sess.Config.LogLevel.AtLeast(aws.LogDebug), ShouldBeTrue)
 			So(sess.Config.LogLevel.Matches(aws.LogDebugWithSigning), ShouldBeTrue)
-			So(config.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
+			So(config.LogLevel.AtLeast(LogDebug), ShouldBeTrue)
 		})
 
 		Convey("check that we can set the http.Client Timeout", func() {

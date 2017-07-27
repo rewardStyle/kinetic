@@ -17,8 +17,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/errs"
-	"github.com/rewardStyle/kinetic/message"
 )
 
 func putRecord(l *Listener, b []byte) (*string, error) {
@@ -83,12 +81,12 @@ func TestListener(t *testing.T) {
 
 		Convey("check that setting an empty shard iterator returns an error", func() {
 			err := l.reader.(*KinesisReader).setNextShardIterator("")
-			So(err, ShouldEqual, errs.ErrEmptyShardIterator)
+			So(err, ShouldEqual, kinetic.ErrEmptyShardIterator)
 		})
 
 		Convey("check that setting an empty sequence number returns an error", func() {
 			err := l.reader.(*KinesisReader).setSequenceNumber("")
-			So(err, ShouldEqual, errs.ErrEmptySequenceNumber)
+			So(err, ShouldEqual, kinetic.ErrEmptySequenceNumber)
 		})
 
 		Convey("check that we can get the TRIM_HORIZON shard iterator", func() {
@@ -181,7 +179,7 @@ func TestListener(t *testing.T) {
 			}()
 			<-time.After(10 * time.Millisecond)
 			_, err := l.Retrieve()
-			So(err, ShouldEqual, errs.ErrAlreadyConsuming)
+			So(err, ShouldEqual, kinetic.ErrAlreadyConsuming)
 			wg.Wait()
 		})
 
@@ -191,7 +189,7 @@ func TestListener(t *testing.T) {
 			go func() {
 				ctx, cancel := context.WithTimeout(context.TODO(), 1000*time.Millisecond)
 				defer cancel()
-				l.ListenWithContext(ctx, func(msg *message.Message, wg *sync.WaitGroup) error {
+				l.ListenWithContext(ctx, func(msg *kinetic.Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					return nil
 				})
@@ -199,7 +197,7 @@ func TestListener(t *testing.T) {
 			}()
 			<-time.After(10 * time.Millisecond)
 			_, err := l.Retrieve()
-			So(err, ShouldEqual, errs.ErrAlreadyConsuming)
+			So(err, ShouldEqual, kinetic.ErrAlreadyConsuming)
 			wg.Wait()
 		})
 
@@ -209,7 +207,7 @@ func TestListener(t *testing.T) {
 			secs := []float64{}
 			for i := 1; i <= 6; i++ {
 				start := time.Now()
-				l.reader.GetRecord(context.TODO(), func(msg *message.Message, wg *sync.WaitGroup) error {
+				l.reader.GetRecord(context.TODO(), func(msg *kinetic.Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 
 					return nil
@@ -226,7 +224,7 @@ func TestListener(t *testing.T) {
 			data := "retrieved"
 			_, err := putRecord(l, []byte(data))
 			So(err, ShouldBeNil)
-			err = l.RetrieveFn(func(msg *message.Message, wg *sync.WaitGroup) error {
+			err = l.RetrieveFn(func(msg *kinetic.Message, wg *sync.WaitGroup) error {
 				defer wg.Done()
 
 				called = true
@@ -247,7 +245,7 @@ func TestListener(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				l.Listen(func(msg *message.Message, wg *sync.WaitGroup) error {
+				l.Listen(func(msg *kinetic.Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					atomic.AddInt64(&count, 1)
 
@@ -295,7 +293,7 @@ func TestListener(t *testing.T) {
 			go func() {
 				ctx, cancel := context.WithCancel(context.TODO())
 				defer wg.Done()
-				l.ListenWithContext(ctx, func(m *message.Message, wg *sync.WaitGroup) error {
+				l.ListenWithContext(ctx, func(m *kinetic.Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					time.AfterFunc(time.Duration(rand.Intn(10))*time.Second, func() {
 						n, err := strconv.Atoi(string(m.Data))

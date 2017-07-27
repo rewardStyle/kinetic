@@ -13,7 +13,6 @@ import (
 
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/listener"
-	"github.com/rewardStyle/kinetic/message"
 )
 
 func TestProducer(t *testing.T) {
@@ -83,7 +82,7 @@ func TestProducer(t *testing.T) {
 		Convey("check that we can send and receive a single message", func() {
 			start := time.Now()
 			data := "hello"
-			p.Send(&message.Message{
+			p.Send(&kinetic.Message{
 				PartitionKey: aws.String("key"),
 				Data:         []byte(data),
 			})
@@ -97,7 +96,7 @@ func TestProducer(t *testing.T) {
 		Convey("check that we can send a single message after batch timeout elapses", func() {
 			start := time.Now()
 			data := "hello"
-			p.Send(&message.Message{
+			p.Send(&kinetic.Message{
 				PartitionKey: aws.String("key"),
 				Data:         []byte(data),
 			})
@@ -130,7 +129,7 @@ func TestProducer(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for _, datum := range data {
-					p.Send(&message.Message{
+					p.Send(&kinetic.Message{
 						PartitionKey: aws.String("key"),
 						Data:         []byte(datum),
 					})

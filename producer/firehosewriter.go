@@ -11,9 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/firehose"
 	"github.com/aws/aws-sdk-go/service/firehose/firehoseiface"
 
-	"github.com/rewardStyle/kinetic/errs"
-	"github.com/rewardStyle/kinetic/logging"
-	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic"
 )
 
 type firehoseWriterOptions struct {
@@ -26,7 +24,7 @@ type firehoseWriterOptions struct {
 // FirehoseWriter handles the API to send records to Kinesis.
 type FirehoseWriter struct {
 	*firehoseWriterOptions
-	*logging.LogHelper
+	*kinetic.LogHelper
 
 	stream string
 	client firehoseiface.FirehoseAPI
@@ -44,7 +42,7 @@ func NewFirehoseWriter(c *aws.Config, stream string, fn ...func(*FirehoseWriterC
 	}
 	return &FirehoseWriter{
 		firehoseWriterOptions: cfg.firehoseWriterOptions,
-		LogHelper: &logging.LogHelper{
+		LogHelper: &kinetic.LogHelper{
 			LogLevel: cfg.LogLevel,
 			Logger:   cfg.AwsConfig.Logger,
 		},
@@ -54,7 +52,7 @@ func NewFirehoseWriter(c *aws.Config, stream string, fn ...func(*FirehoseWriterC
 }
 
 // PutRecords sends a batch of records to Firehose and returns a list of records that need to be retried.
-func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageHandlerAsync) error {
+func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*kinetic.Message, fn MessageHandlerAsync) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
@@ -99,10 +97,10 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*message.Mes
 	w.Stats.UpdatePutRecordsDuration(time.Since(start))
 
 	if resp == nil {
-		return errs.ErrNilPutRecordsResponse
+		return kinetic.ErrNilPutRecordsResponse
 	}
 	if resp.FailedPutCount == nil {
-		return errs.ErrNilFailedRecordCount
+		return kinetic.ErrNilFailedRecordCount
 	}
 	attempted := len(messages)
 	failed := int(aws.Int64Value(resp.FailedPutCount))

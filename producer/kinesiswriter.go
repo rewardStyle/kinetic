@@ -11,9 +11,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 
-	"github.com/rewardStyle/kinetic/errs"
-	"github.com/rewardStyle/kinetic/logging"
-	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic"
 )
 
 type kinesisWriterOptions struct {
@@ -26,7 +24,7 @@ type kinesisWriterOptions struct {
 // KinesisWriter handles the API to send records to Kinesis.
 type KinesisWriter struct {
 	*kinesisWriterOptions
-	*logging.LogHelper
+	*kinetic.LogHelper
 
 	stream string
 	client kinesisiface.KinesisAPI
@@ -44,7 +42,7 @@ func NewKinesisWriter(c *aws.Config, stream string, fn ...func(*KinesisWriterCon
 	}
 	return &KinesisWriter{
 		kinesisWriterOptions: cfg.kinesisWriterOptions,
-		LogHelper: &logging.LogHelper{
+		LogHelper: &kinetic.LogHelper{
 			LogLevel: cfg.LogLevel,
 			Logger:   cfg.AwsConfig.Logger,
 		},
@@ -54,7 +52,7 @@ func NewKinesisWriter(c *aws.Config, stream string, fn ...func(*KinesisWriterCon
 }
 
 // PutRecords sends a batch of records to Kinesis and returns a list of records that need to be retried.
-func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Message, fn MessageHandlerAsync) error {
+func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*kinetic.Message, fn MessageHandlerAsync) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
@@ -100,10 +98,10 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*message.Mess
 	w.Stats.UpdatePutRecordsDuration(time.Since(start))
 
 	if resp == nil {
-		return errs.ErrNilPutRecordsResponse
+		return kinetic.ErrNilPutRecordsResponse
 	}
 	if resp.FailedRecordCount == nil {
-		return errs.ErrNilFailedRecordCount
+		return kinetic.ErrNilFailedRecordCount
 	}
 	attempted := len(messages)
 	failed := int(aws.Int64Value(resp.FailedRecordCount))
@@ -156,10 +154,10 @@ func (w *KinesisWriter) getConcurrencyMultiplier() (int, error) {
 		return 0, err
 	}
 	if resp == nil {
-		return 0, errs.ErrNilDescribeStreamResponse
+		return 0, kinetic.ErrNilDescribeStreamResponse
 	}
 	if resp.StreamDescription == nil {
-		return 0, errs.ErrNilStreamDescription
+		return 0, kinetic.ErrNilStreamDescription
 	}
 
 	// maps shardID to a boolean that indicates whether or not the shard is a parent shard or an adjacent parent shard

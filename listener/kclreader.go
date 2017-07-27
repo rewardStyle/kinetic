@@ -11,8 +11,7 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic/logging"
-	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/multilang"
 )
 
@@ -26,12 +25,12 @@ type kclReaderOptions struct {
 // KclReader handles the KCL Multilang Protocol to read records from KCL
 type KclReader struct {
 	*kclReaderOptions
-	*logging.LogHelper
+	*kinetic.LogHelper
 	throttleSem chan empty
 	pipeOfDeath chan empty
 	scanner     *bufio.Scanner
 	reader      *bufio.Reader
-	msgBuffer   []message.Message
+	msgBuffer   []kinetic.Message
 }
 
 // NewKclReader creates a new stream reader to read records from KCL
@@ -42,12 +41,12 @@ func NewKclReader(c *aws.Config, fn ...func(*KclReaderConfig)) (*KclReader, erro
 	}
 	return &KclReader{
 		kclReaderOptions: cfg.kclReaderOptions,
-		LogHelper: &logging.LogHelper{
+		LogHelper: &kinetic.LogHelper{
 			LogLevel: cfg.LogLevel,
 			Logger:   cfg.AwsConfig.Logger,
 		},
 		throttleSem: make(chan empty, 5),
-		msgBuffer:   []message.Message{},
+		msgBuffer:   []kinetic.Message{},
 	}, nil
 }
 

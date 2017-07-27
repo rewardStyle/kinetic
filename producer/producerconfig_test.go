@@ -8,8 +8,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/logging"
-	"github.com/rewardStyle/kinetic/message"
 )
 
 type DebugStatsCollector struct{}
@@ -32,7 +30,7 @@ func (l *DebugStatsCollector) UpdateProducerConcurrency(int)                  {}
 
 type DebugStreamWriter struct{}
 
-func (w *DebugStreamWriter) PutRecords(batch []*message.Message) ([]*message.Message, error) {
+func (w *DebugStreamWriter) PutRecords(batch []*kinetic.Message) ([]*kinetic.Message, error) {
 	return nil, nil
 }
 
@@ -52,13 +50,13 @@ func TestNewConfig(t *testing.T) {
 			So(cfg.concurrency, ShouldEqual, 3)
 			So(cfg.shardCheckFreq, ShouldEqual, time.Minute)
 			So(cfg.Stats, ShouldHaveSameTypeAs, &NilStatsCollector{})
-			So(cfg.LogLevel.Value(), ShouldEqual, logging.LogOff)
+			So(cfg.LogLevel.Value(), ShouldEqual, kinetic.LogOff)
 		})
 
 		Convey("check that we can set both the sdk and kinetic log level", func() {
-			ll := aws.LogDebug | aws.LogDebugWithSigning | logging.LogDebug
+			ll := aws.LogDebug | aws.LogDebugWithSigning | kinetic.LogDebug
 			cfg.SetLogLevel(ll)
-			So(cfg.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
+			So(cfg.LogLevel.AtLeast(kinetic.LogDebug), ShouldBeTrue)
 		})
 
 		Convey("check that we can set the batch size", func() {
@@ -87,7 +85,7 @@ func TestNewConfig(t *testing.T) {
 		})
 
 		Convey("check that we can set the data spill callback function", func() {
-			fn := func(msg *message.Message) error {
+			fn := func(msg *kinetic.Message) error {
 				return nil
 			}
 			cfg.SetDataSpillFn(fn)

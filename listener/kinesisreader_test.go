@@ -9,7 +9,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/logging"
 )
 
 func TestNewKinesisReader(t *testing.T) {
@@ -42,7 +41,7 @@ func TestNewKinesisReader(t *testing.T) {
 		Convey("check that we can create a new KinesisReader with configured values", func() {
 			batchSize := rand.Int()
 			respReadTimeout := time.Duration(rand.Int()) * time.Second
-			logLevel := aws.LogDebug | aws.LogDebugWithSigning | logging.LogDebug
+			logLevel := aws.LogDebug | aws.LogDebugWithSigning | kinetic.LogDebug
 			shardIterator := NewShardIterator()
 			myStatsCollector := &NilStatsCollector{}
 			r, err := NewKinesisReader(k.Session.Config, stream, shard, func(krc *KinesisReaderConfig) {
@@ -56,7 +55,7 @@ func TestNewKinesisReader(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(r.batchSize, ShouldEqual, batchSize)
 			So(r.responseReadTimeout, ShouldEqual, respReadTimeout)
-			So(r.LogLevel.AtLeast(logging.LogDebug), ShouldBeTrue)
+			So(r.LogLevel.AtLeast(kinetic.LogDebug), ShouldBeTrue)
 			So(r.shardIterator, ShouldEqual, shardIterator)
 			So(r.Stats, ShouldEqual, myStatsCollector)
 		})

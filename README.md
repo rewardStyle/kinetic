@@ -70,7 +70,7 @@ go l.Listen(func(b []byte, fnwg *sync.WaitGroup){
 })
 
 // Send a message using the producer 
-p.Send(&message.Message{
+p.Send(&kinetic.Message{
     Data: []byte(`{"foo":"bar"}`),
 })
 

@@ -1,4 +1,4 @@
-package message
+package kinetic
 
 import (
 	"encoding/json"

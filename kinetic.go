@@ -12,9 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/firehose/firehoseiface"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
-
-	"github.com/rewardStyle/kinetic/errs"
-	"github.com/rewardStyle/kinetic/logging"
 )
 
 type kineticOptions struct {
@@ -24,7 +21,7 @@ type kineticOptions struct {
 // methods for interacting with the AWS services.
 type Kinetic struct {
 	*kineticOptions
-	*logging.LogHelper
+	*LogHelper
 
 	clientMu sync.Mutex
 	fclient  firehoseiface.FirehoseAPI
@@ -42,7 +39,7 @@ func New(fn func(*Config)) (*Kinetic, error) {
 	}
 	return &Kinetic{
 		kineticOptions: config.kineticOptions,
-		LogHelper: &logging.LogHelper{
+		LogHelper: &LogHelper{
 			LogLevel: config.LogLevel,
 			Logger:   sess.Config.Logger,
 		},
@@ -132,10 +129,10 @@ func (k *Kinetic) GetShards(stream string) ([]string, error) {
 		return nil, err
 	}
 	if resp == nil {
-		return nil, errs.ErrNilDescribeStreamResponse
+		return nil, ErrNilDescribeStreamResponse
 	}
 	if resp.StreamDescription == nil {
-		return nil, errs.ErrNilStreamDescription
+		return nil, ErrNilStreamDescription
 	}
 	var shards []string
 	for _, shard := range resp.StreamDescription.Shards {

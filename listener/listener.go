@@ -7,10 +7,8 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/golang/time/rate"
-	"github.com/rewardStyle/kinetic/errs"
-	"github.com/rewardStyle/kinetic/logging"
-	"github.com/rewardStyle/kinetic/message"
+	"github.com/rewardStyle/kinetic"
+	"golang.org/x/time/rate"
 )
 
 // StreamReader is an interface that abstracts out a stream reader.
@@ -25,15 +23,15 @@ type empty struct{}
 // MessageProcessor defines the signature of a message handler used by Listen, RetrieveFn and their associated
 // *WithContext functions.  MessageHandler accepts a WaitGroup so the function can be run as a blocking operation as
 // opposed to MessageHandlerAsync.
-type MessageProcessor func(*message.Message, *sync.WaitGroup) error
+type MessageProcessor func(*kinetic.Message, *sync.WaitGroup) error
 
 // MessageHandler defines the signature of a message handler used by GetRecord() and GetRecords().  MessageHandler
 // accepts a WaitGroup so the function can be run as a blocking operation as opposed to MessageHandlerAsync.
-type MessageHandler func(*message.Message, *sync.WaitGroup) error
+type MessageHandler func(*kinetic.Message, *sync.WaitGroup) error
 
 // MessageHandlerAsync defines the signature of a message handler used by GetRecord() and GetRecords().
 // MessageHandlerAsync is meant to be run asynchronously.
-type MessageHandlerAsync func(*message.Message) error
+type MessageHandlerAsync func(*kinetic.Message) error
 
 // listenerOptions is used to hold all of the configurable settings of a Listener object.
 type listenerOptions struct {
@@ -45,11 +43,11 @@ type listenerOptions struct {
 // Listener polls the StreamReader for messages.
 type Listener struct {
 	*listenerOptions
-	*logging.LogHelper
+	*kinetic.LogHelper
 	reader              StreamReader
 	txnCountRateLimiter *rate.Limiter
 	txSizeRateLimiter   *rate.Limiter
-	messages            chan *message.Message
+	messages            chan *kinetic.Message
 	concurrencySem      chan empty
 	pipeOfDeath         chan empty
 	consuming           bool
@@ -64,7 +62,7 @@ func NewListener(c *aws.Config, r StreamReader, fn ...func(*Config)) (*Listener,
 	}
 	return &Listener{
 		listenerOptions: cfg.listenerOptions,
-		LogHelper: &logging.LogHelper{
+		LogHelper: &kinetic.LogHelper{
 			LogLevel: cfg.LogLevel,
 			Logger:   cfg.AwsConfig.Logger,
 		},
@@ -79,7 +77,7 @@ func (l *Listener) startConsuming() bool {
 	defer l.consumingMu.Unlock()
 	if !l.consuming {
 		l.consuming = true
-		l.messages = make(chan *message.Message, l.queueDepth)
+		l.messages = make(chan *kinetic.Message, l.queueDepth)
 		l.concurrencySem = make(chan empty, l.concurrency)
 		l.pipeOfDeath = make(chan empty)
 		return true
@@ -92,7 +90,7 @@ func (l *Listener) startConsuming() bool {
 func (l *Listener) shouldConsume(ctx context.Context) (bool, error) {
 	select {
 	case <-l.pipeOfDeath:
-		return false, errs.ErrPipeOfDeath
+		return false, kinetic.ErrPipeOfDeath
 	case <-ctx.Done():
 		return false, ctx.Err()
 	default:
@@ -114,7 +112,7 @@ func (l *Listener) stopConsuming() {
 }
 
 func (l *Listener) enqueueSingle(ctx context.Context) (int, int, error) {
-	n, m, err := l.reader.GetRecord(ctx, func(msg *message.Message, wg *sync.WaitGroup) error {
+	n, m, err := l.reader.GetRecord(ctx, func(msg *kinetic.Message, wg *sync.WaitGroup) error {
 		defer wg.Done()
 		l.messages <- msg
 
@@ -129,7 +127,7 @@ func (l *Listener) enqueueSingle(ctx context.Context) (int, int, error) {
 
 func (l *Listener) enqueueBatch(ctx context.Context) (int, int, error) {
 	n, m, err := l.reader.GetRecords(ctx,
-		func(msg *message.Message, wg *sync.WaitGroup) error {
+		func(msg *kinetic.Message, wg *sync.WaitGroup) error {
 			defer wg.Done()
 			l.messages <- msg
 
@@ -153,7 +151,7 @@ func (l *Listener) handleErrorLogging(err error) {
 		}
 	case error:
 		switch err {
-		case errs.ErrTimeoutReadResponseBody:
+		case kinetic.ErrTimeoutReadResponseBody:
 			l.Stats.AddGetRecordsReadTimeout(1)
 			l.LogError("Received error:", err.Error())
 		default:
@@ -164,11 +162,11 @@ func (l *Listener) handleErrorLogging(err error) {
 	}
 }
 
-// RetrieveWithContext waits for a message from the stream and returns the message. Cancellation is supported through
+// RetrieveWithContext waits for a message from the stream and returns the kinetic. Cancellation is supported through
 // contexts.
-func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, error) {
+func (l *Listener) RetrieveWithContext(ctx context.Context) (*kinetic.Message, error) {
 	if !l.startConsuming() {
-		return nil, errs.ErrAlreadyConsuming
+		return nil, kinetic.ErrAlreadyConsuming
 	}
 	defer l.stopConsuming()
 
@@ -191,7 +189,7 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 }
 
 // Retrieve waits for a message from the stream and returns the value
-func (l *Listener) Retrieve() (*message.Message, error) {
+func (l *Listener) Retrieve() (*kinetic.Message, error) {
 	return l.RetrieveWithContext(context.TODO())
 }
 
@@ -295,7 +293,7 @@ func (l *Listener) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 			// couple more messages (especially since select is random in which channel is read from).
 			l.concurrencySem <- empty{}
 			wg.Add(1)
-			go func(msg *message.Message) {
+			go func(msg *kinetic.Message) {
 				defer func() {
 					<-l.concurrencySem
 				}()

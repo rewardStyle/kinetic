@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/rcrowley/go-metrics"
+	metrics "github.com/jasonyurs/go-metrics"
 )
 
 // StatsCollector allows for a collector to collect various metrics produced by

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic/errs"
+	"github.com/rewardStyle/kinetic"
 )
 
 const (
@@ -45,7 +45,7 @@ func (c *KinesisWriterConfig) SetMsgCountRateLimit(limit int) {
 		c.msgCountRateLimit = limit
 	} else {
 		log.Fatal("Message Count Rate Limit must be positive and less than ", kinesisMsgCountRateLimit)
-		panic(errs.ErrInvalidMsgCountRateLimit)
+		panic(kinetic.ErrInvalidMsgCountRateLimit)
 	}
 }
 
@@ -55,7 +55,7 @@ func (c *KinesisWriterConfig) SetMsgSizeRateLimit(limit int) {
 		c.msgSizeRateLimit = limit
 	} else {
 		log.Fatal("Message Count Size Limit must be positive and less than ", kinesisMsgSizeRateLimit)
-		panic(errs.ErrInvalidMsgSizeRateLimit)
+		panic(kinetic.ErrInvalidMsgSizeRateLimit)
 	}
 }
 

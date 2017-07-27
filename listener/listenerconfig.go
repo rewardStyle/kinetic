@@ -2,7 +2,7 @@ package listener
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic/logging"
+	"github.com/rewardStyle/kinetic"
 )
 
 // Config is used to configure a Listener instance
@@ -21,7 +21,7 @@ func NewConfig(cfg *aws.Config) *Config {
 			concurrency: 10000,
 			Stats:       &NilStatsCollector{},
 		},
-		LogLevel: logging.LogOff,
+		LogLevel: kinetic.LogOff,
 	}
 }
 

@@ -1,11 +1,11 @@
-package logging
+package kinetic
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
 )
 
 const (
-	// LogOff disables all logging.
+	// LogOff disables all kinetic.
 	LogOff aws.LogLevelType = (iota * 0x1000) << 16
 
 	// LogBug enables logging of bugs in code.
@@ -17,7 +17,7 @@ const (
 	// LogInfo enables logging of informational messages..
 	LogInfo
 
-	// LogDebug enables debug logging.
+	// LogDebug enables debug kinetic.
 	LogDebug
 )
 
@@ -58,7 +58,7 @@ func (l *LogHelper) LogError(args ...interface{}) {
 	l.Log(LogError, args...)
 }
 
-// LogInfo logs an informational message.
+// LogInfo logs an informational kinetic.
 func (l *LogHelper) LogInfo(args ...interface{}) {
 	l.Log(LogInfo, args...)
 }

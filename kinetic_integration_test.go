@@ -13,12 +13,11 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/rewardStyle/kinetic/listener"
-	"github.com/rewardStyle/kinetic/message"
 	"github.com/rewardStyle/kinetic/producer"
 	"github.com/stretchr/testify/assert"
 )
 
-type Message struct {
+type TestMessage struct {
 	ID      int    `json:"id"`
 	Message string `json:"message"`
 }
@@ -172,12 +171,12 @@ func TestKineticIntegration(t *testing.T) {
 	go func(sent *int) {
 		defer wg.Done()
 		for i := 0; i < numMsg; i++ {
-			msg := &Message{
+			msg := &TestMessage{
 				ID:      i,
 				Message: "hello_" + strconv.Itoa(i),
 			}
 			jsonStr, _ := json.Marshal(msg)
-			if err := p.Send(&message.Message{
+			if err := p.Send(&Message{
 				PartitionKey: aws.String("key"),
 				Data:         []byte(jsonStr),
 			}); err == nil {
@@ -188,10 +187,10 @@ func TestKineticIntegration(t *testing.T) {
 
 	// Use the listener to read messages from the kinetic stream
 	go func() {
-		l.Listen(func(m *message.Message, fnwg *sync.WaitGroup) error {
+		l.Listen(func(m *Message, fnwg *sync.WaitGroup) error {
 			defer fnwg.Done()
 
-			msg := &Message{}
+			msg := &TestMessage{}
 			json.Unmarshal(m.Data, msg)
 
 			if !streamData.exists(msg.ID) {

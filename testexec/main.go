@@ -17,10 +17,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/rcrowley/go-metrics"
+	metrics "github.com/jasonyurs/go-metrics"
 	"github.com/rewardStyle/kinetic"
 	"github.com/rewardStyle/kinetic/listener"
-	"github.com/rewardStyle/kinetic/message"
 	"github.com/rewardStyle/kinetic/producer"
 
 	"net/http"
@@ -239,7 +238,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 
 	psc := producer.NewDefaultStatsCollector(registry)
 	w, err := producer.NewKinesisWriter(k.Session.Config, streamName, func(kwc *producer.KinesisWriterConfig) {
-		//kwc.SetLogLevel(logging.LogDebug)
+		//kwc.SetLogLevel(kinetic.LogDebug)
 		kwc.SetResponseReadTimeout(time.Second)
 		kwc.SetStatsCollector(psc)
 		kwc.SetMsgCountRateLimit(1000)
@@ -257,7 +256,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 		c.SetQueueDepth(10000)
 		c.SetConcurrency(3)
 		c.SetShardCheckFreq(time.Minute)
-		c.SetDataSpillFn(func(msg *message.Message) error {
+		c.SetDataSpillFn(func(msg *kinetic.Message) error {
 			//log.Printf("Message was dropped: [%s]\n", string(msg.Data))
 			return nil
 		})
@@ -393,7 +392,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 		for {
 			<-sendSignal
 			jsonStr, _ := json.Marshal(NewMessage())
-			if err := p.TryToSend(&message.Message{
+			if err := p.TryToSend(&kinetic.Message{
 				PartitionKey: aws.String("key"),
 				Data:         []byte(jsonStr),
 			}); err == nil {
@@ -493,7 +492,7 @@ func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
 
 	// Call Listen within a go routine
 	go func() {
-		l.Listen(func(m *message.Message, wg *sync.WaitGroup) error {
+		l.Listen(func(m *kinetic.Message, wg *sync.WaitGroup) error {
 			defer wg.Done()
 
 			// Unmarshal data

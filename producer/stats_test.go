@@ -1,12 +1,12 @@
 package producer
 
 import (
-	. "github.com/smartystreets/goconvey/convey"
 	"math/rand"
 	"testing"
 	"time"
 
-	"github.com/rcrowley/go-metrics"
+	metrics "github.com/jasonyurs/go-metrics"
+	. "github.com/smartystreets/goconvey/convey"
 )
 
 func init() {
