@@ -127,9 +127,9 @@ func (r *KinesisReader) throttle(sem chan empty) {
 	})
 }
 
-func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batchSize int) (int, error) {
+func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batchSize int) (int, int, error) {
 	if err := r.ensureShardIterator(); err != nil {
-		return 0, err
+		return 0, 0, err
 	}
 
 	r.throttle(r.throttleSem)
@@ -176,7 +176,9 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		}
 	})
 
+	var payloadSize int
 	req.Handlers.Unmarshal.PushBack(func(req *request.Request) {
+		payloadSize += int(req.HTTPRequest.ContentLength)
 		r.Stats.AddGetRecordsUnmarshalDuration(time.Since(startUnmarshalTime))
 		r.LogDebug("Finished GetRecords Unmarshal, took", time.Since(start))
 	})
@@ -192,14 +194,14 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		default:
 			r.LogDebug("Received AWS error:", err.Error())
 		}
-		return 0, err
+		return 0, 0, err
 	}
 	r.Stats.AddGetRecordsDuration(time.Since(start))
 
 	// Process Records
 	r.LogDebug(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), r.shard, time.Since(start)))
 	if resp == nil {
-		return 0, errs.ErrNilGetRecordsResponse
+		return 0, 0, errs.ErrNilGetRecordsResponse
 	}
 	delivered := 0
 	r.Stats.AddBatchSize(len(resp.Records))
@@ -211,7 +213,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 			select {
 			case <-ctx.Done():
 				r.LogInfo(fmt.Sprintf("getRecords received ctx.Done() while delivering messages, %d delivered, ~%d dropped", delivered, len(resp.Records)-delivered))
-				return delivered, ctx.Err()
+				return delivered, payloadSize, ctx.Err()
 			default:
 				var wg sync.WaitGroup
 				wg.Add(1)
@@ -245,15 +247,15 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		// around.
 		r.setNextShardIterator(*resp.NextShardIterator)
 	}
-	return delivered, nil
+	return delivered, payloadSize, nil
 }
 
 // GetRecord calls getRecords and delivers one record into the messages channel.
-func (r *KinesisReader) GetRecord(ctx context.Context, fn MessageHandler) (int, error) {
+func (r *KinesisReader) GetRecord(ctx context.Context, fn MessageHandler) (int, int, error) {
 	return r.getRecords(ctx, fn, 1)
 }
 
 // GetRecords calls getRecords and delivers each record into the messages channel.
-func (r *KinesisReader) GetRecords(ctx context.Context, fn MessageHandler) (int, error) {
+func (r *KinesisReader) GetRecords(ctx context.Context, fn MessageHandler) (int, int, error) {
 	return r.getRecords(ctx, fn, r.batchSize)
 }

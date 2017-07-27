@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/golang/time/rate"
 	"github.com/rewardStyle/kinetic/errs"
 	"github.com/rewardStyle/kinetic/logging"
 	"github.com/rewardStyle/kinetic/message"
@@ -14,8 +15,8 @@ import (
 
 // StreamReader is an interface that abstracts out a stream reader.
 type StreamReader interface {
-	GetRecord(context.Context, MessageHandler) (int, error)
-	GetRecords(context.Context, MessageHandler) (int, error)
+	GetRecord(context.Context, MessageHandler) (int, int, error)
+	GetRecords(context.Context, MessageHandler) (int, int, error)
 }
 
 // empty is used a as a dummy type for semaphore channels and the pipe of death channel.
@@ -45,12 +46,14 @@ type listenerOptions struct {
 type Listener struct {
 	*listenerOptions
 	*logging.LogHelper
-	reader         StreamReader
-	messages       chan *message.Message
-	concurrencySem chan empty
-	pipeOfDeath    chan empty
-	consuming      bool
-	consumingMu    sync.Mutex
+	reader              StreamReader
+	txnCountRateLimiter *rate.Limiter
+	txSizeRateLimiter   *rate.Limiter
+	messages            chan *message.Message
+	concurrencySem      chan empty
+	pipeOfDeath         chan empty
+	consuming           bool
+	consumingMu         sync.Mutex
 }
 
 // NewListener creates a new Listener object for retrieving and listening to message(s) on a StreamReader.
@@ -65,9 +68,7 @@ func NewListener(c *aws.Config, r StreamReader, fn ...func(*Config)) (*Listener,
 			LogLevel: cfg.LogLevel,
 			Logger:   cfg.AwsConfig.Logger,
 		},
-		reader:         r,
-		concurrencySem: make(chan empty, cfg.concurrency),
-		pipeOfDeath:    make(chan empty),
+		reader: r,
 	}, nil
 }
 
@@ -79,6 +80,8 @@ func (l *Listener) startConsuming() bool {
 	if !l.consuming {
 		l.consuming = true
 		l.messages = make(chan *message.Message, l.queueDepth)
+		l.concurrencySem = make(chan empty, l.concurrency)
+		l.pipeOfDeath = make(chan empty)
 		return true
 	}
 	return false
@@ -104,11 +107,14 @@ func (l *Listener) stopConsuming() {
 	if l.consuming && l.messages != nil {
 		close(l.messages)
 	}
+	if l.concurrencySem != nil {
+		close(l.concurrencySem)
+	}
 	l.consuming = false
 }
 
-func (l *Listener) enqueueSingle(ctx context.Context) (int, error) {
-	n, err := l.reader.GetRecord(ctx, func(msg *message.Message, wg *sync.WaitGroup) error {
+func (l *Listener) enqueueSingle(ctx context.Context) (int, int, error) {
+	n, m, err := l.reader.GetRecord(ctx, func(msg *message.Message, wg *sync.WaitGroup) error {
 		defer wg.Done()
 		l.messages <- msg
 
@@ -116,13 +122,13 @@ func (l *Listener) enqueueSingle(ctx context.Context) (int, error) {
 	})
 	if err != nil {
 		l.handleErrorLogging(err)
-		return 0, err
+		return 0, 0, err
 	}
-	return n, nil
+	return n, m, nil
 }
 
-func (l *Listener) enqueueBatch(ctx context.Context) (int, error) {
-	n, err := l.reader.GetRecords(ctx,
+func (l *Listener) enqueueBatch(ctx context.Context) (int, int, error) {
+	n, m, err := l.reader.GetRecords(ctx,
 		func(msg *message.Message, wg *sync.WaitGroup) error {
 			defer wg.Done()
 			l.messages <- msg
@@ -131,9 +137,9 @@ func (l *Listener) enqueueBatch(ctx context.Context) (int, error) {
 		})
 	if err != nil {
 		l.handleErrorLogging(err)
-		return 0, err
+		return 0, 0, err
 	}
-	return n, nil
+	return n, m, nil
 }
 
 func (l *Listener) handleErrorLogging(err error) {
@@ -176,7 +182,7 @@ func (l *Listener) RetrieveWithContext(ctx context.Context) (*message.Message, e
 		if !ok {
 			return nil, err
 		}
-		n, err := l.enqueueSingle(childCtx)
+		n, _, err := l.enqueueSingle(childCtx)
 		if n > 0 {
 			l.Stats.AddDelivered(n)
 			return <-l.messages, nil
@@ -227,6 +233,10 @@ func (l *Listener) consume(ctx context.Context) {
 	go func() {
 		defer l.stopConsuming()
 
+		// TODO: make these parameters configurable also scale according to the shard count
+		l.txnCountRateLimiter = rate.NewLimiter(rate.Limit(5), 1)
+		l.txSizeRateLimiter = rate.NewLimiter(rate.Limit(2000000), 2000000)
+
 		childCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		for {
@@ -239,7 +249,30 @@ func (l *Listener) consume(ctx context.Context) {
 				return
 			}
 
-			l.enqueueBatch(childCtx)
+			_, payloadSize, err := l.enqueueBatch(childCtx)
+			if err != nil {
+				l.LogError("Encountered an error when calling enqueueBatch: ", err)
+				return
+			}
+
+			wg := sync.WaitGroup{}
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+
+				if err := l.txnCountRateLimiter.Wait(childCtx); err != nil {
+					l.LogError("Error occured waiting for transaction count tokens")
+				}
+			}()
+
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				if err := l.txSizeRateLimiter.WaitN(childCtx, payloadSize); err != nil {
+					l.LogError("Error occured waiting for transmission size tokens")
+				}
+			}()
+			wg.Wait()
 		}
 	}()
 }
