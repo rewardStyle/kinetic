@@ -12,9 +12,76 @@ import (
 	"github.com/aws/aws-sdk-go/service/firehose/firehoseiface"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
+	"net/http"
+	"github.com/aws/aws-sdk-go/aws/credentials"
 )
 
 type kineticOptions struct {
+	awsConfig *aws.Config      //
+	logLevel  aws.LogLevelType // log level for configuring the LogHelper's log level
+}
+
+func defaultKineticOptions() *kineticOptions {
+	return &kineticOptions{
+		awsConfig: aws.NewConfig().WithHTTPClient(
+			&http.Client{
+				Timeout: 2 * time.Minute,
+			}),
+		logLevel: aws.LogOff,
+	}
+}
+
+type KineticOptionsFn func(*kineticOptions) error
+
+func KineticAwsConfigCredentials(accessKey, secretKey, sessionToken string) KineticOptionsFn {
+	return func(o *kineticOptions) error {
+		o.awsConfig.WithCredentials(credentials.NewStaticCredentials(accessKey, secretKey, sessionToken))
+		return nil
+	}
+}
+
+func KineticAwsConfigRegion(region string) KineticOptionsFn {
+	return func(o *kineticOptions) error {
+		o.awsConfig.WithRegion(region)
+		return nil
+	}
+}
+
+func KineticAwsConfigEndpoint(endpoint string) KineticOptionsFn {
+	return func(o *kineticOptions) error {
+		o.awsConfig.WithEndpoint(endpoint)
+		return nil
+	}
+}
+
+func KineticAwsConfigLogger(logger aws.Logger) KineticOptionsFn {
+	return func(o *kineticOptions) error {
+		o.awsConfig.WithLogger(logger)
+		return nil
+	}
+}
+
+func KineticAwsConfigLogLevel(logLevel aws.LogLevelType) KineticOptionsFn {
+	return func(o *kineticOptions) error {
+		o.awsConfig.WithLogLevel(logLevel)
+		return nil
+	}
+}
+
+func KineticAwsConfigHttpClientTimeout(timeout time.Duration) KineticOptionsFn {
+	return func(o *kineticOptions) error {
+		o.awsConfig.WithHTTPClient(&http.Client{
+			Timeout: timeout,
+		})
+		return nil
+	}
+}
+
+func KineticLogLevel(logLevel aws.LogLevelType) KineticOptionsFn {
+	return func(o *kineticOptions) error {
+		o.logLevel = logLevel & 0xffff0000
+		return nil
+	}
 }
 
 // Kinetic represents a kinesis and firehose client and provides some utility
@@ -22,25 +89,26 @@ type kineticOptions struct {
 type Kinetic struct {
 	*kineticOptions
 	*LogHelper
-
 	clientMu sync.Mutex
 	fclient  firehoseiface.FirehoseAPI
 	kclient  kinesisiface.KinesisAPI
 	Session  *session.Session
 }
 
-// New creates a new instance of Kientic.
-func New(fn func(*Config)) (*Kinetic, error) {
-	config := NewConfig()
-	fn(config)
-	sess, err := config.GetSession()
+// New creates a new instance of Kinetic.
+func NewKinetic(optionFns ...KineticOptionsFn) (*Kinetic, error) {
+	kineticOptions := defaultKineticOptions()
+	for _, optionFn := range optionFns {
+		optionFn(kineticOptions)
+	}
+	sess, err := session.NewSession(kineticOptions.awsConfig)
 	if err != nil {
 		return nil, err
 	}
 	return &Kinetic{
-		kineticOptions: config.kineticOptions,
+		kineticOptions: kineticOptions,
 		LogHelper: &LogHelper{
-			LogLevel: config.LogLevel,
+			LogLevel: kineticOptions.logLevel,
 			Logger:   sess.Config.Logger,
 		},
 		Session: sess,

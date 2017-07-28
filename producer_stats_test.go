@@ -1,4 +1,4 @@
-package producer
+package kinetic
 
 import (
 	"math/rand"
@@ -13,9 +13,9 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-func TestStatsCollector(t *testing.T) {
+func TestProducerStatsCollector(t *testing.T) {
 	Convey("given a NilStatsCollector", t, func() {
-		var sc StatsCollector = &NilStatsCollector{}
+		var sc ProducerStatsCollector = &NilProducerStatsCollector{}
 		So(sc, ShouldNotBeNil)
 
 		Convey("check that AddSentTotal does not error", func() {
@@ -55,7 +55,7 @@ func TestStatsCollector(t *testing.T) {
 		})
 
 		Convey("check that AddProvisionedThroughputExceeded does not erro", func() {
-			sc.AddProvisionedThroughputExceeded(1)
+			sc.AddPutRecordsProvisionedThroughputExceeded(1)
 		})
 
 		Convey("check that AddPutRecordsTimeout does not error", func() {
@@ -81,93 +81,93 @@ func TestStatsCollector(t *testing.T) {
 
 	Convey("given a DefaulStatsCollector", t, func() {
 		r := metrics.NewRegistry()
-		var sc StatsCollector = NewDefaultStatsCollector(r)
+		var sc ProducerStatsCollector = NewDefaultProducerStatsCollector(r)
 		So(sc, ShouldNotBeNil)
 
 		Convey("check that AddSentTotal does not error", func() {
 			count := rand.Int()
 			sc.AddSentTotal(count)
-			So(sc.(*DefaultStatsCollector).SentTotal.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).SentTotal.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddSentSuccess does not error", func() {
 			count := rand.Int()
 			sc.AddSentSuccess(count)
-			So(sc.(*DefaultStatsCollector).SentSuccess.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).SentSuccess.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddSentFailed does not error", func() {
 			count := rand.Int()
 			sc.AddSentFailed(count)
-			So(sc.(*DefaultStatsCollector).SentFailed.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).SentFailed.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddSentRetried does not error", func() {
 			count := rand.Int()
 			sc.AddSentRetried(count)
-			So(sc.(*DefaultStatsCollector).SentRetried.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).SentRetried.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddDroppedTotal does not error", func() {
 			count := rand.Int()
 			sc.AddDroppedTotal(count)
-			So(sc.(*DefaultStatsCollector).DroppedTotal.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).DroppedTotal.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddDroppedCapacity does not error", func() {
 			count := rand.Int()
 			sc.AddDroppedCapacity(count)
-			So(sc.(*DefaultStatsCollector).DroppedCapacity.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).DroppedCapacity.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddDroppedRetries does not error", func() {
 			count := rand.Int()
 			sc.AddDroppedRetries(count)
-			So(sc.(*DefaultStatsCollector).DroppedRetries.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).DroppedRetries.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddPutRecordsProvisionedThroughputExceeded does not error", func() {
 			count := rand.Int()
 			sc.AddPutRecordsProvisionedThroughputExceeded(count)
-			So(sc.(*DefaultStatsCollector).PutRecordsProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).PutRecordsProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddPutRecordsCalled does not eroror", func() {
 			count := rand.Int()
 			sc.AddPutRecordsCalled(count)
-			So(sc.(*DefaultStatsCollector).PutRecordsCalled.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).PutRecordsCalled.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddProvisionedThroughputExceeded does not erro", func() {
+		Convey("check that AddPutRecordsProvisionedThroughputExceeded does not erro", func() {
 			count := rand.Int()
-			sc.AddProvisionedThroughputExceeded(count)
-			So(sc.(*DefaultStatsCollector).ProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
+			sc.AddPutRecordsProvisionedThroughputExceeded(count)
+			So(sc.(*DefaultProducerStatsCollector).PutRecordsProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddPutRecordsTimeout does not error", func() {
 			count := rand.Int()
 			sc.AddPutRecordsTimeout(count)
-			So(sc.(*DefaultStatsCollector).PutRecordsTimeout.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultProducerStatsCollector).PutRecordsTimeout.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that UpdatePutRecordsDuration does not error", func() {
 			sc.UpdatePutRecordsDuration(time.Second)
-			So(sc.(*DefaultStatsCollector).PutRecordsDuration.Value(), ShouldEqual, 1000000000)
+			So(sc.(*DefaultProducerStatsCollector).PutRecordsDuration.Value(), ShouldEqual, 1000000000)
 		})
 
 		Convey("check that UpdatePutRecordsBuildDuration does not error", func() {
 			sc.UpdatePutRecordsBuildDuration(time.Second)
-			So(sc.(*DefaultStatsCollector).PutRecordsBuildDuration.Value(), ShouldEqual, 1000000000)
+			So(sc.(*DefaultProducerStatsCollector).PutRecordsBuildDuration.Value(), ShouldEqual, 1000000000)
 		})
 
 		Convey("check that UpdatePutRecordsSendDuration does not error", func() {
 			sc.UpdatePutRecordsSendDuration(time.Second)
-			So(sc.(*DefaultStatsCollector).PutRecordsSendDuration.Value(), ShouldEqual, 1000000000)
+			So(sc.(*DefaultProducerStatsCollector).PutRecordsSendDuration.Value(), ShouldEqual, 1000000000)
 		})
 
 		Convey("check that UpdateProducerConcurrency does not error", func() {
 			sc.UpdateProducerConcurrency(5)
-			So(sc.(*DefaultStatsCollector).ProducerConcurrency.Value(), ShouldEqual, 5)
+			So(sc.(*DefaultProducerStatsCollector).ProducerConcurrency.Value(), ShouldEqual, 5)
 		})
 	})
 }

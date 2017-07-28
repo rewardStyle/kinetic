@@ -1,4 +1,4 @@
-package consumer
+package kinetic
 
 import (
 	"bufio"
@@ -11,24 +11,23 @@ import (
 	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic"
 )
 
 type kclReaderOptions struct {
 	onInitCallbackFn       func() error
 	onCheckpointCallbackFn func() error
 	onShutdownCallbackFn   func() error
-	logLevel               aws.LogLevelType // log level for configuring the LogHelper's log level
-	stats                  StatsCollector   // stats collection mechanism
+	logLevel               aws.LogLevelType       // log level for configuring the LogHelper's log level
+	Stats                  ConsumerStatsCollector // stats collection mechanism
 }
 
 func defaultKlcReaderOptions() *kclReaderOptions {
 	return &kclReaderOptions{
-		onInitCallbackFn: func() error { return nil },
+		onInitCallbackFn:       func() error { return nil },
 		onCheckpointCallbackFn: func() error { return nil },
-		onShutdownCallbackFn: func() error { return nil },
-		logLevel: aws.LogOff,
-		stats: &NilStatsCollector{},
+		onShutdownCallbackFn:   func() error { return nil },
+		logLevel:               aws.LogOff,
+		Stats:                  &NilConsumerStatsCollector{},
 	}
 }
 
@@ -62,9 +61,9 @@ func KlcReaderLogLevel(ll aws.LogLevelType) KlcReaderOptionsFn {
 	}
 }
 
-func KlcReaderStatsCollector(sc StatsCollector) KlcReaderOptionsFn {
+func KlcReaderStats(sc ConsumerStatsCollector) KlcReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
-		o.stats = sc
+		o.Stats = sc
 		return nil
 	}
 }
@@ -72,11 +71,11 @@ func KlcReaderStatsCollector(sc StatsCollector) KlcReaderOptionsFn {
 // KclReader handles the KCL Multilang Protocol to read records from KCL
 type KclReader struct {
 	*kclReaderOptions
-	*kinetic.LogHelper
+	*LogHelper
 	pipeOfDeath chan empty
 	scanner     *bufio.Scanner
 	reader      *bufio.Reader
-	msgBuffer   []kinetic.Message
+	msgBuffer   []Message
 }
 
 // NewKclReader creates a new stream reader to read records from KCL
@@ -86,9 +85,9 @@ func NewKclReader(c *aws.Config, optionFns ...KlcReaderOptionsFn) (*KclReader, e
 		optionFn(kclReaderOptions)
 	}
 	return &KclReader{
-		msgBuffer:   []kinetic.Message{},
+		msgBuffer:        []Message{},
 		kclReaderOptions: kclReaderOptions,
-		LogHelper: &kinetic.LogHelper{
+		LogHelper: &LogHelper{
 			LogLevel: kclReaderOptions.logLevel,
 			Logger:   c.Logger,
 		},
@@ -109,7 +108,7 @@ func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, int,
 			batchSize = int(math.Min(float64(len(r.msgBuffer)), float64(numRecords)))
 		}
 	}
-	r.stats.AddBatchSize(batchSize)
+	r.Stats.AddBatchSize(batchSize)
 
 	// TODO: Define the payloadSize
 	var payloadSize int
@@ -120,7 +119,7 @@ func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, int,
 		wg.Add(1)
 		go fn(&r.msgBuffer[0], &wg)
 		r.msgBuffer = r.msgBuffer[1:]
-		r.stats.AddConsumed(1)
+		r.Stats.AddConsumed(1)
 	}
 	wg.Wait()
 

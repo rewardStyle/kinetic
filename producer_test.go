@@ -1,4 +1,4 @@
-package producer
+package kinetic
 
 import (
 	. "github.com/smartystreets/goconvey/convey"
@@ -12,17 +12,15 @@ import (
 	"github.com/aws/aws-sdk-go/aws/request"
 
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/consumer"
-	"github.com/rewardStyle/kinetic/producer"
 )
 
 func TestProducer(t *testing.T) {
 	Convey("given a producer", t, func() {
-		k, err := kinetic.New(func(c *kinetic.Config) {
-			c.SetCredentials("some-access-key", "some-secret-key", "some-security-token")
-			c.SetRegion("some-region")
-			c.SetEndpoint("http://127.0.0.1:4567")
-		})
+		k, err := NewKinetic(
+			KineticAwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+			KineticAwsConfigRegion("some-region"),
+			KineticAwsConfigEndpoint("http://127.0.0.1:4567"),
+		)
 
 		stream := "some-producer-stream"
 
@@ -44,39 +42,39 @@ func TestProducer(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		p, err := NewProducer(k.Session.Config, w,
-			producer.ProducerBatchSize(5),
-			producer.ProducerBatchTimeout(time.Second),
-			producer.ProducerMaxRetryAttempts(3),
-			producer.ProducerQueueDepth(10),
-			producer.ProducerConcurrency(2),
-			producer.ProducerShardCheckFrequency(time.Minute),
-			producer.ProducerDataSpillFn(func(msg *kinetic.Message) error {
+			kinetic.ProducerBatchSize(5),
+			kinetic.ProducerBatchTimeout(time.Second),
+			kinetic.ProducerMaxRetryAttempts(3),
+			kinetic.ProducerQueueDepth(10),
+			kinetic.ProducerConcurrency(2),
+			kinetic.ProducerShardCheckFrequency(time.Minute),
+			kinetic.ProducerDataSpillFn(func(msg *kinetic.Message) error {
 				//log.Printf("Message was dropped: [%s]\n", string(msg.Data))
 				return nil
 			}),
-			producer.ProducerLogLevel(aws.LogOff),
-			//producer.ProducerStatsCollector(),
+			kinetic.ProducerLogLevel(aws.LogOff),
+			//kinetic.ProducerStats(),
 		)
 		So(p, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		So(k.Session, ShouldNotBeNil)
 		So(k.Session.Config, ShouldNotBeNil)
-		r, err := consumer.NewKinesisReader(k.Session.Config, stream, shards[0],
-			//consumer.KinesisReaderBatchSize(),
-			//consumer.KinesisReaderShardIterator(),
-			consumer.KinesisReaderResponseReadTimeout(time.Second),
-			//consumer.KinesisReaderLogLevel(),
-			//consumer.KinesisReaderStatsCollector(),
+		r, err := NewKinesisReader(k.Session.Config, stream, shards[0],
+			//KinesisReaderBatchSize(),
+			//KinesisReaderShardIterator(),
+			KinesisReaderResponseReadTimeout(time.Second),
+			//KinesisReaderLogLevel(),
+			//KinesisReaderStats(),
 		)
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		l, err := consumer.NewConsumer(k.Session.Config, r,
-			consumer.ConsumerQueueDepth(10),
-			consumer.ConsumerConcurrency(10),
-			consumer.ConsumerLogLevel(aws.LogOff),
-			//consumer.ConsumerStatsCollector(lsc),
+		l, err := NewConsumer(k.Session.Config, r,
+			ConsumerQueueDepth(10),
+			ConsumerConcurrency(10),
+			ConsumerLogLevel(aws.LogOff),
+			ConsumerStats(&NilConsumerStatsCollector{}),
 		)
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -96,7 +94,7 @@ func TestProducer(t *testing.T) {
 		Convey("check that we can send and receive a single message", func() {
 			start := time.Now()
 			data := "hello"
-			p.Send(&kinetic.Message{
+			p.Send(&Message{
 				PartitionKey: aws.String("key"),
 				Data:         []byte(data),
 			})
@@ -110,7 +108,7 @@ func TestProducer(t *testing.T) {
 		Convey("check that we can send a single message after batch timeout elapses", func() {
 			start := time.Now()
 			data := "hello"
-			p.Send(&kinetic.Message{
+			p.Send(&Message{
 				PartitionKey: aws.String("key"),
 				Data:         []byte(data),
 			})
@@ -143,7 +141,7 @@ func TestProducer(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				for _, datum := range data {
-					p.Send(&kinetic.Message{
+					p.Send(&Message{
 						PartitionKey: aws.String("key"),
 						Data:         []byte(datum),
 					})

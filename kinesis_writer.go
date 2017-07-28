@@ -1,4 +1,4 @@
-package producer
+package kinetic
 
 import (
 	"context"
@@ -10,8 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
-
-	"github.com/rewardStyle/kinetic"
 )
 
 const (
@@ -20,11 +18,11 @@ const (
 )
 
 type kinesisWriterOptions struct {
-	responseReadTimeout time.Duration    // maximum time to wait for PutRecords API call before timing out
-	msgCountRateLimit   int              // maximum number of records to be sent per second
-	msgSizeRateLimit    int              // maximum (transmission) size of records to be sent per second
-	logLevel            aws.LogLevelType // log level for configuring the LogHelper's log level
-	stats               StatsCollector   // stats collection mechanism
+	responseReadTimeout time.Duration          // maximum time to wait for PutRecords API call before timing out
+	msgCountRateLimit   int                    // maximum number of records to be sent per second
+	msgSizeRateLimit    int                    // maximum (transmission) size of records to be sent per second
+	logLevel            aws.LogLevelType       // log level for configuring the LogHelper's log level
+	Stats               ProducerStatsCollector // stats collection mechanism
 }
 
 func defaultKinesisWriterOptions() *kinesisWriterOptions {
@@ -33,7 +31,7 @@ func defaultKinesisWriterOptions() *kinesisWriterOptions {
 		msgCountRateLimit:   kinesisMsgCountRateLimit,
 		msgSizeRateLimit:    kinesisMsgSizeRateLimit,
 		logLevel:            aws.LogOff,
-		stats:               &NilStatsCollector{},
+		Stats:               &NilProducerStatsCollector{},
 	}
 }
 
@@ -52,7 +50,7 @@ func KinesisWriterMsgCountRateLimit(limit int) KinesisWriterOptionsFn {
 			o.msgSizeRateLimit = limit
 			return nil
 		}
-		return kinetic.ErrInvalidMsgSizeRateLimit
+		return ErrInvalidMsgSizeRateLimit
 	}
 }
 
@@ -62,7 +60,7 @@ func KinesisWriterMsgSizeRateLimit(limit int) KinesisWriterOptionsFn {
 			o.msgSizeRateLimit = limit
 			return nil
 		}
-		return kinetic.ErrInvalidMsgSizeRateLimit
+		return ErrInvalidMsgSizeRateLimit
 	}
 }
 
@@ -73,9 +71,9 @@ func KinesisWriterLogLevel(ll aws.LogLevelType) KinesisWriterOptionsFn {
 	}
 }
 
-func KinesisWriterStatsCollector(sc StatsCollector) KinesisWriterOptionsFn {
+func KinesisWriterStats(sc ProducerStatsCollector) KinesisWriterOptionsFn {
 	return func(o *kinesisWriterOptions) error {
-		o.stats = sc
+		o.Stats = sc
 		return nil
 	}
 }
@@ -83,7 +81,7 @@ func KinesisWriterStatsCollector(sc StatsCollector) KinesisWriterOptionsFn {
 // KinesisWriter handles the API to send records to Kinesis.
 type KinesisWriter struct {
 	*kinesisWriterOptions
-	*kinetic.LogHelper
+	*LogHelper
 	stream string
 	client kinesisiface.KinesisAPI
 }
@@ -102,7 +100,7 @@ func NewKinesisWriter(c *aws.Config, stream string, optionFns ...KinesisWriterOp
 		stream: stream,
 		client: kinesis.New(sess),
 		kinesisWriterOptions: kinesisWriterOptions,
-		LogHelper: &kinetic.LogHelper{
+		LogHelper: &LogHelper{
 			LogLevel: kinesisWriterOptions.logLevel,
 			Logger:   c.Logger,
 		},
@@ -110,7 +108,7 @@ func NewKinesisWriter(c *aws.Config, stream string, optionFns ...KinesisWriterOp
 }
 
 // PutRecords sends a batch of records to Kinesis and returns a list of records that need to be retried.
-func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*kinetic.Message, fn MessageHandlerAsync) error {
+func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*Message, fn MessageHandlerAsync) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
@@ -133,7 +131,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*kinetic.Mess
 	})
 
 	req.Handlers.Build.PushBack(func(r *request.Request) {
-		w.stats.UpdatePutRecordsBuildDuration(time.Since(startBuildTime))
+		w.Stats.UpdatePutRecordsBuildDuration(time.Since(startBuildTime))
 		w.LogDebug("Finished PutRecords Build, took", time.Since(start))
 	})
 
@@ -143,23 +141,23 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*kinetic.Mess
 	})
 
 	req.Handlers.Send.PushBack(func(r *request.Request) {
-		w.stats.UpdatePutRecordsSendDuration(time.Since(startSendTime))
+		w.Stats.UpdatePutRecordsSendDuration(time.Since(startSendTime))
 		w.LogDebug("Finished PutRecords Send, took", time.Since(start))
 	})
 
 	w.LogDebug("Starting PutRecords Build/Sign request, took", time.Since(start))
-	w.stats.AddPutRecordsCalled(1)
+	w.Stats.AddPutRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		w.LogError("Error putting records:", err.Error())
 		return err
 	}
-	w.stats.UpdatePutRecordsDuration(time.Since(start))
+	w.Stats.UpdatePutRecordsDuration(time.Since(start))
 
 	if resp == nil {
-		return kinetic.ErrNilPutRecordsResponse
+		return ErrNilPutRecordsResponse
 	}
 	if resp.FailedRecordCount == nil {
-		return kinetic.ErrNilFailedRecordCount
+		return ErrNilFailedRecordCount
 	}
 	attempted := len(messages)
 	failed := int(aws.Int64Value(resp.FailedRecordCount))
@@ -171,18 +169,18 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*kinetic.Mess
 			// TODO: per-shard metrics
 			messages[idx].SequenceNumber = record.SequenceNumber
 			messages[idx].ShardID = record.ShardId
-			w.stats.AddSentSuccess(1)
+			w.Stats.AddSentSuccess(1)
 		} else {
 			switch aws.StringValue(record.ErrorCode) {
 			case kinesis.ErrCodeProvisionedThroughputExceededException:
-				w.stats.AddProvisionedThroughputExceeded(1)
+				w.Stats.AddPutRecordsProvisionedThroughputExceeded(1)
 			default:
 				w.LogDebug("PutRecords record failed with error:", aws.StringValue(record.ErrorCode), aws.StringValue(record.ErrorMessage))
 			}
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
 			messages[idx].FailCount++
-			w.stats.AddSentFailed(1)
+			w.Stats.AddSentFailed(1)
 
 			fn(messages[idx])
 		}
@@ -212,10 +210,10 @@ func (w *KinesisWriter) getConcurrencyMultiplier() (int, error) {
 		return 0, err
 	}
 	if resp == nil {
-		return 0, kinetic.ErrNilDescribeStreamResponse
+		return 0, ErrNilDescribeStreamResponse
 	}
 	if resp.StreamDescription == nil {
-		return 0, kinetic.ErrNilStreamDescription
+		return 0, ErrNilStreamDescription
 	}
 
 	// maps shardID to a boolean that indicates whether or not the shard is a parent shard or an adjacent parent shard

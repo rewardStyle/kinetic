@@ -1,4 +1,4 @@
-package consumer
+package kinetic
 
 import (
 	"log"
@@ -10,13 +10,13 @@ import (
 // StatsCollector allows for a collector to collect various metrics produced by
 // the Kinetic Listener library.  This was really built with rcrowley/go-metrics
 // in mind.
-type StatsCollector interface {
+type ConsumerStatsCollector interface {
 	AddConsumed(int)
 	AddDelivered(int)
 	AddProcessed(int)
 	AddBatchSize(int)
 	AddGetRecordsCalled(int)
-	AddProvisionedThroughputExceeded(int)
+	AddGetRecordsProvisionedThroughputExceeded(int)
 	AddGetRecordsTimeout(int)
 	AddGetRecordsReadTimeout(int)
 	AddProcessedDuration(time.Duration)
@@ -26,120 +26,120 @@ type StatsCollector interface {
 }
 
 // NilStatsCollector is a stats listener that ignores all metrics.
-type NilStatsCollector struct{}
+type NilConsumerStatsCollector struct{}
 
 // AddConsumed records a count of the number of messages received from AWS
 // Kinesis by the consumer.
-func (nsc *NilStatsCollector) AddConsumed(int) {}
+func (nsc *NilConsumerStatsCollector) AddConsumed(int) {}
 
 // AddDelivered records a count of the number of messages delivered to the
 // application by the consumer.
-func (nsc *NilStatsCollector) AddDelivered(int) {}
+func (nsc *NilConsumerStatsCollector) AddDelivered(int) {}
 
 // AddProcessed records a count of the number of messages processed by the
 // application by the consumer.  This is based on a WaitGroup that is sent to
 // the RetrieveFn and Listen functions.  Retrieve does not count processed
 // messages.
-func (nsc *NilStatsCollector) AddProcessed(int) {}
+func (nsc *NilConsumerStatsCollector) AddProcessed(int) {}
 
 // AddBatchSize records a count of the number of messages returned by
 // GetRecords in the consumer.
-func (nsc *NilStatsCollector) AddBatchSize(int) {}
+func (nsc *NilConsumerStatsCollector) AddBatchSize(int) {}
 
 // AddGetRecordsCalled records the number of times the GetRecords API was called
 // by the consumer.
-func (nsc *NilStatsCollector) AddGetRecordsCalled(int) {}
+func (nsc *NilConsumerStatsCollector) AddGetRecordsCalled(int) {}
 
 // AddProvisionedThroughputExceeded records the number of times the GetRecords
 // API returned a ErrCodeProvisionedThroughputExceededException by the consumer.
-func (nsc *NilStatsCollector) AddProvisionedThroughputExceeded(int) {}
+func (nsc *NilConsumerStatsCollector) AddGetRecordsProvisionedThroughputExceeded(int) {}
 
 // AddGetRecordsTimeout records the number of times the GetRecords API timed out
 // on the HTTP level.  This is influenced by the WithHTTPClientTimeout
 // configuration.
-func (nsc *NilStatsCollector) AddGetRecordsTimeout(int) {}
+func (nsc *NilConsumerStatsCollector) AddGetRecordsTimeout(int) {}
 
 // AddGetRecordsReadTimeout records the number of times the GetRecords API timed
 // out while reading the response body.  This is influenced by the
 // WithGetRecordsReadTimeout configuration.
-func (nsc *NilStatsCollector) AddGetRecordsReadTimeout(int) {}
+func (nsc *NilConsumerStatsCollector) AddGetRecordsReadTimeout(int) {}
 
 // AddProcessedDuration records the duration to process a record.  See notes on
 // AddProcessed.
-func (nsc *NilStatsCollector) AddProcessedDuration(time.Duration) {}
+func (nsc *NilConsumerStatsCollector) AddProcessedDuration(time.Duration) {}
 
 // AddGetRecordsDuration records the duration that the GetRecords API request
 // took.  Only the times of successful calls are measured.
-func (nsc *NilStatsCollector) AddGetRecordsDuration(time.Duration) {}
+func (nsc *NilConsumerStatsCollector) AddGetRecordsDuration(time.Duration) {}
 
 // AddGetRecordsReadResponseDuration records the duration that it took to read
 // the response body of a GetRecords API request.
-func (nsc *NilStatsCollector) AddGetRecordsReadResponseDuration(time.Duration) {}
+func (nsc *NilConsumerStatsCollector) AddGetRecordsReadResponseDuration(time.Duration) {}
 
 // AddGetRecordsUnmarshalDuration records the duration that it took to unmarshal
 // the response body of a GetRecords API request.
-func (nsc *NilStatsCollector) AddGetRecordsUnmarshalDuration(time.Duration) {}
+func (nsc *NilConsumerStatsCollector) AddGetRecordsUnmarshalDuration(time.Duration) {}
 
 // Metric names to be exported
 const (
-	MetricsConsumed                       = "kinetic.consumer.consumed"
-	MetricsDelivered                      = "kinetic.consumer.delivered"
-	MetricsProcessed                      = "kinetic.consumer.processed"
-	MetricsBatchSize                      = "kinetic.consumer.batchsize"
-	MetricsSent                           = "kinetic.consumer.sent"
-	MetricsProvisionedThroughputExceeded  = "kinetic.consumer.provisionedthroughputexceeded"
-	MetricsGetRecordsTimeout              = "kinetic.consumer.getrecords.timeout"
-	MetricsGetRecordsReadTimeout          = "kinetic.consumer.getrecords.readtimeout"
-	MetricsProcessedDuration              = "kinetic.consumer.processed.duration"
-	MetricsGetRecordsDuration             = "kinetic.consumer.getrecords.duration"
-	MetricsGetRecordsReadResponseDuration = "kinetic.consumer.getrecords.readresponse.duration"
-	MetricsGetRecordsUnmarshalDuration    = "kinetic.consumer.getrecords.unmarshal.duration"
+	MetricsConsumed                       	       = "kinetic.consumer.consumed"
+	MetricsDelivered                      	       = "kinetic.consumer.delivered"
+	MetricsProcessed                      	       = "kinetic.consumer.processed"
+	MetricsBatchSize                      	       = "kinetic.consumer.batchsize"
+	MetricsSent                           	       = "kinetic.consumer.sent"
+	MetricsGetRecordsProvisionedThroughputExceeded = "kinetic.consumer.getrecords.provisionedthroughputexceeded"
+	MetricsGetRecordsTimeout              	       = "kinetic.consumer.getrecords.timeout"
+	MetricsGetRecordsReadTimeout          	       = "kinetic.consumer.getrecords.readtimeout"
+	MetricsProcessedDuration              	       = "kinetic.consumer.processed.duration"
+	MetricsGetRecordsDuration             	       = "kinetic.consumer.getrecords.duration"
+	MetricsGetRecordsReadResponseDuration 	       = "kinetic.consumer.getrecords.readresponse.duration"
+	MetricsGetRecordsUnmarshalDuration    	       = "kinetic.consumer.getrecords.unmarshal.duration"
 )
 
 // DefaultStatsCollector is a type that implements the listener's StatsCollector interface using the
 // rcrowley/go-metrics library
-type DefaultStatsCollector struct {
-	Consumed                       metrics.Counter
-	Delivered                      metrics.Counter
-	Processed                      metrics.Counter
-	BatchSize                      metrics.Counter
-	GetRecordsCalled               metrics.Counter
-	ProvisionedThroughputExceeded  metrics.Counter
-	GetRecordsTimeout              metrics.Counter
-	GetRecordsReadTimeout          metrics.Counter
-	ProcessedDuration              metrics.Gauge
-	GetRecordsDuration             metrics.Gauge
-	GetRecordsReadResponseDuration metrics.Gauge
-	GetRecordsUnmarshalDuration    metrics.Gauge
+type DefaultConsumerStatsCollector struct {
+	Consumed                                metrics.Counter
+	Delivered                               metrics.Counter
+	Processed                               metrics.Counter
+	BatchSize                               metrics.Counter
+	GetRecordsCalled                        metrics.Counter
+	GetRecordsProvisionedThroughputExceeded metrics.Counter
+	GetRecordsTimeout                       metrics.Counter
+	GetRecordsReadTimeout                   metrics.Counter
+	ProcessedDuration                       metrics.Gauge
+	GetRecordsDuration                      metrics.Gauge
+	GetRecordsReadResponseDuration          metrics.Gauge
+	GetRecordsUnmarshalDuration             metrics.Gauge
 }
 
 // NewDefaultStatsCollector instantiates a new DefaultStatsCollector object
-func NewDefaultStatsCollector(r metrics.Registry) *DefaultStatsCollector {
-	return &DefaultStatsCollector{
-		Consumed:                       metrics.GetOrRegisterCounter(MetricsConsumed, r),
-		Delivered:                      metrics.GetOrRegisterCounter(MetricsDelivered, r),
-		Processed:                      metrics.GetOrRegisterCounter(MetricsProcessed, r),
-		BatchSize:                      metrics.GetOrRegisterCounter(MetricsBatchSize, r),
-		GetRecordsCalled:               metrics.GetOrRegisterCounter(MetricsSent, r),
-		ProvisionedThroughputExceeded:  metrics.GetOrRegisterCounter(MetricsProvisionedThroughputExceeded, r),
-		GetRecordsTimeout:              metrics.GetOrRegisterCounter(MetricsGetRecordsTimeout, r),
-		GetRecordsReadTimeout:          metrics.GetOrRegisterCounter(MetricsGetRecordsReadTimeout, r),
-		ProcessedDuration:              metrics.GetOrRegisterGauge(MetricsProcessedDuration, r),
-		GetRecordsDuration:             metrics.GetOrRegisterGauge(MetricsGetRecordsDuration, r),
-		GetRecordsReadResponseDuration: metrics.GetOrRegisterGauge(MetricsGetRecordsReadResponseDuration, r),
-		GetRecordsUnmarshalDuration:    metrics.GetOrRegisterGauge(MetricsGetRecordsUnmarshalDuration, r),
+func NewDefaultConsumerStatsCollector(r metrics.Registry) *DefaultConsumerStatsCollector {
+	return &DefaultConsumerStatsCollector{
+		Consumed:                       	  metrics.GetOrRegisterCounter(MetricsConsumed, r),
+		Delivered:                      	  metrics.GetOrRegisterCounter(MetricsDelivered, r),
+		Processed:                     	   	  metrics.GetOrRegisterCounter(MetricsProcessed, r),
+		BatchSize:                      	  metrics.GetOrRegisterCounter(MetricsBatchSize, r),
+		GetRecordsCalled:               	  metrics.GetOrRegisterCounter(MetricsSent, r),
+		GetRecordsProvisionedThroughputExceeded:  metrics.GetOrRegisterCounter(MetricsGetRecordsProvisionedThroughputExceeded, r),
+		GetRecordsTimeout:              	  metrics.GetOrRegisterCounter(MetricsGetRecordsTimeout, r),
+		GetRecordsReadTimeout:          	  metrics.GetOrRegisterCounter(MetricsGetRecordsReadTimeout, r),
+		ProcessedDuration:              	  metrics.GetOrRegisterGauge(MetricsProcessedDuration, r),
+		GetRecordsDuration:             	  metrics.GetOrRegisterGauge(MetricsGetRecordsDuration, r),
+		GetRecordsReadResponseDuration: 	  metrics.GetOrRegisterGauge(MetricsGetRecordsReadResponseDuration, r),
+		GetRecordsUnmarshalDuration:    	  metrics.GetOrRegisterGauge(MetricsGetRecordsUnmarshalDuration, r),
 	}
 }
 
 // AddConsumed records a count of the number of messages received from AWS
 // Kinesis by the consumer.
-func (dsc *DefaultStatsCollector) AddConsumed(count int) {
+func (dsc *DefaultConsumerStatsCollector) AddConsumed(count int) {
 	dsc.Consumed.Inc(int64(count))
 }
 
 // AddDelivered records a count of the number of messages delivered to the
 // application by the consumer.
-func (dsc *DefaultStatsCollector) AddDelivered(count int) {
+func (dsc *DefaultConsumerStatsCollector) AddDelivered(count int) {
 	dsc.Delivered.Inc(int64(count))
 }
 
@@ -147,68 +147,68 @@ func (dsc *DefaultStatsCollector) AddDelivered(count int) {
 // application by the consumer.  This is based on a WaitGroup that is sent to
 // the RetrieveFn and Listen functions.  Retrieve does not count processed
 // messages.
-func (dsc *DefaultStatsCollector) AddProcessed(count int) {
+func (dsc *DefaultConsumerStatsCollector) AddProcessed(count int) {
 	dsc.Processed.Inc(int64(count))
 }
 
 // AddBatchSize records a count of the number of messages returned by
 // GetRecords in the consumer.
-func (dsc *DefaultStatsCollector) AddBatchSize(count int) {
+func (dsc *DefaultConsumerStatsCollector) AddBatchSize(count int) {
 	dsc.BatchSize.Inc(int64(count))
 }
 
 // AddGetRecordsCalled records the number of times the GetRecords API was called
 // by the consumer.
-func (dsc *DefaultStatsCollector) AddGetRecordsCalled(count int) {
+func (dsc *DefaultConsumerStatsCollector) AddGetRecordsCalled(count int) {
 	dsc.GetRecordsCalled.Inc(int64(count))
 }
 
 // AddProvisionedThroughputExceeded records the number of times the GetRecords
 // API returned a ErrCodeProvisionedThroughputExceededException by the consumer.
-func (dsc *DefaultStatsCollector) AddProvisionedThroughputExceeded(count int) {
-	dsc.ProvisionedThroughputExceeded.Inc(int64(count))
+func (dsc *DefaultConsumerStatsCollector) AddGetRecordsProvisionedThroughputExceeded(count int) {
+	dsc.GetRecordsProvisionedThroughputExceeded.Inc(int64(count))
 }
 
 // AddGetRecordsTimeout records the number of times the GetRecords API timed out
 // on the HTTP level.  This is influenced by the WithHTTPClientTimeout
 // configuration.
-func (dsc *DefaultStatsCollector) AddGetRecordsTimeout(count int) {
+func (dsc *DefaultConsumerStatsCollector) AddGetRecordsTimeout(count int) {
 	dsc.GetRecordsTimeout.Inc(int64(count))
 }
 
 // AddGetRecordsReadTimeout records the number of times the GetRecords API timed
 // out while reading the response body.  This is influenced by the
 // WithGetRecordsReadTimeout configuration.
-func (dsc *DefaultStatsCollector) AddGetRecordsReadTimeout(count int) {
+func (dsc *DefaultConsumerStatsCollector) AddGetRecordsReadTimeout(count int) {
 	dsc.GetRecordsReadTimeout.Inc(int64(count))
 }
 
 // AddProcessedDuration records the duration to process a record.  See notes on
 // AddProcessed.
-func (dsc *DefaultStatsCollector) AddProcessedDuration(duration time.Duration) {
+func (dsc *DefaultConsumerStatsCollector) AddProcessedDuration(duration time.Duration) {
 	dsc.ProcessedDuration.Update(duration.Nanoseconds())
 }
 
 // AddGetRecordsDuration records the duration that the GetRecords API request
 // took.  Only the times of successful calls are measured.
-func (dsc *DefaultStatsCollector) AddGetRecordsDuration(duration time.Duration) {
+func (dsc *DefaultConsumerStatsCollector) AddGetRecordsDuration(duration time.Duration) {
 	dsc.GetRecordsDuration.Update(duration.Nanoseconds())
 }
 
 // AddGetRecordsReadResponseDuration records the duration that it took to read
 // the response body of a GetRecords API request.
-func (dsc *DefaultStatsCollector) AddGetRecordsReadResponseDuration(duration time.Duration) {
+func (dsc *DefaultConsumerStatsCollector) AddGetRecordsReadResponseDuration(duration time.Duration) {
 	dsc.GetRecordsReadResponseDuration.Update(duration.Nanoseconds())
 }
 
 // AddGetRecordsUnmarshalDuration records the duration that it took to unmarshal
 // the response body of a GetRecords API request.
-func (dsc *DefaultStatsCollector) AddGetRecordsUnmarshalDuration(duration time.Duration) {
+func (dsc *DefaultConsumerStatsCollector) AddGetRecordsUnmarshalDuration(duration time.Duration) {
 	dsc.GetRecordsUnmarshalDuration.Update(duration.Nanoseconds())
 }
 
 // PrintStats logs the stats
-func (dsc *DefaultStatsCollector) PrintStats() {
+func (dsc *DefaultConsumerStatsCollector) PrintStats() {
 	log.Printf("Listener stats: Consumed: [%d]\n", dsc.Consumed.Count())
 	log.Printf("Listener stats: Delivered: [%d]\n", dsc.Delivered.Count())
 	log.Printf("Listener stats: Processed: [%d]\n", dsc.Processed.Count())
@@ -216,7 +216,7 @@ func (dsc *DefaultStatsCollector) PrintStats() {
 	log.Printf("Listener stats: GetRecords Called: [%d]\n", dsc.GetRecordsCalled.Count())
 	log.Printf("Listener stats: GetRecords Timeout: [%d]\n", dsc.GetRecordsTimeout.Count())
 	log.Printf("Listener stats: GetRecords Read Timeout: [%d]\n", dsc.GetRecordsReadTimeout.Count())
-	log.Printf("Listener stats: Provisioned Throughput Exceeded: [%d]\n", dsc.ProvisionedThroughputExceeded.Count())
+	log.Printf("Listener stats: GetRecords Provisioned Throughput Exceeded: [%d]\n", dsc.GetRecordsProvisionedThroughputExceeded.Count())
 	log.Printf("Listener stats: Processed Duration (ns): [%d]\n", dsc.ProcessedDuration.Value())
 	log.Printf("Listener stats: GetRecords Duration (ns): [%d]\n", dsc.GetRecordsDuration.Value())
 	log.Printf("Listener stats: GetRecords Read Response Duration (ns): [%d]\n", dsc.GetRecordsReadResponseDuration.Value())

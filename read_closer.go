@@ -1,4 +1,4 @@
-package consumer
+package kinetic
 
 import (
 	"io"

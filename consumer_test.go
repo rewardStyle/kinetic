@@ -1,4 +1,4 @@
-package consumer
+package kinetic
 
 import (
 	. "github.com/smartystreets/goconvey/convey"
@@ -15,9 +15,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/service/kinesis"
-
-	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/consumer"
 )
 
 func putRecord(l *Consumer, b []byte) (*string, error) {
@@ -34,11 +31,11 @@ func putRecord(l *Consumer, b []byte) (*string, error) {
 
 func TestListener(t *testing.T) {
 	Convey("given a listener", t, func() {
-		k, err := kinetic.New(func(c *kinetic.Config) {
-			c.SetCredentials("some-access-key", "some-secret-key", "some-security-token")
-			c.SetRegion("some-region")
-			c.SetEndpoint("http://127.0.0.1:4567")
-		})
+		k, err := NewKinetic(
+			KineticAwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+			KineticAwsConfigRegion("some-region"),
+			KineticAwsConfigEndpoint("http://127.0.0.1:4567"),
+		)
 
 		stream := "some-listener-stream"
 
@@ -56,19 +53,19 @@ func TestListener(t *testing.T) {
 		So(k.Session, ShouldNotBeNil)
 		So(k.Session.Config, ShouldNotBeNil)
 		r, err := NewKinesisReader(k.Session.Config, stream, shards[0],
-			consumer.KinesisReaderBatchSize(10000),
-			//consumer.KinesisReaderShardIterator(),
-			consumer.KinesisReaderResponseReadTimeout(time.Second),
-			consumer.KinesisReaderLogLevel(aws.LogOff),
+			KinesisReaderBatchSize(10000),
+			//KinesisReaderShardIterator(),
+			KinesisReaderResponseReadTimeout(time.Second),
+			KinesisReaderLogLevel(aws.LogOff),
 		)
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		l, err := NewConsumer(k.Session.Config, r,
-			consumer.ConsumerQueueDepth(10),
-			consumer.ConsumerConcurrency(10),
-			consumer.ConsumerLogLevel(aws.LogOff),
-			//consumer.ConsumerStatsCollector(lsc),
+			ConsumerQueueDepth(10),
+			ConsumerConcurrency(10),
+			ConsumerLogLevel(aws.LogOff),
+			ConsumerStats(&NilConsumerStatsCollector{}),
 		)
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -87,12 +84,12 @@ func TestListener(t *testing.T) {
 
 		Convey("check that setting an empty shard iterator returns an error", func() {
 			err := l.reader.(*KinesisReader).setNextShardIterator("")
-			So(err, ShouldEqual, kinetic.ErrEmptyShardIterator)
+			So(err, ShouldEqual, ErrEmptyShardIterator)
 		})
 
 		Convey("check that setting an empty sequence number returns an error", func() {
 			err := l.reader.(*KinesisReader).setSequenceNumber("")
-			So(err, ShouldEqual, kinetic.ErrEmptySequenceNumber)
+			So(err, ShouldEqual, ErrEmptySequenceNumber)
 		})
 
 		Convey("check that we can get the TRIM_HORIZON shard iterator", func() {
@@ -185,7 +182,7 @@ func TestListener(t *testing.T) {
 			}()
 			<-time.After(10 * time.Millisecond)
 			_, err := l.Retrieve()
-			So(err, ShouldEqual, kinetic.ErrAlreadyConsuming)
+			So(err, ShouldEqual, ErrAlreadyConsuming)
 			wg.Wait()
 		})
 
@@ -195,7 +192,7 @@ func TestListener(t *testing.T) {
 			go func() {
 				ctx, cancel := context.WithTimeout(context.TODO(), 1000*time.Millisecond)
 				defer cancel()
-				l.ListenWithContext(ctx, func(msg *kinetic.Message, wg *sync.WaitGroup) error {
+				l.ListenWithContext(ctx, func(msg *Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					return nil
 				})
@@ -203,7 +200,7 @@ func TestListener(t *testing.T) {
 			}()
 			<-time.After(10 * time.Millisecond)
 			_, err := l.Retrieve()
-			So(err, ShouldEqual, kinetic.ErrAlreadyConsuming)
+			So(err, ShouldEqual, ErrAlreadyConsuming)
 			wg.Wait()
 		})
 
@@ -213,7 +210,7 @@ func TestListener(t *testing.T) {
 			secs := []float64{}
 			for i := 1; i <= 6; i++ {
 				start := time.Now()
-				l.reader.GetRecord(context.TODO(), func(msg *kinetic.Message, wg *sync.WaitGroup) error {
+				l.reader.GetRecord(context.TODO(), func(msg *Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 
 					return nil
@@ -230,7 +227,7 @@ func TestListener(t *testing.T) {
 			data := "retrieved"
 			_, err := putRecord(l, []byte(data))
 			So(err, ShouldBeNil)
-			err = l.RetrieveFn(func(msg *kinetic.Message, wg *sync.WaitGroup) error {
+			err = l.RetrieveFn(func(msg *Message, wg *sync.WaitGroup) error {
 				defer wg.Done()
 
 				called = true
@@ -251,7 +248,7 @@ func TestListener(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				l.Listen(func(msg *kinetic.Message, wg *sync.WaitGroup) error {
+				l.Listen(func(msg *Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					atomic.AddInt64(&count, 1)
 
@@ -299,7 +296,7 @@ func TestListener(t *testing.T) {
 			go func() {
 				ctx, cancel := context.WithCancel(context.TODO())
 				defer wg.Done()
-				l.ListenWithContext(ctx, func(m *kinetic.Message, wg *sync.WaitGroup) error {
+				l.ListenWithContext(ctx, func(m *Message, wg *sync.WaitGroup) error {
 					defer wg.Done()
 					time.AfterFunc(time.Duration(rand.Intn(10))*time.Second, func() {
 						n, err := strconv.Atoi(string(m.Data))

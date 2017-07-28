@@ -1,4 +1,4 @@
-package consumer
+package kinetic
 
 import (
 	"context"
@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/rewardStyle/kinetic"
 	"golang.org/x/time/rate"
 )
 
@@ -15,15 +14,15 @@ import (
 type consumerOptions struct {
 	queueDepth  int
 	concurrency int
-	logLevel    aws.LogLevelType // log level for configuring the LogHelper's log level
-	Stats       StatsCollector   // stats collection mechanism
+	logLevel    aws.LogLevelType       // log level for configuring the LogHelper's log level
+	Stats       ConsumerStatsCollector // stats collection mechanism
 }
 
 func defaultConsumerOptions() *consumerOptions {
 	return &consumerOptions{
 		queueDepth:  10000,
 		concurrency: 10,
-		Stats:       &NilStatsCollector{},
+		Stats:       &NilConsumerStatsCollector{},
 	}
 }
 
@@ -35,7 +34,7 @@ func ConsumerQueueDepth(depth int) ConsumerOptionsFn {
 			o.queueDepth = depth
 			return nil
 		}
-		return kinetic.ErrInvalidQueueDepth
+		return ErrInvalidQueueDepth
 	}
 }
 
@@ -45,7 +44,7 @@ func ConsumerConcurrency(count int) ConsumerOptionsFn {
 			o.concurrency = count
 			return nil
 		}
-		return kinetic.ErrInvalidConcurrency
+		return ErrInvalidConcurrency
 	}
 }
 
@@ -56,7 +55,7 @@ func ConsumerLogLevel(ll aws.LogLevelType) ConsumerOptionsFn {
 	}
 }
 
-func ConsumerStatsCollector(sc StatsCollector) ConsumerOptionsFn {
+func ConsumerStats(sc ConsumerStatsCollector) ConsumerOptionsFn {
 	return func(o *consumerOptions) error {
 		o.Stats = sc
 		return nil
@@ -66,11 +65,11 @@ func ConsumerStatsCollector(sc StatsCollector) ConsumerOptionsFn {
 // Listener polls the StreamReader for messages.
 type Consumer struct {
 	*consumerOptions
-	*kinetic.LogHelper
+	*LogHelper
 	reader              StreamReader
 	txnCountRateLimiter *rate.Limiter
 	txSizeRateLimiter   *rate.Limiter
-	messages            chan *kinetic.Message
+	messages            chan *Message
 	concurrencySem      chan empty
 	pipeOfDeath         chan empty
 	consuming           bool
@@ -85,7 +84,7 @@ func NewConsumer(c *aws.Config, r StreamReader, optionFns ...ConsumerOptionsFn) 
 	}
 	return &Consumer{
 		consumerOptions: consumerOptions,
-		LogHelper: &kinetic.LogHelper{
+		LogHelper: &LogHelper{
 			LogLevel: consumerOptions.logLevel,
 			Logger:   c.Logger,
 		},
@@ -100,7 +99,7 @@ func (l *Consumer) startConsuming() bool {
 	defer l.consumingMu.Unlock()
 	if !l.consuming {
 		l.consuming = true
-		l.messages = make(chan *kinetic.Message, l.queueDepth)
+		l.messages = make(chan *Message, l.queueDepth)
 		l.concurrencySem = make(chan empty, l.concurrency)
 		l.pipeOfDeath = make(chan empty)
 		return true
@@ -113,7 +112,7 @@ func (l *Consumer) startConsuming() bool {
 func (l *Consumer) shouldConsume(ctx context.Context) (bool, error) {
 	select {
 	case <-l.pipeOfDeath:
-		return false, kinetic.ErrPipeOfDeath
+		return false, ErrPipeOfDeath
 	case <-ctx.Done():
 		return false, ctx.Err()
 	default:
@@ -135,7 +134,7 @@ func (l *Consumer) stopConsuming() {
 }
 
 func (l *Consumer) enqueueSingle(ctx context.Context) (int, int, error) {
-	n, m, err := l.reader.GetRecord(ctx, func(msg *kinetic.Message, wg *sync.WaitGroup) error {
+	n, m, err := l.reader.GetRecord(ctx, func(msg *Message, wg *sync.WaitGroup) error {
 		defer wg.Done()
 		l.messages <- msg
 
@@ -150,7 +149,7 @@ func (l *Consumer) enqueueSingle(ctx context.Context) (int, int, error) {
 
 func (l *Consumer) enqueueBatch(ctx context.Context) (int, int, error) {
 	n, m, err := l.reader.GetRecords(ctx,
-		func(msg *kinetic.Message, wg *sync.WaitGroup) error {
+		func(msg *Message, wg *sync.WaitGroup) error {
 			defer wg.Done()
 			l.messages <- msg
 
@@ -174,7 +173,7 @@ func (l *Consumer) handleErrorLogging(err error) {
 		}
 	case error:
 		switch err {
-		case kinetic.ErrTimeoutReadResponseBody:
+		case ErrTimeoutReadResponseBody:
 			l.Stats.AddGetRecordsReadTimeout(1)
 			l.LogError("Received error:", err.Error())
 		default:
@@ -185,11 +184,11 @@ func (l *Consumer) handleErrorLogging(err error) {
 	}
 }
 
-// RetrieveWithContext waits for a message from the stream and returns the kinetic. Cancellation is supported through
+// RetrieveWithContext waits for a message from the stream and returns the  Cancellation is supported through
 // contexts.
-func (l *Consumer) RetrieveWithContext(ctx context.Context) (*kinetic.Message, error) {
+func (l *Consumer) RetrieveWithContext(ctx context.Context) (*Message, error) {
 	if !l.startConsuming() {
-		return nil, kinetic.ErrAlreadyConsuming
+		return nil, ErrAlreadyConsuming
 	}
 	defer l.stopConsuming()
 
@@ -212,7 +211,7 @@ func (l *Consumer) RetrieveWithContext(ctx context.Context) (*kinetic.Message, e
 }
 
 // Retrieve waits for a message from the stream and returns the value
-func (l *Consumer) Retrieve() (*kinetic.Message, error) {
+func (l *Consumer) Retrieve() (*Message, error) {
 	return l.RetrieveWithContext(context.TODO())
 }
 
@@ -316,7 +315,7 @@ func (l *Consumer) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 			// couple more messages (especially since select is random in which channel is read from).
 			l.concurrencySem <- empty{}
 			wg.Add(1)
-			go func(msg *kinetic.Message) {
+			go func(msg *Message) {
 				defer func() {
 					<-l.concurrencySem
 				}()

@@ -1,4 +1,4 @@
-package consumer
+package kinetic
 
 import (
 	"github.com/aws/aws-sdk-go/aws"

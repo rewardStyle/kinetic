@@ -1,4 +1,4 @@
-package producer
+package kinetic
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/rewardStyle/kinetic"
 	"golang.org/x/time/rate"
 )
 
@@ -18,15 +17,15 @@ const (
 
 // producerOptions holds all of the configurable settings for a Producer
 type producerOptions struct {
-	batchSize        int                 // maximum message capacity per request
-	batchTimeout     time.Duration       // maximum time duration to wait for incoming messages
-	queueDepth       int                 // maximum number of messages to enqueue in the message queue
-	maxRetryAttempts int                 // maximum number of retry attempts for failed messages
-	concurrency      int                 // number of concurrent workers per shard
-	shardCheckFreq   time.Duration       // frequency (specified as a duration) with which to check the the shard size
-	dataSpillFn      MessageHandlerAsync // callback function for handling dropped messages that the producer was unable to send to the stream
-	logLevel         aws.LogLevelType    // log level for configuring the LogHelper's log level
-	Stats            StatsCollector      // stats collection mechanism
+	batchSize        int                  // maximum message capacity per request
+	batchTimeout     time.Duration        // maximum time duration to wait for incoming messages
+	queueDepth       int                  // maximum number of messages to enqueue in the message queue
+	maxRetryAttempts int                  // maximum number of retry attempts for failed messages
+	concurrency    int                    // number of concurrent workers per shard
+	shardCheckFreq time.Duration          // frequency (specified as a duration) with which to check the the shard size
+	dataSpillFn    MessageHandlerAsync    // callback function for handling dropped messages that the producer was unable to send to the stream
+	logLevel       aws.LogLevelType       // log level for configuring the LogHelper's log level
+	Stats          ProducerStatsCollector // stats collection mechanism
 }
 
 func defaultProducerOptions() *producerOptions {
@@ -37,9 +36,9 @@ func defaultProducerOptions() *producerOptions {
 		maxRetryAttempts: 10,
 		concurrency:      3,
 		shardCheckFreq:   time.Minute,
-		dataSpillFn:      func(*kinetic.Message) error { return nil },
+		dataSpillFn:      func(*Message) error { return nil },
 		logLevel:         aws.LogOff,
-		Stats:            &NilStatsCollector{},
+		Stats:            &NilProducerStatsCollector{},
 	}
 }
 
@@ -51,7 +50,7 @@ func ProducerBatchSize(size int) ProducerOptionsFn {
 			o.batchSize = size
 			return nil
 		}
-		return kinetic.ErrInvalidBatchSize
+		return ErrInvalidBatchSize
 	}
 }
 
@@ -68,7 +67,7 @@ func ProducerQueueDepth(queueDepth int) ProducerOptionsFn {
 			o.queueDepth = queueDepth
 			return nil
 		}
-		return kinetic.ErrInvalidQueueDepth
+		return ErrInvalidQueueDepth
 	}
 }
 
@@ -78,7 +77,7 @@ func ProducerMaxRetryAttempts(attemtps int) ProducerOptionsFn {
 			o.maxRetryAttempts = attemtps
 			return nil
 		}
-		return kinetic.ErrInvalidMaxRetryAttempts
+		return ErrInvalidMaxRetryAttempts
 	}
 }
 
@@ -88,7 +87,7 @@ func ProducerConcurrency(count int) ProducerOptionsFn {
 			o.concurrency = count
 			return nil
 		}
-		return kinetic.ErrInvalidConcurrency
+		return ErrInvalidConcurrency
 	}
 }
 
@@ -113,7 +112,7 @@ func ProducerLogLevel(ll aws.LogLevelType) ProducerOptionsFn {
 	}
 }
 
-func ProducerStatsCollector(sc StatsCollector) ProducerOptionsFn {
+func ProducerStats(sc ProducerStatsCollector) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.Stats = sc
 		return nil
@@ -123,12 +122,12 @@ func ProducerStatsCollector(sc StatsCollector) ProducerOptionsFn {
 // Producer sends records to AWS Kinesis or Firehose.
 type Producer struct {
 	*producerOptions                         // contains all of the configuration settings for the Producer
-	*kinetic.LogHelper                       // object for help with logging
+	*LogHelper                       // object for help with logging
 	writer             StreamWriter          // interface for abstracting the PutRecords call
 	msgCountLimiter    *rate.Limiter         // rate limiter to limit the number of messages dispatched per second
 	msgSizeLimiter     *rate.Limiter         // rate limiter to limit the total size (in bytes) of messages dispatched per second
 	workerCount        int                   // number of concurrent workers sending batch messages for the producer
-	messages           chan *kinetic.Message // channel for enqueuing messages to be put on the stream
+	messages           chan *Message // channel for enqueuing messages to be put on the stream
 	status             chan *statusReport    // channel for workers to communicate their current status
 	dismiss            chan empty            // channel for handling the decommissioning of a surplus of workers
 	stop               chan empty            // channel for handling shutdown
@@ -147,7 +146,7 @@ func NewProducer(c *aws.Config, w StreamWriter, optionFns ...ProducerOptionsFn) 
 	}
 	return &Producer{
 		producerOptions: producerOptions,
-		LogHelper: &kinetic.LogHelper{
+		LogHelper: &LogHelper{
 			LogLevel: producerOptions.logLevel,
 			Logger:   c.Logger,
 		},
@@ -166,7 +165,7 @@ func (p *Producer) produce() {
 		p.msgSizeLimiter = rate.NewLimiter(rate.Limit(float64(p.writer.getMsgSizeRateLimit())), p.writer.getMsgSizeRateLimit())
 
 		// Create communication channels
-		p.messages = make(chan *kinetic.Message, p.queueDepth)
+		p.messages = make(chan *Message, p.queueDepth)
 		p.status = make(chan *statusReport)
 		p.dismiss = make(chan empty)
 		p.stop = make(chan empty)
@@ -217,7 +216,7 @@ func (p *Producer) produce() {
 				case <-p.stop:
 					return
 				case status := <-p.status:
-					var batch []*kinetic.Message
+					var batch []*Message
 					timeout := time.After(p.batchTimeout)
 
 				fillBatch:
@@ -372,10 +371,10 @@ func (p *Producer) resizeWorkerPool(desiredWorkerCount int) {
 // listen on the dismiss channel which upon receiving a signal will continue sending previously failed messages only
 // until all failed messages have been sent successfully or aged out.
 func (p *Producer) doWork() {
-	batches := make(chan []*kinetic.Message)
+	batches := make(chan []*Message)
 	defer close(batches)
 
-	var retries []*kinetic.Message
+	var retries []*Message
 	var dismissed bool
 	for ok := true; ok; ok = !dismissed || len(retries) != 0 {
 		// Check to see if there were any signals to dismiss workers (if eligible)
@@ -422,9 +421,9 @@ func (p *Producer) doWork() {
 
 // sendBatch is the function that is called by each worker to put records on the stream. sendBatch accepts a slice of
 // messages to send and returns a slice of messages that failed to send
-func (p *Producer) sendBatch(batch []*kinetic.Message) []*kinetic.Message {
-	var failed []*kinetic.Message
-	err := p.writer.PutRecords(context.TODO(), batch, func(msg *kinetic.Message) error {
+func (p *Producer) sendBatch(batch []*Message) []*Message {
+	var failed []*Message
+	err := p.writer.PutRecords(context.TODO(), batch, func(msg *Message) error {
 		if msg.FailCount <= p.maxRetryAttempts {
 			failed = append(failed, msg)
 			p.Stats.AddSentRetried(1)
@@ -451,7 +450,7 @@ func (p *Producer) sendBatch(batch []*kinetic.Message) []*kinetic.Message {
 		p.LogError("Received AWS error:", err.Error())
 	case error:
 		switch err {
-		case kinetic.ErrRetryRecords:
+		case ErrRetryRecords:
 			break
 		default:
 			p.LogError("Received error:", err.Error())
@@ -464,7 +463,7 @@ func (p *Producer) sendBatch(batch []*kinetic.Message) []*kinetic.Message {
 }
 
 // sendToDataSpill is called when the producer is unable to write the message to the stream
-func (p *Producer) sendToDataSpill(msg *kinetic.Message) {
+func (p *Producer) sendToDataSpill(msg *Message) {
 	p.Stats.AddDroppedTotal(1)
 	p.Stats.AddDroppedCapacity(1)
 	if err := p.dataSpillFn(msg); err != nil {
@@ -486,7 +485,7 @@ func (p *Producer) Close() {
 }
 
 // SendWithContext sends a message to the stream.  Cancellation supported through contexts.
-func (p *Producer) SendWithContext(ctx context.Context, msg *kinetic.Message) error {
+func (p *Producer) SendWithContext(ctx context.Context, msg *Message) error {
 	p.produce()
 	select {
 	case p.messages <- msg:
@@ -497,19 +496,19 @@ func (p *Producer) SendWithContext(ctx context.Context, msg *kinetic.Message) er
 }
 
 // Send a message to the stream, waiting on the message to be put into the channel.
-func (p *Producer) Send(msg *kinetic.Message) error {
+func (p *Producer) Send(msg *Message) error {
 	return p.SendWithContext(context.TODO(), msg)
 }
 
 // TryToSend will attempt to send a message to the stream if the channel has capacity for a message, or will immediately
 // return with an error if the channel is full.
-func (p *Producer) TryToSend(msg *kinetic.Message) error {
+func (p *Producer) TryToSend(msg *Message) error {
 	p.produce()
 	select {
 	case p.messages <- msg:
 		return nil
 	default:
 		p.sendToDataSpill(msg)
-		return kinetic.ErrDroppedMessage
+		return ErrDroppedMessage
 	}
 }

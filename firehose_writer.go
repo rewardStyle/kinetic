@@ -1,4 +1,4 @@
-package producer
+package kinetic
 
 import (
 	"context"
@@ -10,8 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/firehose"
 	"github.com/aws/aws-sdk-go/service/firehose/firehoseiface"
-
-	"github.com/rewardStyle/kinetic"
 )
 
 const (
@@ -20,11 +18,11 @@ const (
 )
 
 type firehoseWriterOptions struct {
-	msgCountRateLimit    int              // maximum number of records to be sent per second
-	msgSizeRateLimit     int              // maximum (transmission) size of records to be sent per second
-	throughputMultiplier int              // integer multiplier to increase firehose throughput rate limits
-	logLevel             aws.LogLevelType // log level for configuring the LogHelper's log level
-	stats                StatsCollector   // stats collection mechanism
+	msgCountRateLimit    int                    // maximum number of records to be sent per second
+	msgSizeRateLimit     int                    // maximum (transmission) size of records to be sent per second
+	throughputMultiplier int                    // integer multiplier to increase firehose throughput rate limits
+	logLevel             aws.LogLevelType       // log level for configuring the LogHelper's log level
+	Stats                ProducerStatsCollector // stats collection mechanism
 }
 
 func defaultFirehoseWriterOptions() *firehoseWriterOptions {
@@ -33,7 +31,7 @@ func defaultFirehoseWriterOptions() *firehoseWriterOptions {
 		msgSizeRateLimit:     firehoseMsgSizeRateLimit,
 		throughputMultiplier: 1,
 		logLevel:             aws.LogOff,
-		stats:                &NilStatsCollector{},
+		Stats:                &NilProducerStatsCollector{},
 	}
 }
 
@@ -45,7 +43,7 @@ func FirehoseWriterMsgCountRateLimit(limit int) FireHoseWriterOptionsFn {
 			o.msgCountRateLimit = limit
 			return nil
 		}
-		return kinetic.ErrInvalidMsgCountRateLimit
+		return ErrInvalidMsgCountRateLimit
 	}
 }
 
@@ -55,7 +53,7 @@ func FirehoseWriterMsgSizeRateLimit(limit int) FireHoseWriterOptionsFn {
 			o.msgSizeRateLimit = limit
 			return nil
 		}
-		return kinetic.ErrInvalidMsgSizeRateLimit
+		return ErrInvalidMsgSizeRateLimit
 	}
 }
 
@@ -65,7 +63,7 @@ func FirehoseWriterThroughputMultiplier(multiplier int) FireHoseWriterOptionsFn 
 			o.throughputMultiplier = multiplier
 			return nil
 		}
-		return kinetic.ErrInvalidThroughputMultiplier
+		return ErrInvalidThroughputMultiplier
 	}
 }
 
@@ -76,9 +74,9 @@ func FirehoseWriterLogLevel(ll aws.LogLevelType) FireHoseWriterOptionsFn {
 	}
 }
 
-func FirehoseWriterStatsCollector(sc StatsCollector) FireHoseWriterOptionsFn {
+func FirehoseWriterStats(sc ProducerStatsCollector) FireHoseWriterOptionsFn {
 	return func(o *firehoseWriterOptions) error {
-		o.stats = sc
+		o.Stats = sc
 		return nil
 	}
 }
@@ -86,7 +84,7 @@ func FirehoseWriterStatsCollector(sc StatsCollector) FireHoseWriterOptionsFn {
 // FirehoseWriter handles the API to send records to Kinesis.
 type FirehoseWriter struct {
 	*firehoseWriterOptions
-	*kinetic.LogHelper
+	*LogHelper
 	stream string
 	client firehoseiface.FirehoseAPI
 }
@@ -105,7 +103,7 @@ func NewFirewhoseWriter(c *aws.Config, stream string, optionFns ...FireHoseWrite
 		stream: stream,
 		client: firehose.New(sess),
 		firehoseWriterOptions: firehoseWriterOptions,
-		LogHelper: &kinetic.LogHelper{
+		LogHelper: &LogHelper{
 			LogLevel: firehoseWriterOptions.logLevel,
 			Logger:   c.Logger,
 		},
@@ -113,7 +111,7 @@ func NewFirewhoseWriter(c *aws.Config, stream string, optionFns ...FireHoseWrite
 }
 
 // PutRecords sends a batch of records to Firehose and returns a list of records that need to be retried.
-func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*kinetic.Message, fn MessageHandlerAsync) error {
+func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*Message, fn MessageHandlerAsync) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 
@@ -135,7 +133,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*kinetic.Mes
 	})
 
 	req.Handlers.Build.PushBack(func(r *request.Request) {
-		w.stats.UpdatePutRecordsBuildDuration(time.Since(startBuildTime))
+		w.Stats.UpdatePutRecordsBuildDuration(time.Since(startBuildTime))
 		w.LogDebug("Finished PutRecords Build, took", time.Since(start))
 	})
 
@@ -145,23 +143,23 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*kinetic.Mes
 	})
 
 	req.Handlers.Send.PushBack(func(r *request.Request) {
-		w.stats.UpdatePutRecordsSendDuration(time.Since(startSendTime))
+		w.Stats.UpdatePutRecordsSendDuration(time.Since(startSendTime))
 		w.LogDebug("Finished PutRecords Send, took", time.Since(start))
 	})
 
 	w.LogDebug("Starting PutRecords Build/Sign request, took", time.Since(start))
-	w.stats.AddPutRecordsCalled(1)
+	w.Stats.AddPutRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		w.LogError("Error putting records:", err.Error())
 		return err
 	}
-	w.stats.UpdatePutRecordsDuration(time.Since(start))
+	w.Stats.UpdatePutRecordsDuration(time.Since(start))
 
 	if resp == nil {
-		return kinetic.ErrNilPutRecordsResponse
+		return ErrNilPutRecordsResponse
 	}
 	if resp.FailedPutCount == nil {
-		return kinetic.ErrNilFailedRecordCount
+		return ErrNilFailedRecordCount
 	}
 	attempted := len(messages)
 	failed := int(aws.Int64Value(resp.FailedPutCount))
@@ -172,18 +170,18 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*kinetic.Mes
 		if record.RecordId != nil {
 			// TODO: per-shard metrics
 			messages[idx].RecordID = record.RecordId
-			w.stats.AddSentSuccess(1)
+			w.Stats.AddSentSuccess(1)
 		} else {
 			switch aws.StringValue(record.ErrorCode) {
 			case firehose.ErrCodeLimitExceededException:
-				w.stats.AddProvisionedThroughputExceeded(1)
+				w.Stats.AddPutRecordsProvisionedThroughputExceeded(1)
 			default:
 				w.LogDebug("PutRecords record failed with error:", aws.StringValue(record.ErrorCode), aws.StringValue(record.ErrorMessage))
 			}
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
 			messages[idx].FailCount++
-			w.stats.AddSentFailed(1)
+			w.Stats.AddSentFailed(1)
 
 			fn(messages[idx])
 		}

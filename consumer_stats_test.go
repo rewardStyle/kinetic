@@ -1,4 +1,4 @@
-package consumer
+package kinetic
 
 import (
 	"math/rand"
@@ -13,9 +13,9 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-func TestStatsCollector(t *testing.T) {
+func TestConsumerStatsCollector(t *testing.T) {
 	Convey("given a NilStatsCollector", t, func() {
-		var sc StatsCollector = &NilStatsCollector{}
+		var sc ConsumerStatsCollector = &NilConsumerStatsCollector{}
 		So(sc, ShouldNotBeNil)
 
 		Convey("check that AddConsumed does not error", func() {
@@ -38,8 +38,8 @@ func TestStatsCollector(t *testing.T) {
 			sc.AddGetRecordsCalled(1)
 		})
 
-		Convey("check that AddProvisionedThroughputExceeded does not error", func() {
-			sc.AddProvisionedThroughputExceeded(1)
+		Convey("check that AddGetRecordsProvisionedThroughputExceeded does not error", func() {
+			sc.AddGetRecordsProvisionedThroughputExceeded(1)
 		})
 
 		Convey("check that AddGetRecordsTimeout does not error", func() {
@@ -69,75 +69,75 @@ func TestStatsCollector(t *testing.T) {
 
 	Convey("given a DefaultStatsCollector", t, func() {
 		r := metrics.NewRegistry()
-		var sc StatsCollector = NewDefaultStatsCollector(r)
+		var sc ConsumerStatsCollector = NewDefaultConsumerStatsCollector(r)
 		So(sc, ShouldNotBeNil)
 
 		Convey("check that AddConsumed does not error", func() {
 			count := rand.Int()
 			sc.AddConsumed(count)
-			So(sc.(*DefaultStatsCollector).Consumed.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultConsumerStatsCollector).Consumed.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddDelivered does not error", func() {
 			count := rand.Int()
 			sc.AddDelivered(count)
-			So(sc.(*DefaultStatsCollector).Delivered.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultConsumerStatsCollector).Delivered.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddProcessed does not error", func() {
 			count := rand.Int()
 			sc.AddProcessed(count)
-			So(sc.(*DefaultStatsCollector).Processed.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultConsumerStatsCollector).Processed.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddBatchSize does not error", func() {
 			count := rand.Int()
 			sc.AddBatchSize(count)
-			So(sc.(*DefaultStatsCollector).BatchSize.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultConsumerStatsCollector).BatchSize.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddGetRecordsCalled does not error", func() {
 			count := rand.Int()
 			sc.AddGetRecordsCalled(count)
-			So(sc.(*DefaultStatsCollector).GetRecordsCalled.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultConsumerStatsCollector).GetRecordsCalled.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddProvisionedThroughputExceeded does not error", func() {
+		Convey("check that AddGetRecordsProvisionedThroughputExceeded does not error", func() {
 			count := rand.Int()
-			sc.AddProvisionedThroughputExceeded(count)
-			So(sc.(*DefaultStatsCollector).ProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
+			sc.AddGetRecordsProvisionedThroughputExceeded(count)
+			So(sc.(*DefaultConsumerStatsCollector).GetRecordsProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddGetRecordsTimeout does not error", func() {
 			count := rand.Int()
 			sc.AddGetRecordsTimeout(count)
-			So(sc.(*DefaultStatsCollector).GetRecordsTimeout.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultConsumerStatsCollector).GetRecordsTimeout.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddGetRecordsReadTimeout does not error", func() {
 			count := rand.Int()
 			sc.AddGetRecordsReadTimeout(count)
-			So(sc.(*DefaultStatsCollector).GetRecordsReadTimeout.Count(), ShouldEqual, int64(count))
+			So(sc.(*DefaultConsumerStatsCollector).GetRecordsReadTimeout.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddProcessedDuration does not error", func() {
 			sc.AddProcessedDuration(time.Second)
-			So(sc.(*DefaultStatsCollector).ProcessedDuration.Value(), ShouldEqual, 1000000000)
+			So(sc.(*DefaultConsumerStatsCollector).ProcessedDuration.Value(), ShouldEqual, 1000000000)
 		})
 
 		Convey("check that AddGetRecordsDuration does not error", func() {
 			sc.AddGetRecordsDuration(time.Second)
-			So(sc.(*DefaultStatsCollector).GetRecordsDuration.Value(), ShouldEqual, 1000000000)
+			So(sc.(*DefaultConsumerStatsCollector).GetRecordsDuration.Value(), ShouldEqual, 1000000000)
 		})
 
 		Convey("check that AddGetRecordsReadResponseDuration does not error", func() {
 			sc.AddGetRecordsReadResponseDuration(time.Second)
-			So(sc.(*DefaultStatsCollector).GetRecordsReadResponseDuration.Value(), ShouldEqual, 1000000000)
+			So(sc.(*DefaultConsumerStatsCollector).GetRecordsReadResponseDuration.Value(), ShouldEqual, 1000000000)
 		})
 
 		Convey("check that AddGetRecordsUnmarshalDuration does not error", func() {
 			sc.AddGetRecordsUnmarshalDuration(time.Second)
-			So(sc.(*DefaultStatsCollector).GetRecordsUnmarshalDuration.Value(), ShouldEqual, 1000000000)
+			So(sc.(*DefaultConsumerStatsCollector).GetRecordsUnmarshalDuration.Value(), ShouldEqual, 1000000000)
 		})
 	})
 }

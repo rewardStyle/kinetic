@@ -1,11 +1,9 @@
-package consumer
+package kinetic
 
 import (
 	"encoding/base64"
 	"strconv"
 	"time"
-
-	"github.com/rewardStyle/kinetic"
 )
 
 // ActionType is used as an enum for KCL Multilang protocol action message types
@@ -62,14 +60,14 @@ func (t *Timestamp) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// ToMessage is used to transform a multilang.Record struct into a kinetic.Message struct
-func (r *Record) ToMessage() *kinetic.Message {
+// ToMessage is used to transform a multilang.Record struct into a Message struct
+func (r *Record) ToMessage() *Message {
 	b, err := base64.StdEncoding.DecodeString(r.Data)
 	if err != nil {
 		panic("There was a problem decoding kcl data")
 	}
 
-	return &kinetic.Message{
+	return &Message{
 		ApproximateArrivalTimestamp: &r.ApproximateArrival.Time,
 		Data:           b,
 		PartitionKey:   &r.PartitionKey,
