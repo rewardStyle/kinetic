@@ -12,7 +12,8 @@ import (
 	"github.com/aws/aws-sdk-go/aws/request"
 
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/listener"
+	"github.com/rewardStyle/kinetic/consumer"
+	"github.com/rewardStyle/kinetic/producer"
 )
 
 func TestProducer(t *testing.T) {
@@ -42,28 +43,41 @@ func TestProducer(t *testing.T) {
 		So(w, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		p, err := NewProducer(k.Session.Config, w, func(c *Config) {
-			c.SetBatchSize(5)
-			c.SetBatchTimeout(time.Second)
-			c.SetQueueDepth(10)
-			c.SetConcurrency(2)
-		})
+		p, err := NewProducer(k.Session.Config, w,
+			producer.ProducerBatchSize(5),
+			producer.ProducerBatchTimeout(time.Second),
+			producer.ProducerMaxRetryAttempts(3),
+			producer.ProducerQueueDepth(10),
+			producer.ProducerConcurrency(2),
+			producer.ProducerShardCheckFrequency(time.Minute),
+			producer.ProducerDataSpillFn(func(msg *kinetic.Message) error {
+				//log.Printf("Message was dropped: [%s]\n", string(msg.Data))
+				return nil
+			}),
+			producer.ProducerLogLevel(aws.LogOff),
+			//producer.ProducerStatsCollector(),
+		)
 		So(p, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
 		So(k.Session, ShouldNotBeNil)
 		So(k.Session.Config, ShouldNotBeNil)
-		r, err := listener.NewKinesisReader(k.Session.Config, stream, shards[0],
-			func(krc *listener.KinesisReaderConfig) {
-				krc.SetResponseReadTimeout(1000 * time.Millisecond)
-			})
+		r, err := consumer.NewKinesisReader(k.Session.Config, stream, shards[0],
+			//consumer.KinesisReaderBatchSize(),
+			//consumer.KinesisReaderShardIterator(),
+			consumer.KinesisReaderResponseReadTimeout(time.Second),
+			//consumer.KinesisReaderLogLevel(),
+			//consumer.KinesisReaderStatsCollector(),
+		)
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {
-			c.SetQueueDepth(10)
-			c.SetConcurrency(10)
-		})
+		l, err := consumer.NewConsumer(k.Session.Config, r,
+			consumer.ConsumerQueueDepth(10),
+			consumer.ConsumerConcurrency(10),
+			consumer.ConsumerLogLevel(aws.LogOff),
+			//consumer.ConsumerStatsCollector(lsc),
+		)
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 

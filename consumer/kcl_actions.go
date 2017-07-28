@@ -1,4 +1,4 @@
-package multilang
+package consumer
 
 import (
 	"encoding/base64"

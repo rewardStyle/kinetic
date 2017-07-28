@@ -1,4 +1,4 @@
-package listener
+package consumer
 
 import (
 	"context"
@@ -16,12 +16,66 @@ import (
 	"github.com/rewardStyle/kinetic"
 )
 
+const (
+	kinesisReaderBatchSize = 10000
+)
+
 // kinesisReaderOptions is used to hold all of the configurable settings of a KinesisReader.
 type kinesisReaderOptions struct {
 	batchSize           int
 	shardIterator       *ShardIterator
 	responseReadTimeout time.Duration
-	Stats               StatsCollector
+	logLevel            aws.LogLevelType // log level for configuring the LogHelper's log level
+	stats               StatsCollector   // stats collection mechanism
+}
+
+func defaultKinesisReaderOptions() *kinesisReaderOptions {
+	return &kinesisReaderOptions{
+		batchSize:           kinesisReaderBatchSize,
+		shardIterator:       NewShardIterator(),
+		responseReadTimeout: time.Second,
+		stats:               &NilStatsCollector{},
+	}
+}
+
+type KinesisReaderOptionsFn func(*kinesisReaderOptions) error
+
+func KinesisReaderBatchSize(size int) KinesisReaderOptionsFn {
+	return func(o *kinesisReaderOptions) error {
+		if size > 0 && size <= kinesisReaderBatchSize {
+			o.batchSize = size
+			return nil
+		}
+		return kinetic.ErrInvalidBatchSize
+	}
+}
+
+func KinesisReaderShardIterator(shardIterator *ShardIterator) KinesisReaderOptionsFn {
+	return func(o *kinesisReaderOptions) error {
+		o.shardIterator = shardIterator
+		return nil
+	}
+}
+
+func KinesisReaderResponseReadTimeout(timeout time.Duration) KinesisReaderOptionsFn {
+	return func(o *kinesisReaderOptions) error {
+		o.responseReadTimeout = timeout
+		return nil
+	}
+}
+
+func KinesisReaderLogLevel(ll aws.LogLevelType) KinesisReaderOptionsFn {
+	return func(o *kinesisReaderOptions) error {
+		o.logLevel = ll & 0xffff0000
+		return nil
+	}
+}
+
+func KinesisReaderStatsCollector(sc StatsCollector) KinesisReaderOptionsFn {
+	return func(o *kinesisReaderOptions) error {
+		o.stats = sc
+		return nil
+	}
 }
 
 // KinesisReader handles the API to read records from Kinesis.
@@ -37,20 +91,20 @@ type KinesisReader struct {
 
 // NewKinesisReader creates a new KinesisReader object which implements the StreamReader interface to read records from
 // Kinesis.
-func NewKinesisReader(c *aws.Config, stream string, shard string, fn ...func(*KinesisReaderConfig)) (*KinesisReader, error) {
-	cfg := NewKinesisReaderConfig(c)
-	for _, f := range fn {
-		f(cfg)
+func NewKinesisReader(c *aws.Config, stream string, shard string, optionFns ...KinesisReaderOptionsFn) (*KinesisReader, error) {
+	kinesisReaderOptions := defaultKinesisReaderOptions()
+	for _, optionFn := range optionFns {
+		optionFn(kinesisReaderOptions)
 	}
-	sess, err := session.NewSession(cfg.AwsConfig)
+	sess, err := session.NewSession(c)
 	if err != nil {
 		return nil, err
 	}
 	return &KinesisReader{
-		kinesisReaderOptions: cfg.kinesisReaderOptions,
+		kinesisReaderOptions: kinesisReaderOptions,
 		LogHelper: &kinetic.LogHelper{
-			LogLevel: cfg.LogLevel,
-			Logger:   cfg.AwsConfig.Logger,
+			LogLevel: kinesisReaderOptions.logLevel,
+			Logger:   c.Logger,
 		},
 		stream:      stream,
 		shard:       shard,
@@ -167,7 +221,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		req.HTTPResponse.Body = &ReadCloserWrapper{
 			ReadCloser: req.HTTPResponse.Body,
 			OnCloseFn: func() {
-				r.Stats.AddGetRecordsReadResponseDuration(time.Since(startReadTime))
+				r.stats.AddGetRecordsReadResponseDuration(time.Since(startReadTime))
 				r.LogDebug("Finished GetRecords body read, took", time.Since(start))
 				startUnmarshalTime = time.Now()
 			},
@@ -177,24 +231,24 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 	var payloadSize int
 	req.Handlers.Unmarshal.PushBack(func(req *request.Request) {
 		payloadSize += int(req.HTTPRequest.ContentLength)
-		r.Stats.AddGetRecordsUnmarshalDuration(time.Since(startUnmarshalTime))
+		r.stats.AddGetRecordsUnmarshalDuration(time.Since(startUnmarshalTime))
 		r.LogDebug("Finished GetRecords Unmarshal, took", time.Since(start))
 	})
 
 	// Send the GetRecords request
 	r.LogDebug("Starting GetRecords Build/Sign request, took", time.Since(start))
-	r.Stats.AddGetRecordsCalled(1)
+	r.stats.AddGetRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		r.LogError("Error getting records:", err)
 		switch err.(awserr.Error).Code() {
 		case kinesis.ErrCodeProvisionedThroughputExceededException:
-			r.Stats.AddProvisionedThroughputExceeded(1)
+			r.stats.AddProvisionedThroughputExceeded(1)
 		default:
 			r.LogDebug("Received AWS error:", err.Error())
 		}
 		return 0, 0, err
 	}
-	r.Stats.AddGetRecordsDuration(time.Since(start))
+	r.stats.AddGetRecordsDuration(time.Since(start))
 
 	// Process Records
 	r.LogDebug(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), r.shard, time.Since(start)))
@@ -202,7 +256,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		return 0, 0, kinetic.ErrNilGetRecordsResponse
 	}
 	delivered := 0
-	r.Stats.AddBatchSize(len(resp.Records))
+	r.stats.AddBatchSize(len(resp.Records))
 	for _, record := range resp.Records {
 		if record != nil {
 			// Allow (only) a pipeOfDeath to trigger an instance shutdown of the loop to deliver messages.
@@ -218,7 +272,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 				go fn(kinetic.FromRecord(record), &wg)
 				wg.Wait()
 				delivered++
-				r.Stats.AddConsumed(1)
+				r.stats.AddConsumed(1)
 				if record.SequenceNumber != nil {
 					// We can safely ignore if this call returns error, as if we somehow receive an
 					// empty sequence number from AWS, we will simply not set it.  At worst, this

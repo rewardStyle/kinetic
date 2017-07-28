@@ -1,4 +1,4 @@
-package listener
+package consumer
 
 import (
 	. "github.com/smartystreets/goconvey/convey"
@@ -17,9 +17,10 @@ import (
 	"github.com/aws/aws-sdk-go/service/kinesis"
 
 	"github.com/rewardStyle/kinetic"
+	"github.com/rewardStyle/kinetic/consumer"
 )
 
-func putRecord(l *Listener, b []byte) (*string, error) {
+func putRecord(l *Consumer, b []byte) (*string, error) {
 	resp, err := l.reader.(*KinesisReader).client.PutRecord(&kinesis.PutRecordInput{
 		Data:         b,
 		PartitionKey: aws.String("dummy"),
@@ -54,16 +55,21 @@ func TestListener(t *testing.T) {
 
 		So(k.Session, ShouldNotBeNil)
 		So(k.Session.Config, ShouldNotBeNil)
-		r, err := NewKinesisReader(k.Session.Config, stream, shards[0], func(krc *KinesisReaderConfig) {
-			krc.SetResponseReadTimeout(time.Second)
-		})
+		r, err := NewKinesisReader(k.Session.Config, stream, shards[0],
+			consumer.KinesisReaderBatchSize(10000),
+			//consumer.KinesisReaderShardIterator(),
+			consumer.KinesisReaderResponseReadTimeout(time.Second),
+			consumer.KinesisReaderLogLevel(aws.LogOff),
+		)
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		l, err := NewListener(k.Session.Config, r, func(c *Config) {
-			c.SetQueueDepth(10)
-			c.SetConcurrency(10)
-		})
+		l, err := NewConsumer(k.Session.Config, r,
+			consumer.ConsumerQueueDepth(10),
+			consumer.ConsumerConcurrency(10),
+			consumer.ConsumerLogLevel(aws.LogOff),
+			//consumer.ConsumerStatsCollector(lsc),
+		)
 		So(l, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
@@ -201,7 +207,7 @@ func TestListener(t *testing.T) {
 			wg.Wait()
 		})
 
-		// TODO: Move this test to kinesisreader_test.go
+		// TODO: Move this test to kinesis_reader_test.go
 		Convey("check that throttle mechanism prevents more than 5 calls to get records", func() {
 			start := time.Now()
 			secs := []float64{}

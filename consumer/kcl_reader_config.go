@@ -1,4 +1,4 @@
-package listener
+package consumer
 
 import (
 	"github.com/aws/aws-sdk-go/aws"
@@ -16,7 +16,7 @@ func NewKclReaderConfig(cfg *aws.Config) *KclReaderConfig {
 	return &KclReaderConfig{
 		AwsConfig: cfg,
 		kclReaderOptions: &kclReaderOptions{
-			Stats: &NilStatsCollector{},
+			stats: &NilStatsCollector{},
 		},
 		LogLevel: *cfg.LogLevel,
 	}
@@ -42,7 +42,7 @@ func (c *KclReaderConfig) SetOnShutdownCallbackFn(fn func() error) {
 
 // SetStatsCollector configures a listener to handle listener metrics.
 func (c *KclReaderConfig) SetStatsCollector(stats StatsCollector) {
-	c.Stats = stats
+	c.stats = stats
 }
 
 // SetLogLevel configures both the SDK and Kinetic log levels.

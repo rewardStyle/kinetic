@@ -92,4 +92,16 @@ var (
 
 	// ErrInvalidMsgSizeRateLimit is returned when a MsgCountSizesLimit is configured incorrectly
 	ErrInvalidMsgSizeRateLimit = errors.New("Invalid Message Size Rate Limit")
+
+	// ErrInvalidThroughputMultiplier is returned when a ThroughputMultiplier is configured incorrectly
+	ErrInvalidThroughputMultiplier = errors.New("Invalid Throughput Multiplier")
+
+	// ErrInvalidQueueDepth is returned when the Queue Depth is configured incorrectly
+	ErrInvalidQueueDepth = errors.New("Invalid Queue Depth")
+
+	// ErrInvalidMaxRetryAttempts is returned when the Max Retry Attempts is configured incorrectly
+	ErrInvalidMaxRetryAttempts = errors.New("Invalid Max Retry Attempts")
+
+	// ErrInvalidConcurrency is returned when the concurrency value is configured incorrectly
+	ErrInvalidConcurrency = errors.New("Invalid concurrency")
 )

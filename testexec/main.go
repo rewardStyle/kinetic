@@ -19,7 +19,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	metrics "github.com/jasonyurs/go-metrics"
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/listener"
+	"github.com/rewardStyle/kinetic/consumer"
 	"github.com/rewardStyle/kinetic/producer"
 
 	"net/http"
@@ -237,30 +237,31 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 	}
 
 	psc := producer.NewDefaultStatsCollector(registry)
-	w, err := producer.NewKinesisWriter(k.Session.Config, streamName, func(kwc *producer.KinesisWriterConfig) {
-		//kwc.SetLogLevel(kinetic.LogDebug)
-		kwc.SetResponseReadTimeout(time.Second)
-		kwc.SetStatsCollector(psc)
-		kwc.SetMsgCountRateLimit(1000)
-		kwc.SetMsgSizeRateLimit(1000000)
-	})
+	w, err := producer.NewKinesisWriter(k.Session.Config, streamName,
+		producer.KinesisWriterResponseReadTimeout(time.Second),
+		producer.KinesisWriterMsgCountRateLimit(1000),
+		producer.KinesisWriterMsgSizeRateLimit(1000000),
+		producer.KinesisWriterLogLevel(kinetic.LogDebug),
+		producer.KinesisWriterStatsCollector(psc),
+	)
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
 	}
 
-	p, err := producer.NewProducer(k.Session.Config, w, func(c *producer.Config) {
-		c.SetBatchTimeout(1000 * time.Millisecond)
-		c.SetBatchSize(500)
-		c.SetMaxRetryAttempts(3)
-		c.SetStatsCollector(psc)
-		c.SetQueueDepth(10000)
-		c.SetConcurrency(3)
-		c.SetShardCheckFreq(time.Minute)
-		c.SetDataSpillFn(func(msg *kinetic.Message) error {
+	p, err := producer.NewProducer(k.Session.Config, w,
+		producer.ProducerBatchSize(500),
+		producer.ProducerBatchTimeout(time.Second),
+		producer.ProducerMaxRetryAttempts(3),
+		producer.ProducerQueueDepth(10000),
+		producer.ProducerConcurrency(3),
+		producer.ProducerShardCheckFrequency(time.Minute),
+		producer.ProducerDataSpillFn(func(msg *kinetic.Message) error {
 			//log.Printf("Message was dropped: [%s]\n", string(msg.Data))
 			return nil
-		})
-	})
+		}),
+		producer.ProducerLogLevel(aws.LogOff),
+		producer.ProducerStatsCollector(psc),
+	)
 	if err != nil {
 		log.Fatalf("Unable to create a new producer due to: %v\n", err)
 	}
@@ -268,7 +269,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *producer.Produce
 	return p
 }
 
-func newKineticListener(k *kinetic.Kinetic, streamName string) *listener.Listener {
+func newKineticListener(k *kinetic.Kinetic, streamName string) *consumer.Consumer {
 	if *cfg.Verbose {
 		log.Println("Creating a kinetic listener ...")
 	}
@@ -279,21 +280,24 @@ func newKineticListener(k *kinetic.Kinetic, streamName string) *listener.Listene
 		log.Fatalf("Unable to get shards for stream %s due to: %v\n", streamName, err)
 	}
 
-	lsc := listener.NewDefaultStatsCollector(registry)
-	r, err := listener.NewKinesisReader(k.Session.Config, streamName, shards[0],
-		func(krc *listener.KinesisReaderConfig) {
-			krc.SetResponseReadTimeout(1000 * time.Millisecond)
-			krc.SetStatsCollector(lsc)
-		})
+	lsc := consumer.NewDefaultStatsCollector(registry)
+	r, err := consumer.NewKinesisReader(k.Session.Config, streamName, shards[0],
+		consumer.KinesisReaderBatchSize(10000),
+		//consumer.KinesisReaderShardIterator(),
+		consumer.KinesisReaderResponseReadTimeout(time.Second),
+		consumer.KinesisReaderLogLevel(aws.LogOff),
+		consumer.KinesisReaderStatsCollector(lsc),
+	)
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis reader due to: %v\n", err)
 	}
 
-	l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {
-		c.SetQueueDepth(500)
-		c.SetConcurrency(10)
-		c.SetStatsCollector(lsc)
-	})
+	l, err := consumer.NewConsumer(k.Session.Config, r,
+		consumer.ConsumerQueueDepth(500),
+		consumer.ConsumerConcurrency(10),
+		consumer.ConsumerLogLevel(aws.LogOff),
+		consumer.ConsumerStatsCollector(lsc),
+	)
 	if err != nil {
 		log.Fatalf("Unable to create a new listener due to: %v\n", err)
 	}
@@ -314,7 +318,7 @@ func handlePoD() {
 	}
 }
 
-func display(sd *StreamData, p *producer.Producer, l *listener.Listener, wg *sync.WaitGroup) {
+func display(sd *StreamData, p *producer.Producer, c *consumer.Consumer, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	for {
@@ -336,7 +340,7 @@ func display(sd *StreamData, p *producer.Producer, l *listener.Listener, wg *syn
 				p.Stats.(*producer.DefaultStatsCollector).PrintStats()
 			}
 			if *cfg.Mode != ModeWrite {
-				l.Stats.(*listener.DefaultStatsCollector).PrintStats()
+				c.Stats.(*consumer.DefaultStatsCollector).PrintStats()
 				sd.printSummary()
 			}
 			return
@@ -350,7 +354,7 @@ func display(sd *StreamData, p *producer.Producer, l *listener.Listener, wg *syn
 				p.Stats.(*producer.DefaultStatsCollector).PrintStats()
 			}
 			if *cfg.Mode != ModeWrite {
-				l.Stats.(*listener.DefaultStatsCollector).PrintStats()
+				c.Stats.(*consumer.DefaultStatsCollector).PrintStats()
 				sd.printStats()
 			}
 		}
@@ -472,7 +476,7 @@ func produce(sd *StreamData, p *producer.Producer, wg *sync.WaitGroup) {
 	produceWg.Wait()
 }
 
-func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
+func listen(sd *StreamData, c *consumer.Consumer, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	// Return early if we don't need to produce
@@ -492,7 +496,7 @@ func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
 
 	// Call Listen within a go routine
 	go func() {
-		l.Listen(func(m *kinetic.Message, wg *sync.WaitGroup) error {
+		c.Listen(func(m *kinetic.Message, wg *sync.WaitGroup) error {
 			defer wg.Done()
 
 			// Unmarshal data
@@ -544,7 +548,7 @@ func listen(sd *StreamData, l *listener.Listener, wg *sync.WaitGroup) {
 				}
 				return
 			case <-time.After(time.Second):
-				newConsumed := l.Stats.(*listener.DefaultStatsCollector).Consumed.Count()
+				newConsumed := c.Stats.(*consumer.DefaultStatsCollector).Consumed.Count()
 				if consumed != uint64(newConsumed) {
 					staleTime.Reset(staleTimeout)
 					consumed = uint64(newConsumed)

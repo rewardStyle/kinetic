@@ -1,4 +1,4 @@
-package listener
+package consumer
 
 import (
 	. "github.com/smartystreets/goconvey/convey"
@@ -9,6 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/rewardStyle/kinetic"
+	"github.com/rewardStyle/kinetic/consumer"
 )
 
 func TestNewKinesisReader(t *testing.T) {
@@ -35,7 +36,7 @@ func TestNewKinesisReader(t *testing.T) {
 			So(r.batchSize, ShouldEqual, 10000)
 			So(r.shardIterator, ShouldNotBeNil)
 			So(r.responseReadTimeout, ShouldEqual, time.Second)
-			So(r.Stats, ShouldNotBeNil)
+			So(r.stats, ShouldNotBeNil)
 		})
 
 		Convey("check that we can create a new KinesisReader with configured values", func() {
@@ -44,20 +45,20 @@ func TestNewKinesisReader(t *testing.T) {
 			logLevel := aws.LogDebug | aws.LogDebugWithSigning | kinetic.LogDebug
 			shardIterator := NewShardIterator()
 			myStatsCollector := &NilStatsCollector{}
-			r, err := NewKinesisReader(k.Session.Config, stream, shard, func(krc *KinesisReaderConfig) {
-				krc.SetBatchSize(batchSize)
-				krc.SetResponseReadTimeout(respReadTimeout)
-				krc.SetLogLevel(logLevel)
-				krc.SetInitialShardIterator(shardIterator)
-				krc.SetStatsCollector(myStatsCollector)
-			})
+			r, err := NewKinesisReader(k.Session.Config, stream, shard,
+				consumer.KinesisReaderBatchSize(batchSize),
+				consumer.KinesisReaderShardIterator(shardIterator),
+				consumer.KinesisReaderResponseReadTimeout(respReadTimeout),
+				consumer.KinesisReaderLogLevel(logLevel),
+				consumer.KinesisReaderStatsCollector(myStatsCollector),
+			)
 			So(r, ShouldNotBeNil)
 			So(err, ShouldBeNil)
 			So(r.batchSize, ShouldEqual, batchSize)
 			So(r.responseReadTimeout, ShouldEqual, respReadTimeout)
 			So(r.LogLevel.AtLeast(kinetic.LogDebug), ShouldBeTrue)
 			So(r.shardIterator, ShouldEqual, shardIterator)
-			So(r.Stats, ShouldEqual, myStatsCollector)
+			So(r.stats, ShouldEqual, myStatsCollector)
 		})
 	})
 }

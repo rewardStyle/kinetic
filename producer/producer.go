@@ -12,6 +12,10 @@ import (
 	"golang.org/x/time/rate"
 )
 
+const (
+	putRecordsMaxBatchSize = 500
+)
+
 // producerOptions holds all of the configurable settings for a Producer
 type producerOptions struct {
 	batchSize        int                 // maximum message capacity per request
@@ -21,7 +25,99 @@ type producerOptions struct {
 	concurrency      int                 // number of concurrent workers per shard
 	shardCheckFreq   time.Duration       // frequency (specified as a duration) with which to check the the shard size
 	dataSpillFn      MessageHandlerAsync // callback function for handling dropped messages that the producer was unable to send to the stream
+	logLevel         aws.LogLevelType    // log level for configuring the LogHelper's log level
 	Stats            StatsCollector      // stats collection mechanism
+}
+
+func defaultProducerOptions() *producerOptions {
+	return &producerOptions{
+		batchSize:        putRecordsMaxBatchSize,
+		batchTimeout:     time.Second,
+		queueDepth:       10000,
+		maxRetryAttempts: 10,
+		concurrency:      3,
+		shardCheckFreq:   time.Minute,
+		dataSpillFn:      func(*kinetic.Message) error { return nil },
+		logLevel:         aws.LogOff,
+		Stats:            &NilStatsCollector{},
+	}
+}
+
+type ProducerOptionsFn func(*producerOptions) error
+
+func ProducerBatchSize(size int) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		if size > 0 && size <= putRecordsMaxBatchSize {
+			o.batchSize = size
+			return nil
+		}
+		return kinetic.ErrInvalidBatchSize
+	}
+}
+
+func ProducerBatchTimeout(timeout time.Duration) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		o.batchTimeout = timeout
+		return nil
+	}
+}
+
+func ProducerQueueDepth(queueDepth int) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		if queueDepth > 0 {
+			o.queueDepth = queueDepth
+			return nil
+		}
+		return kinetic.ErrInvalidQueueDepth
+	}
+}
+
+func ProducerMaxRetryAttempts(attemtps int) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		if attemtps > 0  {
+			o.maxRetryAttempts = attemtps
+			return nil
+		}
+		return kinetic.ErrInvalidMaxRetryAttempts
+	}
+}
+
+func ProducerConcurrency(count int) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		if count > 0 {
+			o.concurrency = count
+			return nil
+		}
+		return kinetic.ErrInvalidConcurrency
+	}
+}
+
+func ProducerShardCheckFrequency(duration time.Duration) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		o.shardCheckFreq = duration
+		return nil
+	}
+}
+
+func ProducerDataSpillFn(fn MessageHandlerAsync) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		o.dataSpillFn = fn
+		return nil
+	}
+}
+
+func ProducerLogLevel(ll aws.LogLevelType) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		o.logLevel = ll & 0xffff0000
+		return nil
+	}
+}
+
+func ProducerStatsCollector(sc StatsCollector) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		o.Stats = sc
+		return nil
+	}
 }
 
 // Producer sends records to AWS Kinesis or Firehose.
@@ -44,16 +140,16 @@ type Producer struct {
 }
 
 // NewProducer creates a new producer for writing records to a Kinesis or Firehose stream.
-func NewProducer(c *aws.Config, w StreamWriter, fn ...func(*Config)) (*Producer, error) {
-	cfg := NewConfig(c)
-	for _, f := range fn {
-		f(cfg)
+func NewProducer(c *aws.Config, w StreamWriter, optionFns ...ProducerOptionsFn) (*Producer, error) {
+	producerOptions := defaultProducerOptions()
+	for _, optionFn := range optionFns {
+		optionFn(producerOptions)
 	}
 	return &Producer{
-		producerOptions: cfg.producerOptions,
+		producerOptions: producerOptions,
 		LogHelper: &kinetic.LogHelper{
-			LogLevel: cfg.LogLevel,
-			Logger:   cfg.AwsConfig.Logger,
+			LogLevel: producerOptions.logLevel,
+			Logger:   c.Logger,
 		},
 		writer: w,
 	}, nil

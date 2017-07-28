@@ -14,40 +14,98 @@ import (
 	"github.com/rewardStyle/kinetic"
 )
 
+const (
+	kinesisMsgCountRateLimit = 1000    // AWS Kinesis limit of 1000 records/sec
+	kinesisMsgSizeRateLimit  = 1000000 // AWS Kinesis limit of 1 MB/sec
+)
+
 type kinesisWriterOptions struct {
-	responseReadTimeout time.Duration  // maximum time to wait for PutRecords API call before timing out
-	msgCountRateLimit   int            // maximum number of records to be sent per second
-	msgSizeRateLimit    int            // maximum (transmission) size of records to be sent per second
-	Stats               StatsCollector // stats collection mechanism
+	responseReadTimeout time.Duration    // maximum time to wait for PutRecords API call before timing out
+	msgCountRateLimit   int              // maximum number of records to be sent per second
+	msgSizeRateLimit    int              // maximum (transmission) size of records to be sent per second
+	logLevel            aws.LogLevelType // log level for configuring the LogHelper's log level
+	stats               StatsCollector   // stats collection mechanism
+}
+
+func defaultKinesisWriterOptions() *kinesisWriterOptions {
+	return &kinesisWriterOptions{
+		responseReadTimeout: time.Second,
+		msgCountRateLimit:   kinesisMsgCountRateLimit,
+		msgSizeRateLimit:    kinesisMsgSizeRateLimit,
+		logLevel:            aws.LogOff,
+		stats:               &NilStatsCollector{},
+	}
+}
+
+type KinesisWriterOptionsFn func(*kinesisWriterOptions) error
+
+func KinesisWriterResponseReadTimeout(timeout time.Duration) KinesisWriterOptionsFn {
+	return func(o *kinesisWriterOptions) error {
+		o.responseReadTimeout = timeout
+		return nil
+	}
+}
+
+func KinesisWriterMsgCountRateLimit(limit int) KinesisWriterOptionsFn {
+	return func(o *kinesisWriterOptions) error {
+		if limit > 0 && limit <= kinesisMsgCountRateLimit {
+			o.msgSizeRateLimit = limit
+			return nil
+		}
+		return kinetic.ErrInvalidMsgSizeRateLimit
+	}
+}
+
+func KinesisWriterMsgSizeRateLimit(limit int) KinesisWriterOptionsFn {
+	return func(o *kinesisWriterOptions) error {
+		if limit > 0 && limit <= kinesisMsgSizeRateLimit {
+			o.msgSizeRateLimit = limit
+			return nil
+		}
+		return kinetic.ErrInvalidMsgSizeRateLimit
+	}
+}
+
+func KinesisWriterLogLevel(ll aws.LogLevelType) KinesisWriterOptionsFn {
+	return func(o *kinesisWriterOptions) error {
+		o.logLevel = ll & 0xffff0000
+		return nil
+	}
+}
+
+func KinesisWriterStatsCollector(sc StatsCollector) KinesisWriterOptionsFn {
+	return func(o *kinesisWriterOptions) error {
+		o.stats = sc
+		return nil
+	}
 }
 
 // KinesisWriter handles the API to send records to Kinesis.
 type KinesisWriter struct {
 	*kinesisWriterOptions
 	*kinetic.LogHelper
-
 	stream string
 	client kinesisiface.KinesisAPI
 }
 
 // NewKinesisWriter creates a new stream writer to write records to a Kinesis.
-func NewKinesisWriter(c *aws.Config, stream string, fn ...func(*KinesisWriterConfig)) (*KinesisWriter, error) {
-	cfg := NewKinesisWriterConfig(c)
-	for _, f := range fn {
-		f(cfg)
+func NewKinesisWriter(c *aws.Config, stream string, optionFns ...KinesisWriterOptionsFn) (*KinesisWriter, error) {
+	kinesisWriterOptions := defaultKinesisWriterOptions()
+	for _, option := range optionFns {
+		option(kinesisWriterOptions)
 	}
-	sess, err := session.NewSession(cfg.AwsConfig)
+	sess, err := session.NewSession(c)
 	if err != nil {
 		return nil, err
 	}
 	return &KinesisWriter{
-		kinesisWriterOptions: cfg.kinesisWriterOptions,
-		LogHelper: &kinetic.LogHelper{
-			LogLevel: cfg.LogLevel,
-			Logger:   cfg.AwsConfig.Logger,
-		},
 		stream: stream,
 		client: kinesis.New(sess),
+		kinesisWriterOptions: kinesisWriterOptions,
+		LogHelper: &kinetic.LogHelper{
+			LogLevel: kinesisWriterOptions.logLevel,
+			Logger:   c.Logger,
+		},
 	}, nil
 }
 
@@ -75,7 +133,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*kinetic.Mess
 	})
 
 	req.Handlers.Build.PushBack(func(r *request.Request) {
-		w.Stats.UpdatePutRecordsBuildDuration(time.Since(startBuildTime))
+		w.stats.UpdatePutRecordsBuildDuration(time.Since(startBuildTime))
 		w.LogDebug("Finished PutRecords Build, took", time.Since(start))
 	})
 
@@ -85,17 +143,17 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*kinetic.Mess
 	})
 
 	req.Handlers.Send.PushBack(func(r *request.Request) {
-		w.Stats.UpdatePutRecordsSendDuration(time.Since(startSendTime))
+		w.stats.UpdatePutRecordsSendDuration(time.Since(startSendTime))
 		w.LogDebug("Finished PutRecords Send, took", time.Since(start))
 	})
 
 	w.LogDebug("Starting PutRecords Build/Sign request, took", time.Since(start))
-	w.Stats.AddPutRecordsCalled(1)
+	w.stats.AddPutRecordsCalled(1)
 	if err := req.Send(); err != nil {
 		w.LogError("Error putting records:", err.Error())
 		return err
 	}
-	w.Stats.UpdatePutRecordsDuration(time.Since(start))
+	w.stats.UpdatePutRecordsDuration(time.Since(start))
 
 	if resp == nil {
 		return kinetic.ErrNilPutRecordsResponse
@@ -113,18 +171,18 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*kinetic.Mess
 			// TODO: per-shard metrics
 			messages[idx].SequenceNumber = record.SequenceNumber
 			messages[idx].ShardID = record.ShardId
-			w.Stats.AddSentSuccess(1)
+			w.stats.AddSentSuccess(1)
 		} else {
 			switch aws.StringValue(record.ErrorCode) {
 			case kinesis.ErrCodeProvisionedThroughputExceededException:
-				w.Stats.AddProvisionedThroughputExceeded(1)
+				w.stats.AddProvisionedThroughputExceeded(1)
 			default:
 				w.LogDebug("PutRecords record failed with error:", aws.StringValue(record.ErrorCode), aws.StringValue(record.ErrorMessage))
 			}
 			messages[idx].ErrorCode = record.ErrorCode
 			messages[idx].ErrorMessage = record.ErrorMessage
 			messages[idx].FailCount++
-			w.Stats.AddSentFailed(1)
+			w.stats.AddSentFailed(1)
 
 			fn(messages[idx])
 		}

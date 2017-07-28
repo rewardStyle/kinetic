@@ -53,9 +53,9 @@ p, _ := producer.NewProducer(func(c *producer.Config) {
 })
 
 // Create a kinetic listener
-l, _ := listener.NewListener(func(c *listener.Config) {
+l, _ := consumer.NewListener(func(c *consumer.Config) {
     c.SetAwsConfig(k.Session.Config)
-    c.SetReader(listener.NewKinesisReader("stream-name", "shard-name"))
+    c.SetReader(consumer.NewKinesisReader("stream-name", "shard-name"))
 })
 
 msg, err := l.Retrieve()

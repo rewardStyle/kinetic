@@ -12,9 +12,10 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/rewardStyle/kinetic/listener"
+	"github.com/rewardStyle/kinetic/consumer"
 	"github.com/rewardStyle/kinetic/producer"
 	"github.com/stretchr/testify/assert"
+	"github.com/rewardStyle/kinetic"
 )
 
 type TestMessage struct {
@@ -129,36 +130,53 @@ func TestKineticIntegration(t *testing.T) {
 	log.Printf("Shard Name: %s\n", shards[0])
 
 	// Create a new kinesis stream writer
-	w, err := producer.NewKinesisWriter(k.Session.Config, stream, func(kwc *producer.KinesisWriterConfig) {
-		kwc.SetLogLevel(aws.LogDebug)
-		kwc.SetResponseReadTimeout(time.Second)
-	})
+	w, err := producer.NewKinesisWriter(k.Session.Config, stream,
+		producer.KinesisWriterResponseReadTimeout(time.Second),
+		producer.KinesisWriterMsgCountRateLimit(1000),
+		producer.KinesisWriterMsgSizeRateLimit(1000000),
+		producer.KinesisWriterLogLevel(kinetic.LogDebug),
+	)
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
 	}
 
 	// Create a new kinetic producer
-	p, err := producer.NewProducer(k.Session.Config, w, func(c *producer.Config) {
-		c.SetBatchSize(5)
-		c.SetBatchTimeout(1000 * time.Millisecond)
-	})
+	p, err := producer.NewProducer(k.Session.Config, w,
+		producer.ProducerBatchSize(5),
+		producer.ProducerBatchTimeout(time.Second),
+		producer.ProducerMaxRetryAttempts(3),
+		producer.ProducerQueueDepth(10000),
+		producer.ProducerConcurrency(3),
+		producer.ProducerShardCheckFrequency(time.Minute),
+		producer.ProducerDataSpillFn(func(msg *kinetic.Message) error {
+			//log.Printf("Message was dropped: [%s]\n", string(msg.Data))
+			return nil
+		}),
+		producer.ProducerLogLevel(aws.LogOff),
+		//producer.ProducerStatsCollector(),
+	)
 	assert.NotNil(t, p)
 	assert.Nil(t, err)
 
 	assert.NotNil(t, k.Session)
 	assert.NotNil(t, k.Session.Config)
-	r, err := listener.NewKinesisReader(k.Session.Config, stream, shards[0],
-		func(krc *listener.KinesisReaderConfig) {
-			krc.SetResponseReadTimeout(time.Second)
-		})
+	r, err := consumer.NewKinesisReader(k.Session.Config, stream, shards[0],
+		//consumer.KinesisReaderBatchSize(),
+		//consumer.KinesisReaderShardIterator(),
+		consumer.KinesisReaderResponseReadTimeout(time.Second),
+		//consumer.KinesisReaderLogLevel(),
+		//consumer.KinesisReaderStatsCollector(),
+	)
 	assert.NotNil(t, r)
 	assert.NoError(t, err)
 
 	// Create a new kinetic listener
-	l, err := listener.NewListener(k.Session.Config, r, func(c *listener.Config) {
-		c.SetQueueDepth(20)
-		c.SetConcurrency(10)
-	})
+	l, err := consumer.NewConsumer(k.Session.Config, r,
+		consumer.ConsumerQueueDepth(20),
+		consumer.ConsumerConcurrency(10),
+		consumer.ConsumerLogLevel(aws.LogOff),
+		//consumer.ConsumerStatsCollector(),
+	)
 	assert.NotNil(t, l)
 	assert.Nil(t, err)
 

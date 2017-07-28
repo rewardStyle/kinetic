@@ -1,4 +1,4 @@
-package listener
+package consumer
 
 import (
 	"bufio"
@@ -12,21 +12,67 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/multilang"
 )
 
 type kclReaderOptions struct {
 	onInitCallbackFn       func() error
 	onCheckpointCallbackFn func() error
 	onShutdownCallbackFn   func() error
-	Stats                  StatsCollector
+	logLevel               aws.LogLevelType // log level for configuring the LogHelper's log level
+	stats                  StatsCollector   // stats collection mechanism
+}
+
+func defaultKlcReaderOptions() *kclReaderOptions {
+	return &kclReaderOptions{
+		onInitCallbackFn: func() error { return nil },
+		onCheckpointCallbackFn: func() error { return nil },
+		onShutdownCallbackFn: func() error { return nil },
+		logLevel: aws.LogOff,
+		stats: &NilStatsCollector{},
+	}
+}
+
+type KlcReaderOptionsFn func(*kclReaderOptions) error
+
+func KlcReaderOnInitCallbackFn(fn func() error) KlcReaderOptionsFn {
+	return func(o *kclReaderOptions) error {
+		o.onInitCallbackFn = fn
+		return nil
+	}
+}
+
+func KlcReaderOnCheckpointCallbackFn(fn func() error) KlcReaderOptionsFn {
+	return func(o *kclReaderOptions) error {
+		o.onCheckpointCallbackFn = fn
+		return nil
+	}
+}
+
+func KlcReaderOnShutdownCallbackFn(fn func() error) KlcReaderOptionsFn {
+	return func(o *kclReaderOptions) error {
+		o.onShutdownCallbackFn = fn
+		return nil
+	}
+}
+
+func KlcReaderLogLevel(ll aws.LogLevelType) KlcReaderOptionsFn {
+	return func(o *kclReaderOptions) error {
+		o.logLevel = ll
+		return nil
+	}
+}
+
+func KlcReaderStatsCollector(sc StatsCollector) KlcReaderOptionsFn {
+	return func(o *kclReaderOptions) error {
+		o.stats = sc
+		return nil
+	}
 }
 
 // KclReader handles the KCL Multilang Protocol to read records from KCL
 type KclReader struct {
 	*kclReaderOptions
 	*kinetic.LogHelper
-	throttleSem chan empty
 	pipeOfDeath chan empty
 	scanner     *bufio.Scanner
 	reader      *bufio.Reader
@@ -34,19 +80,18 @@ type KclReader struct {
 }
 
 // NewKclReader creates a new stream reader to read records from KCL
-func NewKclReader(c *aws.Config, fn ...func(*KclReaderConfig)) (*KclReader, error) {
-	cfg := NewKclReaderConfig(c)
-	for _, f := range fn {
-		f(cfg)
+func NewKclReader(c *aws.Config, optionFns ...KlcReaderOptionsFn) (*KclReader, error) {
+	kclReaderOptions := defaultKlcReaderOptions()
+	for _, optionFn := range optionFns {
+		optionFn(kclReaderOptions)
 	}
 	return &KclReader{
-		kclReaderOptions: cfg.kclReaderOptions,
-		LogHelper: &kinetic.LogHelper{
-			LogLevel: cfg.LogLevel,
-			Logger:   cfg.AwsConfig.Logger,
-		},
-		throttleSem: make(chan empty, 5),
 		msgBuffer:   []kinetic.Message{},
+		kclReaderOptions: kclReaderOptions,
+		LogHelper: &kinetic.LogHelper{
+			LogLevel: kclReaderOptions.logLevel,
+			Logger:   c.Logger,
+		},
 	}, nil
 }
 
@@ -64,7 +109,7 @@ func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, int,
 			batchSize = int(math.Min(float64(len(r.msgBuffer)), float64(numRecords)))
 		}
 	}
-	r.Stats.AddBatchSize(batchSize)
+	r.stats.AddBatchSize(batchSize)
 
 	// TODO: Define the payloadSize
 	var payloadSize int
@@ -75,13 +120,13 @@ func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, int,
 		wg.Add(1)
 		go fn(&r.msgBuffer[0], &wg)
 		r.msgBuffer = r.msgBuffer[1:]
-		r.Stats.AddConsumed(1)
+		r.stats.AddConsumed(1)
 	}
 	wg.Wait()
 
 	// Send an acknowledgement that the 'ProcessRecords' message was received/processed
 	if len(r.msgBuffer) == 0 {
-		err := r.sendMessage(multilang.NewStatusMessage(multilang.PROCESSRECORDS))
+		err := r.sendMessage(NewStatusMessage(PROCESSRECORDS))
 		if err != nil {
 			r.LogError(err)
 			return batchSize, payloadSize, err
@@ -91,7 +136,7 @@ func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, int,
 	return batchSize, payloadSize, nil
 }
 
-func (r *KclReader) getAction() (*multilang.ActionMessage, error) {
+func (r *KclReader) getAction() (*ActionMessage, error) {
 	buffer := &bytes.Buffer{}
 	for {
 		line, isPrefix, err := r.reader.ReadLine()
@@ -104,7 +149,7 @@ func (r *KclReader) getAction() (*multilang.ActionMessage, error) {
 		}
 	}
 
-	actionMsg := &multilang.ActionMessage{}
+	actionMsg := &ActionMessage{}
 	err := json.Unmarshal(buffer.Bytes(), actionMsg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not understand line read from input: %s\n", buffer.String())
@@ -126,16 +171,16 @@ func (r *KclReader) processAction() error {
 		}
 
 		switch actionMessage.Action {
-		case multilang.INITIALIZE:
+		case INITIALIZE:
 			r.onInit()
-			r.sendMessage(multilang.NewStatusMessage(multilang.INITIALIZE))
-		case multilang.CHECKPOINT:
+			r.sendMessage(NewStatusMessage(INITIALIZE))
+		case CHECKPOINT:
 			r.onCheckpoint()
-			r.sendMessage(multilang.NewStatusMessage(multilang.CHECKPOINT))
-		case multilang.SHUTDOWN:
+			r.sendMessage(NewStatusMessage(CHECKPOINT))
+		case SHUTDOWN:
 			r.onShutdown()
-			r.sendMessage(multilang.NewStatusMessage(multilang.SHUTDOWN))
-		case multilang.PROCESSRECORDS:
+			r.sendMessage(NewStatusMessage(SHUTDOWN))
+		case PROCESSRECORDS:
 			go func() error {
 				for _, msg := range actionMessage.Records {
 					r.msgBuffer = append(r.msgBuffer, *msg.ToMessage())

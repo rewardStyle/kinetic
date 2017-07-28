@@ -1,4 +1,4 @@
-package listener
+package consumer
 
 import (
 	"log"
@@ -29,29 +29,29 @@ type StatsCollector interface {
 type NilStatsCollector struct{}
 
 // AddConsumed records a count of the number of messages received from AWS
-// Kinesis by the listener.
+// Kinesis by the consumer.
 func (nsc *NilStatsCollector) AddConsumed(int) {}
 
 // AddDelivered records a count of the number of messages delivered to the
-// application by the listener.
+// application by the consumer.
 func (nsc *NilStatsCollector) AddDelivered(int) {}
 
 // AddProcessed records a count of the number of messages processed by the
-// application by the listener.  This is based on a WaitGroup that is sent to
+// application by the consumer.  This is based on a WaitGroup that is sent to
 // the RetrieveFn and Listen functions.  Retrieve does not count processed
 // messages.
 func (nsc *NilStatsCollector) AddProcessed(int) {}
 
 // AddBatchSize records a count of the number of messages returned by
-// GetRecords in the listener.
+// GetRecords in the consumer.
 func (nsc *NilStatsCollector) AddBatchSize(int) {}
 
 // AddGetRecordsCalled records the number of times the GetRecords API was called
-// by the listener.
+// by the consumer.
 func (nsc *NilStatsCollector) AddGetRecordsCalled(int) {}
 
 // AddProvisionedThroughputExceeded records the number of times the GetRecords
-// API returned a ErrCodeProvisionedThroughputExceededException by the listener.
+// API returned a ErrCodeProvisionedThroughputExceededException by the consumer.
 func (nsc *NilStatsCollector) AddProvisionedThroughputExceeded(int) {}
 
 // AddGetRecordsTimeout records the number of times the GetRecords API timed out
@@ -82,18 +82,18 @@ func (nsc *NilStatsCollector) AddGetRecordsUnmarshalDuration(time.Duration) {}
 
 // Metric names to be exported
 const (
-	MetricsConsumed                       = "kinetic.listener.consumed"
-	MetricsDelivered                      = "kinetic.listener.delivered"
-	MetricsProcessed                      = "kinetic.listener.processed"
-	MetricsBatchSize                      = "kinetic.listener.batchsize"
-	MetricsSent                           = "kinetic.listener.sent"
-	MetricsProvisionedThroughputExceeded  = "kinetic.listener.provisionedthroughputexceeded"
-	MetricsGetRecordsTimeout              = "kinetic.listener.getrecords.timeout"
-	MetricsGetRecordsReadTimeout          = "kinetic.listener.getrecords.readtimeout"
-	MetricsProcessedDuration              = "kinetic.listener.processed.duration"
-	MetricsGetRecordsDuration             = "kinetic.listener.getrecords.duration"
-	MetricsGetRecordsReadResponseDuration = "kinetic.listener.getrecords.readresponse.duration"
-	MetricsGetRecordsUnmarshalDuration    = "kinetic.listener.getrecords.unmarshal.duration"
+	MetricsConsumed                       = "kinetic.consumer.consumed"
+	MetricsDelivered                      = "kinetic.consumer.delivered"
+	MetricsProcessed                      = "kinetic.consumer.processed"
+	MetricsBatchSize                      = "kinetic.consumer.batchsize"
+	MetricsSent                           = "kinetic.consumer.sent"
+	MetricsProvisionedThroughputExceeded  = "kinetic.consumer.provisionedthroughputexceeded"
+	MetricsGetRecordsTimeout              = "kinetic.consumer.getrecords.timeout"
+	MetricsGetRecordsReadTimeout          = "kinetic.consumer.getrecords.readtimeout"
+	MetricsProcessedDuration              = "kinetic.consumer.processed.duration"
+	MetricsGetRecordsDuration             = "kinetic.consumer.getrecords.duration"
+	MetricsGetRecordsReadResponseDuration = "kinetic.consumer.getrecords.readresponse.duration"
+	MetricsGetRecordsUnmarshalDuration    = "kinetic.consumer.getrecords.unmarshal.duration"
 )
 
 // DefaultStatsCollector is a type that implements the listener's StatsCollector interface using the
@@ -132,19 +132,19 @@ func NewDefaultStatsCollector(r metrics.Registry) *DefaultStatsCollector {
 }
 
 // AddConsumed records a count of the number of messages received from AWS
-// Kinesis by the listener.
+// Kinesis by the consumer.
 func (dsc *DefaultStatsCollector) AddConsumed(count int) {
 	dsc.Consumed.Inc(int64(count))
 }
 
 // AddDelivered records a count of the number of messages delivered to the
-// application by the listener.
+// application by the consumer.
 func (dsc *DefaultStatsCollector) AddDelivered(count int) {
 	dsc.Delivered.Inc(int64(count))
 }
 
 // AddProcessed records a count of the number of messages processed by the
-// application by the listener.  This is based on a WaitGroup that is sent to
+// application by the consumer.  This is based on a WaitGroup that is sent to
 // the RetrieveFn and Listen functions.  Retrieve does not count processed
 // messages.
 func (dsc *DefaultStatsCollector) AddProcessed(count int) {
@@ -152,19 +152,19 @@ func (dsc *DefaultStatsCollector) AddProcessed(count int) {
 }
 
 // AddBatchSize records a count of the number of messages returned by
-// GetRecords in the listener.
+// GetRecords in the consumer.
 func (dsc *DefaultStatsCollector) AddBatchSize(count int) {
 	dsc.BatchSize.Inc(int64(count))
 }
 
 // AddGetRecordsCalled records the number of times the GetRecords API was called
-// by the listener.
+// by the consumer.
 func (dsc *DefaultStatsCollector) AddGetRecordsCalled(count int) {
 	dsc.GetRecordsCalled.Inc(int64(count))
 }
 
 // AddProvisionedThroughputExceeded records the number of times the GetRecords
-// API returned a ErrCodeProvisionedThroughputExceededException by the listener.
+// API returned a ErrCodeProvisionedThroughputExceededException by the consumer.
 func (dsc *DefaultStatsCollector) AddProvisionedThroughputExceeded(count int) {
 	dsc.ProvisionedThroughputExceeded.Inc(int64(count))
 }

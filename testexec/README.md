@@ -1,5 +1,5 @@
 # testexec
-testexec is an executable CLI program to test the kinetic producer / listener.  
+testexec is an executable CLI program to test the kinetic producer / consumer.  
 
 The executable program creates a kinetic object connecting to either a local kinesalte instance or to AWS Kinesis using local AWS credentials/config.
   
