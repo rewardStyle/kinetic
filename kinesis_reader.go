@@ -18,7 +18,7 @@ const (
 	kinesisReaderBatchSize = 10000
 )
 
-// kinesisReaderOptions is used to hold all of the configurable settings of a KinesisReader.
+// kinesisReaderOptions a struct that holds all of the KinesisReader's configurable parameters.
 type kinesisReaderOptions struct {
 	batchSize           int
 	shardIterator       *ShardIterator
@@ -27,6 +27,7 @@ type kinesisReaderOptions struct {
 	Stats               ConsumerStatsCollector // stats collection mechanism
 }
 
+// defaultKinesisReaderOptions instantiates a kinesisReaderOptions with default values.
 func defaultKinesisReaderOptions() *kinesisReaderOptions {
 	return &kinesisReaderOptions{
 		batchSize:           kinesisReaderBatchSize,
@@ -36,8 +37,12 @@ func defaultKinesisReaderOptions() *kinesisReaderOptions {
 	}
 }
 
+// KinesisReaderOptionsFn is a method signature for defining functional option methods for configuring
+// the KinesisReader.
 type KinesisReaderOptionsFn func(*kinesisReaderOptions) error
 
+// KinesisReaderBatchSize is a functional option method for configuring the KinesisReader's
+// batch size.
 func KinesisReaderBatchSize(size int) KinesisReaderOptionsFn {
 	return func(o *kinesisReaderOptions) error {
 		if size > 0 && size <= kinesisReaderBatchSize {
@@ -48,6 +53,8 @@ func KinesisReaderBatchSize(size int) KinesisReaderOptionsFn {
 	}
 }
 
+// KinesisReaderShardIterator is a functional option method for configuring the KinesisReader's
+// shard iterator.
 func KinesisReaderShardIterator(shardIterator *ShardIterator) KinesisReaderOptionsFn {
 	return func(o *kinesisReaderOptions) error {
 		o.shardIterator = shardIterator
@@ -55,6 +62,8 @@ func KinesisReaderShardIterator(shardIterator *ShardIterator) KinesisReaderOptio
 	}
 }
 
+// KinesisReaderResponseReadTimeout is a functional option method for configuring the KinesisReader's
+// response read timeout.
 func KinesisReaderResponseReadTimeout(timeout time.Duration) KinesisReaderOptionsFn {
 	return func(o *kinesisReaderOptions) error {
 		o.responseReadTimeout = timeout
@@ -62,6 +71,7 @@ func KinesisReaderResponseReadTimeout(timeout time.Duration) KinesisReaderOption
 	}
 }
 
+// KinesisReaderLogLevel is a functional option method for configuring the KinesisReader's log level.
 func KinesisReaderLogLevel(ll aws.LogLevelType) KinesisReaderOptionsFn {
 	return func(o *kinesisReaderOptions) error {
 		o.logLevel = ll & 0xffff0000
@@ -69,6 +79,7 @@ func KinesisReaderLogLevel(ll aws.LogLevelType) KinesisReaderOptionsFn {
 	}
 }
 
+// KinesisReaderStats is a functional option method for configuring the KinesisReader's stats collector.
 func KinesisReaderStats(sc ConsumerStatsCollector) KinesisReaderOptionsFn {
 	return func(o *kinesisReaderOptions) error {
 		o.Stats = sc

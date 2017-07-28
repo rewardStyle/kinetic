@@ -14,7 +14,7 @@ func init() {
 }
 
 func TestProducerStatsCollector(t *testing.T) {
-	Convey("given a NilStatsCollector", t, func() {
+	Convey("given a NilProducerStatsCollector", t, func() {
 		var sc ProducerStatsCollector = &NilProducerStatsCollector{}
 		So(sc, ShouldNotBeNil)
 
@@ -79,7 +79,7 @@ func TestProducerStatsCollector(t *testing.T) {
 		})
 	})
 
-	Convey("given a DefaulStatsCollector", t, func() {
+	Convey("given a DefaultProdcuerStatsCollector", t, func() {
 		r := metrics.NewRegistry()
 		var sc ProducerStatsCollector = NewDefaultProducerStatsCollector(r)
 		So(sc, ShouldNotBeNil)

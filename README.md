@@ -5,7 +5,7 @@
 Kinetic is an MIT-licensed high-performance AWS Kinesis Client for Go
 
 Kinetic wraps [sendgridlabs go-kinesis library](https://github.com/sendgridlabs/go-kinesis) to provide maximum throughput for AWS Kinesis producers and consumers.
-An instance of a Kinetic listener/producer is meant to be used for each shard, so please use it accordingly. If you use more than one instance per-shard then you will
+An instance of a Kinetic consumer/producer is meant to be used for each shard, so please use it accordingly. If you use more than one instance per-shard then you will
 hit the AWS Kinesis throughput [limits](http://docs.aws.amazon.com/kinesis/latest/dev/service-sizes-and-limits.html).
 
 ### Getting Started
@@ -33,7 +33,7 @@ Kinetic can be used to interface with kinesis like so:
 ```go
 import (
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/listener"
+	"github.com/rewardStyle/kinetic/consumer"
 	"github.com/rewardStyle/kinetic/message"
 	"github.com/rewardStyle/kinetic/producer"
 	"sync"
@@ -52,8 +52,8 @@ p, _ := producer.NewProducer(func(c *producer.Config) {
     c.SetKinesisStream("stream-name")
 })
 
-// Create a kinetic listener
-l, _ := consumer.NewListener(func(c *consumer.Config) {
+// Create a kinetic consumer
+l, _ := consumer.NewConsumer(func(c *consumer.Config) {
     c.SetAwsConfig(k.Session.Config)
     c.SetReader(consumer.NewKinesisReader("stream-name", "shard-name"))
 })

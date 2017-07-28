@@ -19,19 +19,19 @@ var (
 )
 
 var (
-	// ErrNilListener is returned when the Listener is nil when it is not
+	// ErrNilConsumer is returned when the Consumer is nil when it is not
 	// supposed to be
-	ErrNilListener = errors.New("StreamReader not associated with a listener")
+	ErrNilConsumer = errors.New("StreamReader not associated with a consumer")
 
-	// ErrListenerAlreadyAssociated is returned by a StreamReader attempting
-	// to associate it with a Listener when it already has an association
-	// with a listener
-	ErrListenerAlreadyAssociated = errors.New("StreamReader already associated with a listener")
+	// ErrConsumerAlreadyAssociated is returned by a StreamReader attempting
+	// to associate it with a Consumer when it already has an association
+	// with a consumer
+	ErrConsumerAlreadyAssociated = errors.New("StreamReader already associated with a consumer")
 
 	// ErrAlreadyConsuming is returned when attempting to consume when the
-	// Listener is already consuming.  May be returned by
+	// Consumer is already consuming.  May be returned by
 	// Retrieve/RetrieveFn.
-	ErrAlreadyConsuming = errors.New("Listener already consuming.  Only one Listen, Retrieve, or RetrieveFn may be active at a time")
+	ErrAlreadyConsuming = errors.New("Consumer already consuming.  Only one Listen, Retrieve, or RetrieveFn may be active at a time")
 
 	// ErrEmptySequenceNumber is returned when attempting to set an empty
 	// sequence number.

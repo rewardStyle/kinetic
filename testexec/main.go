@@ -122,8 +122,8 @@ func main() {
 	// Create a new kinetic producer
 	p := newKineticProducer(k, streamName)
 
-	// Create a new kinetic listener
-	l := newKineticListener(k, streamName)
+	// Create a new kinetic consumer
+	l := newKineticConsumer(k, streamName)
 
 	// Instantiate StreamData Object to keep stats
 	streamData := NewStreamData()
@@ -140,9 +140,9 @@ func main() {
 
 func newDefaultKinetic() *kinetic.Kinetic {
 	k, err := kinetic.NewKinetic(
-		kinetic.KineticAwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
-		kinetic.KineticAwsConfigRegion("some-region"),
-		kinetic.KineticAwsConfigEndpoint("http://127.0.0.1:4567"),
+		kinetic.AwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+		kinetic.AwsConfigRegion("some-region"),
+		kinetic.AwsConfigEndpoint("http://127.0.0.1:4567"),
 	)
 	if err != nil {
 		log.Fatalf("Unable to create new default kinetic object due to: %v\n", err)
@@ -180,8 +180,8 @@ func newAwsKinetic() *kinetic.Kinetic {
 
 	// Instantiate a new kinetic object configured with appropriate configs
 	k, err := kinetic.NewKinetic(
-		kinetic.KineticAwsConfigCredentials(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken),
-		kinetic.KineticAwsConfigRegion(*sess.Config.Region),
+		kinetic.AwsConfigCredentials(creds.AccessKeyID, creds.SecretAccessKey, creds.SessionToken),
+		kinetic.AwsConfigRegion(*sess.Config.Region),
 	)
 	if err != nil {
 		log.Fatalf("Unable to create new aws kinetic object due to: %v\n", err)
@@ -267,9 +267,9 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *kinetic.Producer
 	return p
 }
 
-func newKineticListener(k *kinetic.Kinetic, streamName string) *kinetic.Consumer {
+func newKineticConsumer(k *kinetic.Kinetic, streamName string) *kinetic.Consumer {
 	if *cfg.Verbose {
-		log.Println("Creating a kinetic listener ...")
+		log.Println("Creating a kinetic consumer ...")
 	}
 
 	// Determine the shard name
@@ -297,7 +297,7 @@ func newKineticListener(k *kinetic.Kinetic, streamName string) *kinetic.Consumer
 		kinetic.ConsumerStats(lsc),
 	)
 	if err != nil {
-		log.Fatalf("Unable to create a new listener due to: %v\n", err)
+		log.Fatalf("Unable to create a new consumer due to: %v\n", err)
 	}
 
 	return l
@@ -485,10 +485,10 @@ func listen(sd *StreamData, c *kinetic.Consumer, wg *sync.WaitGroup) {
 	defer func() {
 		if *cfg.Verbose {
 			log.Println()
-			log.Println("listener: Exiting listen ...")
+			log.Println("consumer: Exiting listen ...")
 		}
 
-		// In read and readwrite mode the listener controls when to stop displaying
+		// In read and readwrite mode the consumer controls when to stop displaying
 		stopDisplay <- struct{}{}
 	}()
 
@@ -504,7 +504,7 @@ func listen(sd *StreamData, c *kinetic.Consumer, wg *sync.WaitGroup) {
 			// Only mark "done" if the message isn't a duplicate
 			if sd.exists(msg.ID) {
 				if *cfg.Verbose {
-					log.Printf("listener: Duplicate message: %v\n", msg)
+					log.Printf("consumer: Duplicate message: %v\n", msg)
 				}
 			}
 
@@ -536,13 +536,13 @@ func listen(sd *StreamData, c *kinetic.Consumer, wg *sync.WaitGroup) {
 			case <-stopListen:
 				if *cfg.Verbose {
 					log.Println()
-					log.Println("listener: Received stop listen ...")
+					log.Println("consumer: Received stop listen ...")
 				}
 				return
 			case <-staleTime.C:
 				if *cfg.Verbose {
 					log.Println()
-					log.Println("listener: No more incoming messages from listener ...")
+					log.Println("consumer: No more incoming messages from consumer ...")
 				}
 				return
 			case <-time.After(time.Second):

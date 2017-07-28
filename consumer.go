@@ -10,14 +10,15 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// consumerOptions is used to hold all of the configurable settings of a Listener object.
+// consumerOptions is used to hold all of the configurable settings of a Consumer.
 type consumerOptions struct {
-	queueDepth  int
-	concurrency int
+	queueDepth  int          	   // size of the consumer's message channel
+	concurrency int		           // number of concurrent routines processing messages off of the message channel
 	logLevel    aws.LogLevelType       // log level for configuring the LogHelper's log level
 	Stats       ConsumerStatsCollector // stats collection mechanism
 }
 
+// defaultConsumerOptions instantiates a consumerOptions with default values.
 func defaultConsumerOptions() *consumerOptions {
 	return &consumerOptions{
 		queueDepth:  10000,
@@ -26,8 +27,10 @@ func defaultConsumerOptions() *consumerOptions {
 	}
 }
 
+// ConsumerOptionsFn is a method signature for defining functional option methods for configuring the Consumer.
 type ConsumerOptionsFn func(*consumerOptions) error
 
+// ConsumerQueueDepth is a functional option method for configuring the consumer's queueDepth.
 func ConsumerQueueDepth(depth int) ConsumerOptionsFn {
 	return func(o *consumerOptions) error {
 		if depth > 0 {
@@ -38,6 +41,7 @@ func ConsumerQueueDepth(depth int) ConsumerOptionsFn {
 	}
 }
 
+// ConsumerConcurrency is a functional option method for configuring the consumer's concurrency.
 func ConsumerConcurrency(count int) ConsumerOptionsFn {
 	return func(o *consumerOptions) error {
 		if count > 0 {
@@ -48,6 +52,7 @@ func ConsumerConcurrency(count int) ConsumerOptionsFn {
 	}
 }
 
+// ConsumerLogLevel is a functional option method for configuring the consumer's log level.
 func ConsumerLogLevel(ll aws.LogLevelType) ConsumerOptionsFn {
 	return func(o *consumerOptions) error {
 		o.logLevel = ll & 0xffff0000
@@ -55,6 +60,7 @@ func ConsumerLogLevel(ll aws.LogLevelType) ConsumerOptionsFn {
 	}
 }
 
+// ConsumerStats is a functional option method for configuring the consumer's stats collector.
 func ConsumerStats(sc ConsumerStatsCollector) ConsumerOptionsFn {
 	return func(o *consumerOptions) error {
 		o.Stats = sc
@@ -62,7 +68,7 @@ func ConsumerStats(sc ConsumerStatsCollector) ConsumerOptionsFn {
 	}
 }
 
-// Listener polls the StreamReader for messages.
+// Consumer polls the StreamReader for messages.
 type Consumer struct {
 	*consumerOptions
 	*LogHelper
@@ -76,7 +82,7 @@ type Consumer struct {
 	consumingMu         sync.Mutex
 }
 
-// NewListener creates a new Listener object for retrieving and listening to message(s) on a StreamReader.
+// NewConsumer creates a new Consumer object for retrieving and listening to message(s) on a StreamReader.
 func NewConsumer(c *aws.Config, r StreamReader, optionFns ...ConsumerOptionsFn) (*Consumer, error) {
 	consumerOptions := defaultConsumerOptions()
 	for _, optionFn := range optionFns {
@@ -133,6 +139,7 @@ func (l *Consumer) stopConsuming() {
 	l.consuming = false
 }
 
+// enqueueSingle calls the readers's GetRecord method and enqueus a single message on the message channel.
 func (l *Consumer) enqueueSingle(ctx context.Context) (int, int, error) {
 	n, m, err := l.reader.GetRecord(ctx, func(msg *Message, wg *sync.WaitGroup) error {
 		defer wg.Done()
@@ -147,6 +154,7 @@ func (l *Consumer) enqueueSingle(ctx context.Context) (int, int, error) {
 	return n, m, nil
 }
 
+// enqueueBatch calls the reader's GetRecords method and enqueues a batch of messages on the message chanel.
 func (l *Consumer) enqueueBatch(ctx context.Context) (int, int, error) {
 	n, m, err := l.reader.GetRecords(ctx,
 		func(msg *Message, wg *sync.WaitGroup) error {
@@ -162,6 +170,8 @@ func (l *Consumer) enqueueBatch(ctx context.Context) (int, int, error) {
 	return n, m, nil
 }
 
+// handleErrorLogging is a helper method for handling and logging errors from calling the reader's
+// GetRecord and GetRecords method.
 func (l *Consumer) handleErrorLogging(err error) {
 	switch err := err.(type) {
 	case net.Error:
@@ -210,7 +220,7 @@ func (l *Consumer) RetrieveWithContext(ctx context.Context) (*Message, error) {
 	}
 }
 
-// Retrieve waits for a message from the stream and returns the value
+// Retrieve waits for a message from the stream and returns the value.
 func (l *Consumer) Retrieve() (*Message, error) {
 	return l.RetrieveWithContext(context.TODO())
 }
@@ -242,7 +252,7 @@ func (l *Consumer) RetrieveFn(fn MessageProcessor) error {
 	return l.RetrieveFnWithContext(context.TODO(), fn)
 }
 
-// consume calls getRecords with configured batch size in a loop until the listener is stopped.
+// consume calls getRecords with configured batch size in a loop until the consumer is stopped.
 func (l *Consumer) consume(ctx context.Context) {
 	// We need to run startConsuming to make sure that we are okay and ready to start consuming.  This is mainly to
 	// avoid a race condition where Listen() will attempt to read the messages channel prior to consume()

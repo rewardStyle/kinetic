@@ -7,7 +7,7 @@ import (
 	metrics "github.com/jasonyurs/go-metrics"
 )
 
-// StatsCollector allows for a collector to collect various metrics produced by
+// ProducerStatsCollector allows for a collector to collect various metrics produced by
 // the Kinetic producer library.  This was really built with rcrowley/go-metrics
 // in mind.
 type ProducerStatsCollector interface {
@@ -27,7 +27,7 @@ type ProducerStatsCollector interface {
 	UpdateProducerConcurrency(int)
 }
 
-// NilStatsCollector is a stats listener that ignores all metrics.
+// NilProducerStatsCollector is a stats consumer that ignores all metrics.
 type NilProducerStatsCollector struct{}
 
 // AddSentTotal records a count of the total number of messages attempted by PutRecords in the producer.
@@ -96,7 +96,7 @@ const (
 	MetricsProducerConcurrency                     = "kinetic.producer.concurrency"
 )
 
-// DefaultStatsCollector is a type that implements the producers's StatsCollector interface using the
+// DefaultProducerStatsCollector is a type that implements the producers's StatsCollector interface using the
 // rcrowley/go-metrics library
 type DefaultProducerStatsCollector struct {
 	SentTotal                               metrics.Counter
@@ -115,7 +115,7 @@ type DefaultProducerStatsCollector struct {
 	ProducerConcurrency                     metrics.Gauge
 }
 
-// NewDefaultStatsCollector instantiates a new DefaultStatsCollector object
+// NewDefaultProducerStatsCollector instantiates a new DefaultStatsCollector object
 func NewDefaultProducerStatsCollector(r metrics.Registry) *DefaultProducerStatsCollector {
 	return &DefaultProducerStatsCollector{
 		SentTotal:                               metrics.GetOrRegisterCounter(MetricsSentTotal, r),

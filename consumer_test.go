@@ -29,15 +29,15 @@ func putRecord(l *Consumer, b []byte) (*string, error) {
 	return resp.SequenceNumber, nil
 }
 
-func TestListener(t *testing.T) {
-	Convey("given a listener", t, func() {
+func TestConsumer(t *testing.T) {
+	Convey("given a consumer", t, func() {
 		k, err := NewKinetic(
-			KineticAwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
-			KineticAwsConfigRegion("some-region"),
-			KineticAwsConfigEndpoint("http://127.0.0.1:4567"),
+			AwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+			AwsConfigRegion("some-region"),
+			AwsConfigEndpoint("http://127.0.0.1:4567"),
 		)
 
-		stream := "some-listener-stream"
+		stream := "some-consumer-stream"
 
 		err = k.CreateStream(stream, 1)
 		So(err, ShouldBeNil)

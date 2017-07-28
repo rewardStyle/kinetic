@@ -17,6 +17,7 @@ const (
 	kinesisMsgSizeRateLimit  = 1000000 // AWS Kinesis limit of 1 MB/sec
 )
 
+// kinesisWriterOptions is a struct that holds all of the KinesisWriter's configurable parameters.
 type kinesisWriterOptions struct {
 	responseReadTimeout time.Duration          // maximum time to wait for PutRecords API call before timing out
 	msgCountRateLimit   int                    // maximum number of records to be sent per second
@@ -25,6 +26,7 @@ type kinesisWriterOptions struct {
 	Stats               ProducerStatsCollector // stats collection mechanism
 }
 
+// defaultKinesisWriterOptions instantiates a kinesisWriterOptions with default values.
 func defaultKinesisWriterOptions() *kinesisWriterOptions {
 	return &kinesisWriterOptions{
 		responseReadTimeout: time.Second,
@@ -35,8 +37,12 @@ func defaultKinesisWriterOptions() *kinesisWriterOptions {
 	}
 }
 
+// KinesisWriterOptionsFn is a method signature for defining functional option methods for configuring
+// the KinesisWriter.
 type KinesisWriterOptionsFn func(*kinesisWriterOptions) error
 
+// KinesisWriterResponseReadTimeout is a functional option method for configuring the KinesisWriter's
+// response read timeout
 func KinesisWriterResponseReadTimeout(timeout time.Duration) KinesisWriterOptionsFn {
 	return func(o *kinesisWriterOptions) error {
 		o.responseReadTimeout = timeout
@@ -44,6 +50,8 @@ func KinesisWriterResponseReadTimeout(timeout time.Duration) KinesisWriterOption
 	}
 }
 
+// KinesisWriterMsgCountRateLimit is a functional option method for configuring the KinesisWriter's
+// message count rate limit
 func KinesisWriterMsgCountRateLimit(limit int) KinesisWriterOptionsFn {
 	return func(o *kinesisWriterOptions) error {
 		if limit > 0 && limit <= kinesisMsgCountRateLimit {
@@ -54,6 +62,8 @@ func KinesisWriterMsgCountRateLimit(limit int) KinesisWriterOptionsFn {
 	}
 }
 
+// KinesisWriterMsgSizeRateLimit is a functional option method for configuring the KinesisWriter's
+// message size rate limit
 func KinesisWriterMsgSizeRateLimit(limit int) KinesisWriterOptionsFn {
 	return func(o *kinesisWriterOptions) error {
 		if limit > 0 && limit <= kinesisMsgSizeRateLimit {
@@ -64,6 +74,7 @@ func KinesisWriterMsgSizeRateLimit(limit int) KinesisWriterOptionsFn {
 	}
 }
 
+// KinesisWriterLogLevel is a functional option method for configuring the KinesisWriter's log level
 func KinesisWriterLogLevel(ll aws.LogLevelType) KinesisWriterOptionsFn {
 	return func(o *kinesisWriterOptions) error {
 		o.logLevel = ll & 0xffff0000
@@ -71,6 +82,7 @@ func KinesisWriterLogLevel(ll aws.LogLevelType) KinesisWriterOptionsFn {
 	}
 }
 
+// KinesisWriterStats is a functional option method for configuring the KinesisWriter's stats collector
 func KinesisWriterStats(sc ProducerStatsCollector) KinesisWriterOptionsFn {
 	return func(o *kinesisWriterOptions) error {
 		o.Stats = sc

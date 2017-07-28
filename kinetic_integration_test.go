@@ -92,9 +92,9 @@ func TestKineticIntegration(t *testing.T) {
 
 	// Instantiate a new kinentic object
 	k, err := NewKinetic(
-		KineticAwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
-		KineticAwsConfigRegion("some-region"),
-		KineticAwsConfigEndpoint("http://127.0.0.1:4567"),
+		AwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+		AwsConfigRegion("some-region"),
+		AwsConfigEndpoint("http://127.0.0.1:4567"),
 	)
 	assert.NotNil(t, k)
 	assert.Nil(t, err)
@@ -131,7 +131,7 @@ func TestKineticIntegration(t *testing.T) {
 		KinesisWriterResponseReadTimeout(time.Second),
 		KinesisWriterMsgCountRateLimit(1000),
 		KinesisWriterMsgSizeRateLimit(1000000),
-		KinesisWriterLogLevel(LogDebug),
+		KinesisWriterLogLevel(aws.LogOff),
 	)
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
@@ -167,7 +167,7 @@ func TestKineticIntegration(t *testing.T) {
 	assert.NotNil(t, r)
 	assert.NoError(t, err)
 
-	// Create a new kinetic listener
+	// Create a new kinetic consumer
 	l, err := NewConsumer(k.Session.Config, r,
 		ConsumerQueueDepth(20),
 		ConsumerConcurrency(10),
@@ -200,7 +200,7 @@ func TestKineticIntegration(t *testing.T) {
 		}
 	}(&numSent)
 
-	// Use the listener to read messages from the kinetic stream
+	// Use the consumer to read messages from the kinetic stream
 	go func() {
 		l.Listen(func(m *Message, fnwg *sync.WaitGroup) error {
 			defer fnwg.Done()

@@ -15,9 +15,9 @@ import (
 func TestKinetic(t *testing.T) {
 	Convey("given a kinetic object", t, func() {
 		k, err := NewKinetic(
-			KineticAwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
-			KineticAwsConfigRegion("some-region"),
-			KineticAwsConfigEndpoint("http://127.0.0.1:4567"),
+			AwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+			AwsConfigRegion("some-region"),
+			AwsConfigEndpoint("http://127.0.0.1:4567"),
 		)
 		So(k, ShouldNotBeNil)
 		So(err, ShouldBeNil)

@@ -13,14 +13,16 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 )
 
+// kclReaderOptions is a struct that holds all of the KclReader's configurable parameters.
 type kclReaderOptions struct {
-	onInitCallbackFn       func() error
-	onCheckpointCallbackFn func() error
-	onShutdownCallbackFn   func() error
+	onInitCallbackFn       func() error	      // callback function that gets called after initialization
+	onCheckpointCallbackFn func() error	      // callback function that gets called after checkpointing
+	onShutdownCallbackFn   func() error	      // callback function that gets called after shutdown
 	logLevel               aws.LogLevelType       // log level for configuring the LogHelper's log level
 	Stats                  ConsumerStatsCollector // stats collection mechanism
 }
 
+// defaultKlcReaderOptions instantiates a kclReaderOptions with default values.
 func defaultKlcReaderOptions() *kclReaderOptions {
 	return &kclReaderOptions{
 		onInitCallbackFn:       func() error { return nil },
@@ -31,8 +33,11 @@ func defaultKlcReaderOptions() *kclReaderOptions {
 	}
 }
 
+// KlcReaderOptionsFn is a method signature for defining functional option methods for configuring the KclReader.
 type KlcReaderOptionsFn func(*kclReaderOptions) error
 
+// KlcReaderOnInitCallbackFn is a functional option method for configuring the KclReader's
+// onInitCallbackFn.
 func KlcReaderOnInitCallbackFn(fn func() error) KlcReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.onInitCallbackFn = fn
@@ -40,6 +45,8 @@ func KlcReaderOnInitCallbackFn(fn func() error) KlcReaderOptionsFn {
 	}
 }
 
+// KlcReaderOnCheckpointCallbackFn is a functional option method for configuring the KclReader's
+// onCheckpointCallbackFn.
 func KlcReaderOnCheckpointCallbackFn(fn func() error) KlcReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.onCheckpointCallbackFn = fn
@@ -47,6 +54,8 @@ func KlcReaderOnCheckpointCallbackFn(fn func() error) KlcReaderOptionsFn {
 	}
 }
 
+// KlcReaderOnShutdownCallbackFn is a functional option method for configuring the KclReader's
+// onShutdownCallbackFn.
 func KlcReaderOnShutdownCallbackFn(fn func() error) KlcReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.onShutdownCallbackFn = fn
@@ -54,6 +63,7 @@ func KlcReaderOnShutdownCallbackFn(fn func() error) KlcReaderOptionsFn {
 	}
 }
 
+// KlcReaderLogLevel is a functional option method for configuring the KclReader's log level.
 func KlcReaderLogLevel(ll aws.LogLevelType) KlcReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.logLevel = ll
@@ -61,6 +71,7 @@ func KlcReaderLogLevel(ll aws.LogLevelType) KlcReaderOptionsFn {
 	}
 }
 
+// KlcReaderStats is a functional option method for configuring the KclReader's stats collector.
 func KlcReaderStats(sc ConsumerStatsCollector) KlcReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.Stats = sc
@@ -94,8 +105,8 @@ func NewKclReader(c *aws.Config, optionFns ...KlcReaderOptionsFn) (*KclReader, e
 	}, nil
 }
 
-// processRecords is a helper method which loops through the message buffer and puts messages on the listener's
-// message channel.  After all the messages on the message buffer have been moved to the listener's message
+// processRecords is a helper method which loops through the message buffer and puts messages on the consumer's
+// message channel.  After all the messages on the message buffer have been moved to the consumer's message
 // channel, a message is sent (following the Multilang protocol) to acknowledge that the processRecords message
 // has been received / processed
 func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, int, error) {
@@ -239,13 +250,13 @@ func (r *KclReader) onShutdown() error {
 	return nil
 }
 
-// GetRecord calls processRecords to attempt to put one message from message buffer to the listener's message
+// GetRecord calls processRecords to attempt to put one message from message buffer to the consumer's message
 // channel
 func (r *KclReader) GetRecord(ctx context.Context, fn MessageHandler) (int, int, error) {
 	return r.processRecords(fn, 1)
 }
 
-// GetRecords calls processRecords to attempt to put all messages on the message buffer on the listener's
+// GetRecords calls processRecords to attempt to put all messages on the message buffer on the consumer's
 // message channel
 func (r *KclReader) GetRecords(ctx context.Context, fn MessageHandler) (int, int, error) {
 	return r.processRecords(fn, -1)

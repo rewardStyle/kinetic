@@ -17,9 +17,9 @@ func TestNewKinesisReader(t *testing.T) {
 	Convey("given a kinetic object and kinesis stream/shard names", t, func() {
 		// Instantiate a new kinentic object
 		k, err := NewKinetic(
-			KineticAwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
-			KineticAwsConfigRegion("some-region"),
-			KineticAwsConfigEndpoint("http://127.0.0.1:4567"),
+			AwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+			AwsConfigRegion("some-region"),
+			AwsConfigEndpoint("http://127.0.0.1:4567"),
 		)
 		So(k, ShouldNotBeNil)
 		So(err, ShouldBeNil)
@@ -38,7 +38,7 @@ func TestNewKinesisReader(t *testing.T) {
 		})
 
 		Convey("check that we can create a new KinesisReader with configured values", func() {
-			batchSize := rand.Int()
+			batchSize := rand.Intn(kinesisReaderBatchSize)
 			respReadTimeout := time.Duration(rand.Int()) * time.Second
 			logLevel := aws.LogDebug | aws.LogDebugWithSigning | LogDebug
 			shardIterator := NewShardIterator()

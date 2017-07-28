@@ -7,8 +7,8 @@ import (
 	metrics "github.com/jasonyurs/go-metrics"
 )
 
-// StatsCollector allows for a collector to collect various metrics produced by
-// the Kinetic Listener library.  This was really built with rcrowley/go-metrics
+// ConsumerStatsCollector allows for a collector to collect various metrics produced by
+// the Kinetic Consumer library.  This was really built with rcrowley/go-metrics
 // in mind.
 type ConsumerStatsCollector interface {
 	AddConsumed(int)
@@ -25,7 +25,7 @@ type ConsumerStatsCollector interface {
 	AddGetRecordsUnmarshalDuration(time.Duration)
 }
 
-// NilStatsCollector is a stats listener that ignores all metrics.
+// NilConsumerStatsCollector is a stats consumer that ignores all metrics.
 type NilConsumerStatsCollector struct{}
 
 // AddConsumed records a count of the number of messages received from AWS
@@ -50,7 +50,7 @@ func (nsc *NilConsumerStatsCollector) AddBatchSize(int) {}
 // by the consumer.
 func (nsc *NilConsumerStatsCollector) AddGetRecordsCalled(int) {}
 
-// AddProvisionedThroughputExceeded records the number of times the GetRecords
+// AddGetRecordsProvisionedThroughputExceeded records the number of times the GetRecords
 // API returned a ErrCodeProvisionedThroughputExceededException by the consumer.
 func (nsc *NilConsumerStatsCollector) AddGetRecordsProvisionedThroughputExceeded(int) {}
 
@@ -96,7 +96,7 @@ const (
 	MetricsGetRecordsUnmarshalDuration    	       = "kinetic.consumer.getrecords.unmarshal.duration"
 )
 
-// DefaultStatsCollector is a type that implements the listener's StatsCollector interface using the
+// DefaultConsumerStatsCollector is a type that implements the consumer's StatsCollector interface using the
 // rcrowley/go-metrics library
 type DefaultConsumerStatsCollector struct {
 	Consumed                                metrics.Counter
@@ -113,7 +113,7 @@ type DefaultConsumerStatsCollector struct {
 	GetRecordsUnmarshalDuration             metrics.Gauge
 }
 
-// NewDefaultStatsCollector instantiates a new DefaultStatsCollector object
+// NewDefaultConsumerStatsCollector instantiates a new DefaultStatsCollector object
 func NewDefaultConsumerStatsCollector(r metrics.Registry) *DefaultConsumerStatsCollector {
 	return &DefaultConsumerStatsCollector{
 		Consumed:                       	  metrics.GetOrRegisterCounter(MetricsConsumed, r),
@@ -163,7 +163,7 @@ func (dsc *DefaultConsumerStatsCollector) AddGetRecordsCalled(count int) {
 	dsc.GetRecordsCalled.Inc(int64(count))
 }
 
-// AddProvisionedThroughputExceeded records the number of times the GetRecords
+// AddGetRecordsProvisionedThroughputExceeded records the number of times the GetRecords
 // API returned a ErrCodeProvisionedThroughputExceededException by the consumer.
 func (dsc *DefaultConsumerStatsCollector) AddGetRecordsProvisionedThroughputExceeded(count int) {
 	dsc.GetRecordsProvisionedThroughputExceeded.Inc(int64(count))
@@ -209,16 +209,16 @@ func (dsc *DefaultConsumerStatsCollector) AddGetRecordsUnmarshalDuration(duratio
 
 // PrintStats logs the stats
 func (dsc *DefaultConsumerStatsCollector) PrintStats() {
-	log.Printf("Listener stats: Consumed: [%d]\n", dsc.Consumed.Count())
-	log.Printf("Listener stats: Delivered: [%d]\n", dsc.Delivered.Count())
-	log.Printf("Listener stats: Processed: [%d]\n", dsc.Processed.Count())
-	log.Printf("Listener stats: Batch Size: [%d]\n", dsc.BatchSize.Count())
-	log.Printf("Listener stats: GetRecords Called: [%d]\n", dsc.GetRecordsCalled.Count())
-	log.Printf("Listener stats: GetRecords Timeout: [%d]\n", dsc.GetRecordsTimeout.Count())
-	log.Printf("Listener stats: GetRecords Read Timeout: [%d]\n", dsc.GetRecordsReadTimeout.Count())
-	log.Printf("Listener stats: GetRecords Provisioned Throughput Exceeded: [%d]\n", dsc.GetRecordsProvisionedThroughputExceeded.Count())
-	log.Printf("Listener stats: Processed Duration (ns): [%d]\n", dsc.ProcessedDuration.Value())
-	log.Printf("Listener stats: GetRecords Duration (ns): [%d]\n", dsc.GetRecordsDuration.Value())
-	log.Printf("Listener stats: GetRecords Read Response Duration (ns): [%d]\n", dsc.GetRecordsReadResponseDuration.Value())
-	log.Printf("Listener stats: GetRecords Unmarshal Duration (ns): [%d]\n", dsc.GetRecordsUnmarshalDuration.Value())
+	log.Printf("Consumer stats: Consumed: [%d]\n", dsc.Consumed.Count())
+	log.Printf("Consumer stats: Delivered: [%d]\n", dsc.Delivered.Count())
+	log.Printf("Consumer stats: Processed: [%d]\n", dsc.Processed.Count())
+	log.Printf("Consumer stats: Batch Size: [%d]\n", dsc.BatchSize.Count())
+	log.Printf("Consumer stats: GetRecords Called: [%d]\n", dsc.GetRecordsCalled.Count())
+	log.Printf("Consumer stats: GetRecords Timeout: [%d]\n", dsc.GetRecordsTimeout.Count())
+	log.Printf("Consumer stats: GetRecords Read Timeout: [%d]\n", dsc.GetRecordsReadTimeout.Count())
+	log.Printf("Consumer stats: GetRecords Provisioned Throughput Exceeded: [%d]\n", dsc.GetRecordsProvisionedThroughputExceeded.Count())
+	log.Printf("Consumer stats: Processed Duration (ns): [%d]\n", dsc.ProcessedDuration.Value())
+	log.Printf("Consumer stats: GetRecords Duration (ns): [%d]\n", dsc.GetRecordsDuration.Value())
+	log.Printf("Consumer stats: GetRecords Read Response Duration (ns): [%d]\n", dsc.GetRecordsReadResponseDuration.Value())
+	log.Printf("Consumer stats: GetRecords Unmarshal Duration (ns): [%d]\n", dsc.GetRecordsUnmarshalDuration.Value())
 }

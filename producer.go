@@ -15,7 +15,7 @@ const (
 	putRecordsMaxBatchSize = 500
 )
 
-// producerOptions holds all of the configurable settings for a Producer
+// producerOptions holds all of the configurable settings for a Producer.
 type producerOptions struct {
 	batchSize        int                  // maximum message capacity per request
 	batchTimeout     time.Duration        // maximum time duration to wait for incoming messages
@@ -28,6 +28,7 @@ type producerOptions struct {
 	Stats          ProducerStatsCollector // stats collection mechanism
 }
 
+// defaultProducerOptions instantiates a producerOptions with default values.
 func defaultProducerOptions() *producerOptions {
 	return &producerOptions{
 		batchSize:        putRecordsMaxBatchSize,
@@ -42,8 +43,10 @@ func defaultProducerOptions() *producerOptions {
 	}
 }
 
+// ProducerOptionsFn is a method signature for defining functional option methods for configuring the Producer.
 type ProducerOptionsFn func(*producerOptions) error
 
+// ProducerBatchSize is a functional option method for configuing the producer's batch size.
 func ProducerBatchSize(size int) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		if size > 0 && size <= putRecordsMaxBatchSize {
@@ -54,6 +57,7 @@ func ProducerBatchSize(size int) ProducerOptionsFn {
 	}
 }
 
+// ProducerBatchTimeout is a functional option method for configuing the producer's batch timeout.
 func ProducerBatchTimeout(timeout time.Duration) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.batchTimeout = timeout
@@ -61,6 +65,7 @@ func ProducerBatchTimeout(timeout time.Duration) ProducerOptionsFn {
 	}
 }
 
+// ProducerQueueDepth is a functional option method for configuing the producer's queue depth.
 func ProducerQueueDepth(queueDepth int) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		if queueDepth > 0 {
@@ -71,6 +76,7 @@ func ProducerQueueDepth(queueDepth int) ProducerOptionsFn {
 	}
 }
 
+// ProducerMaxRetryAttempts is a functional option method for configuing the producer's max retry attempts.
 func ProducerMaxRetryAttempts(attemtps int) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		if attemtps > 0  {
@@ -81,6 +87,7 @@ func ProducerMaxRetryAttempts(attemtps int) ProducerOptionsFn {
 	}
 }
 
+// ProducerConcurrency is a functional option method for configuing the producer's concurrency.
 func ProducerConcurrency(count int) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		if count > 0 {
@@ -91,6 +98,7 @@ func ProducerConcurrency(count int) ProducerOptionsFn {
 	}
 }
 
+// ProducerShardCheckFrequency is a functional option method for configuing the producer's shard check frequency.
 func ProducerShardCheckFrequency(duration time.Duration) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.shardCheckFreq = duration
@@ -98,6 +106,7 @@ func ProducerShardCheckFrequency(duration time.Duration) ProducerOptionsFn {
 	}
 }
 
+// ProducerDataSpillFn is a functional option method for configuing the producer's data spill callback function.
 func ProducerDataSpillFn(fn MessageHandlerAsync) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.dataSpillFn = fn
@@ -105,6 +114,7 @@ func ProducerDataSpillFn(fn MessageHandlerAsync) ProducerOptionsFn {
 	}
 }
 
+// ProducerLogLevel is a functional option method for configuing the producer's log level.
 func ProducerLogLevel(ll aws.LogLevelType) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.logLevel = ll & 0xffff0000
@@ -112,6 +122,7 @@ func ProducerLogLevel(ll aws.LogLevelType) ProducerOptionsFn {
 	}
 }
 
+// ProducerStats is a functional option method for configuing the producer's stats collector.
 func ProducerStats(sc ProducerStatsCollector) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.Stats = sc

@@ -16,11 +16,13 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 )
 
+// kineticOptions is a struct that holds all of Kinetic's configurable parameters.
 type kineticOptions struct {
 	awsConfig *aws.Config      //
 	logLevel  aws.LogLevelType // log level for configuring the LogHelper's log level
 }
 
+// defaultKineticOptions instantiates a kineticOptions with default values.
 func defaultKineticOptions() *kineticOptions {
 	return &kineticOptions{
 		awsConfig: aws.NewConfig().WithHTTPClient(
@@ -31,44 +33,52 @@ func defaultKineticOptions() *kineticOptions {
 	}
 }
 
-type KineticOptionsFn func(*kineticOptions) error
+// OptionsFn is a method signature for defining functional option methods for configuring Kinetic.
+type OptionsFn func(*kineticOptions) error
 
-func KineticAwsConfigCredentials(accessKey, secretKey, sessionToken string) KineticOptionsFn {
+// AwsConfigCredentials is a functional option method for configuring Kinetic's AwsConfig credentials.
+func AwsConfigCredentials(accessKey, secretKey, sessionToken string) OptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithCredentials(credentials.NewStaticCredentials(accessKey, secretKey, sessionToken))
 		return nil
 	}
 }
 
-func KineticAwsConfigRegion(region string) KineticOptionsFn {
+// AwsConfigRegion is a functional option method for configuring Kinetic's AwsConfig region.
+func AwsConfigRegion(region string) OptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithRegion(region)
 		return nil
 	}
 }
 
-func KineticAwsConfigEndpoint(endpoint string) KineticOptionsFn {
+// AwsConfigEndpoint is a functional option method for configuring Kinetic's AwsConfig endpoint.
+func AwsConfigEndpoint(endpoint string) OptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithEndpoint(endpoint)
 		return nil
 	}
 }
 
-func KineticAwsConfigLogger(logger aws.Logger) KineticOptionsFn {
+// AwsConfigLogger is a functional option method for configuring Kinetic's AwsConfig logger.
+func AwsConfigLogger(logger aws.Logger) OptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithLogger(logger)
 		return nil
 	}
 }
 
-func KineticAwsConfigLogLevel(logLevel aws.LogLevelType) KineticOptionsFn {
+// AwsConfigLogLevel is a functional option method for configuring Kinetic's AwsConfig log level.
+func AwsConfigLogLevel(logLevel aws.LogLevelType) OptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithLogLevel(logLevel)
 		return nil
 	}
 }
 
-func KineticAwsConfigHttpClientTimeout(timeout time.Duration) KineticOptionsFn {
+// AwsConfigHTTPClientTimeout is a functional option method for configuring Kinetic's
+// AwsConfig HTTP client timeout.
+func AwsConfigHTTPClientTimeout(timeout time.Duration) OptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithHTTPClient(&http.Client{
 			Timeout: timeout,
@@ -77,7 +87,8 @@ func KineticAwsConfigHttpClientTimeout(timeout time.Duration) KineticOptionsFn {
 	}
 }
 
-func KineticLogLevel(logLevel aws.LogLevelType) KineticOptionsFn {
+// LogLevel is a functional option method for configuring Kinetic's log level.
+func LogLevel(logLevel aws.LogLevelType) OptionsFn {
 	return func(o *kineticOptions) error {
 		o.logLevel = logLevel & 0xffff0000
 		return nil
@@ -95,8 +106,8 @@ type Kinetic struct {
 	Session  *session.Session
 }
 
-// New creates a new instance of Kinetic.
-func NewKinetic(optionFns ...KineticOptionsFn) (*Kinetic, error) {
+// NewKinetic creates a new instance of Kinetic.
+func NewKinetic(optionFns ...OptionsFn) (*Kinetic, error) {
 	kineticOptions := defaultKineticOptions()
 	for _, optionFn := range optionFns {
 		optionFn(kineticOptions)

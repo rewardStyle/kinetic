@@ -14,7 +14,7 @@ func init() {
 }
 
 func TestConsumerStatsCollector(t *testing.T) {
-	Convey("given a NilStatsCollector", t, func() {
+	Convey("given a NilConsumerStatsCollector", t, func() {
 		var sc ConsumerStatsCollector = &NilConsumerStatsCollector{}
 		So(sc, ShouldNotBeNil)
 
@@ -67,7 +67,7 @@ func TestConsumerStatsCollector(t *testing.T) {
 		})
 	})
 
-	Convey("given a DefaultStatsCollector", t, func() {
+	Convey("given a DefaultConsumerStatsCollector", t, func() {
 		r := metrics.NewRegistry()
 		var sc ConsumerStatsCollector = NewDefaultConsumerStatsCollector(r)
 		So(sc, ShouldNotBeNil)

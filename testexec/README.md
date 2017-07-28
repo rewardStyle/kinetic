@@ -7,7 +7,7 @@ A new stream will be created (with a random stream name) unless a stream name is
 
 There are three modes of operations permitted:  'read', 'write' and 'readwrite'.  Write mode is produce only where as read mode is consume only.  Readwrite mode is both produce and consume concurrently.   
 
-So depending on the mode of operation, a kinetic producer will stream dummy data to the kinesis stream and a kinetic listener will stream from the kinesis stream.
+So depending on the mode of operation, a kinetic producer will stream dummy data to the kinesis stream and a kinetic consumer will stream from the kinesis stream.
 
 The program logs stream data stats to the console log periodically.
 

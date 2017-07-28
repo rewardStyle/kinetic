@@ -10,16 +10,14 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
-
-	"github.com/rewardStyle/kinetic"
 )
 
 func TestProducer(t *testing.T) {
 	Convey("given a producer", t, func() {
 		k, err := NewKinetic(
-			KineticAwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
-			KineticAwsConfigRegion("some-region"),
-			KineticAwsConfigEndpoint("http://127.0.0.1:4567"),
+			AwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+			AwsConfigRegion("some-region"),
+			AwsConfigEndpoint("http://127.0.0.1:4567"),
 		)
 
 		stream := "some-producer-stream"
@@ -42,18 +40,18 @@ func TestProducer(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		p, err := NewProducer(k.Session.Config, w,
-			kinetic.ProducerBatchSize(5),
-			kinetic.ProducerBatchTimeout(time.Second),
-			kinetic.ProducerMaxRetryAttempts(3),
-			kinetic.ProducerQueueDepth(10),
-			kinetic.ProducerConcurrency(2),
-			kinetic.ProducerShardCheckFrequency(time.Minute),
-			kinetic.ProducerDataSpillFn(func(msg *kinetic.Message) error {
+			ProducerBatchSize(5),
+			ProducerBatchTimeout(time.Second),
+			ProducerMaxRetryAttempts(3),
+			ProducerQueueDepth(10),
+			ProducerConcurrency(2),
+			ProducerShardCheckFrequency(time.Minute),
+			ProducerDataSpillFn(func(msg *Message) error {
 				//log.Printf("Message was dropped: [%s]\n", string(msg.Data))
 				return nil
 			}),
-			kinetic.ProducerLogLevel(aws.LogOff),
-			//kinetic.ProducerStats(),
+			ProducerLogLevel(aws.LogOff),
+			//ProducerStats(),
 		)
 		So(p, ShouldNotBeNil)
 		So(err, ShouldBeNil)
