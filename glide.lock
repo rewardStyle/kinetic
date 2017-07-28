@@ -1,5 +1,5 @@
-hash: 88992f22cbe218586fcad11169719591a709cd6b17de91e7718ee7b6b87c67f5
-updated: 2017-07-28T11:04:02.656139446-05:00
+hash: 7203d745bb3c303ab9257a7d20b250ce919248e1251502ebe6d56a5af086126c
+updated: 2017-07-28T11:21:23.082612845-05:00
 imports:
 - name: github.com/aws/aws-sdk-go
   version: 72e42b13da62269f68308fb6068b7ea691a416a4
@@ -39,12 +39,6 @@ imports:
   version: bd40a432e4c76585ef6b72d3fd96fb9b6dc7b68d
 - name: github.com/rcrowley/go-metrics
   version: ab2277b1c5d15c3cba104e9cbddbdfc622df5ad8
-- name: github.com/rewardStyle/kinetic
-  version: 1d4a236f3ee6c01b3a69d77d3fb0e64f35361b3e
-  subpackages:
-  - config
-  - errs
-  - logging
 - name: golang.org/x/net
   version: 0e2717dc3cc05907dc23096ef3a9086ea93f567f
   subpackages:
@@ -70,7 +64,7 @@ testImports:
   - internal/go-render/render
   - internal/oglematchers
 - name: github.com/smartystreets/goconvey
-  version: 3bd662eac601ad6436e64776af2e112069eb2edc
+  version: d4c757aa9afd1e2fc1832aaab209b5794eb336e1
   subpackages:
   - convey
   - convey/gotest
