@@ -1,0 +1,25 @@
+package: .
+import:
+- package: github.com/aws/aws-sdk-go
+  subpackages:
+  - aws
+  - aws/awserr
+  - aws/credentials
+  - aws/request
+  - aws/session
+  - service/firehose
+  - service/firehose/firehoseiface
+  - service/kinesis
+  - service/kinesis/kinesisiface
+- package: github.com/rcrowley/go-metrics
+- package: github.com/rewardStyle/kinetic
+- package: golang.org/x/time
+  subpackages:
+  - rate
+testImport:
+- package: github.com/smartystreets/goconvey
+  subpackages:
+  - convey
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
