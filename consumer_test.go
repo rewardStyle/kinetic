@@ -53,7 +53,7 @@ func TestConsumer(t *testing.T) {
 		So(k.Session, ShouldNotBeNil)
 		So(k.Session.Config, ShouldNotBeNil)
 		r, err := NewKinesisReader(k.Session.Config, stream, shards[0],
-			KinesisReaderBatchSize(10000),
+			KinesisReaderBatchSize(5),
 			//KinesisReaderShardIterator(),
 			KinesisReaderResponseReadTimeout(time.Second),
 			KinesisReaderLogLevel(aws.LogOff),
@@ -301,26 +301,20 @@ func TestConsumer(t *testing.T) {
 				So(err, ShouldBeNil)
 			}
 			var count int64
-			var wg sync.WaitGroup
-			wg.Add(1)
-			go func() {
-				ctx, cancel := context.WithCancel(context.TODO())
+			ctx, cancel := context.WithCancel(context.TODO())
+			l.ListenWithContext(ctx, func(m *Message, wg *sync.WaitGroup) error {
 				defer wg.Done()
-				l.ListenWithContext(ctx, func(m *Message, wg *sync.WaitGroup) error {
-					defer wg.Done()
-					time.AfterFunc(time.Duration(rand.Intn(10))*time.Second, func() {
-						n, err := strconv.Atoi(string(m.Data))
-						c.So(err, ShouldBeNil)
-						atomic.AddInt64(&count, 1)
-						if n == 15 {
-							cancel()
-						}
-					})
-
-					return nil
+				time.AfterFunc(time.Duration(rand.Intn(10))*time.Second, func() {
+					n, err := strconv.Atoi(string(m.Data))
+					c.So(err, ShouldBeNil)
+					atomic.AddInt64(&count, 1)
+					if n >= 15 {
+						cancel()
+					}
 				})
-			}()
-			wg.Wait()
+
+				return nil
+			})
 			So(atomic.LoadInt64(&count), ShouldBeBetweenOrEqual, 1, 20)
 			Printf("(count was %d)", atomic.LoadInt64(&count))
 		})
