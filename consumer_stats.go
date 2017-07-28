@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	metrics "github.com/jasonyurs/go-metrics"
+	metrics "github.com/rcrowley/go-metrics"
 )
 
 // ConsumerStatsCollector allows for a collector to collect various metrics produced by

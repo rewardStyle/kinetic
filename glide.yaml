@@ -12,7 +12,6 @@ import:
   - service/kinesis
   - service/kinesis/kinesisiface
 - package: github.com/rcrowley/go-metrics
-- package: github.com/rewardStyle/kinetic
 - package: golang.org/x/time
   subpackages:
   - rate

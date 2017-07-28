@@ -17,7 +17,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
-	metrics "github.com/jasonyurs/go-metrics"
+	metrics "github.com/rcrowley/go-metrics"
 	"github.com/rewardStyle/kinetic"
 
 	"net/http"

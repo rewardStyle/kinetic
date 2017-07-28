@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	metrics "github.com/jasonyurs/go-metrics"
+	metrics "github.com/rcrowley/go-metrics"
 	. "github.com/smartystreets/goconvey/convey"
 )
 
