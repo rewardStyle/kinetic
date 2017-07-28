@@ -17,15 +17,16 @@ const (
 
 // producerOptions holds all of the configurable settings for a Producer.
 type producerOptions struct {
-	batchSize        int                  // maximum message capacity per request
-	batchTimeout     time.Duration        // maximum time duration to wait for incoming messages
-	queueDepth       int                  // maximum number of messages to enqueue in the message queue
-	maxRetryAttempts int                  // maximum number of retry attempts for failed messages
-	concurrency    int                    // number of concurrent workers per shard
-	shardCheckFreq time.Duration          // frequency (specified as a duration) with which to check the the shard size
-	dataSpillFn    MessageHandlerAsync    // callback function for handling dropped messages that the producer was unable to send to the stream
-	logLevel       aws.LogLevelType       // log level for configuring the LogHelper's log level
-	Stats          ProducerStatsCollector // stats collection mechanism
+	writer           StreamWriter           // interface for abstracting the PutRecords call
+	batchSize        int                    // maximum message capacity per request
+	batchTimeout     time.Duration          // maximum time duration to wait for incoming messages
+	queueDepth       int                    // maximum number of messages to enqueue in the message queue
+	maxRetryAttempts int                    // maximum number of retry attempts for failed messages
+	concurrency      int                    // number of concurrent workers per shard
+	shardCheckFreq   time.Duration          // frequency (specified as a duration) with which to check the the shard size
+	dataSpillFn      MessageHandlerAsync    // callback function for handling dropped messages that the producer was unable to send to the stream
+	logLevel         aws.LogLevelType       // log level for configuring the LogHelper's log level
+	Stats            ProducerStatsCollector // stats collection mechanism
 }
 
 // defaultProducerOptions instantiates a producerOptions with default values.
@@ -45,6 +46,14 @@ func defaultProducerOptions() *producerOptions {
 
 // ProducerOptionsFn is a method signature for defining functional option methods for configuring the Producer.
 type ProducerOptionsFn func(*producerOptions) error
+
+// ProducerWriter is a functional option method for configuing the producer's stream writer.
+func ProducerWriter(w StreamWriter) ProducerOptionsFn {
+	return func(o *producerOptions) error {
+		o.writer = w
+		return nil
+	}
+}
 
 // ProducerBatchSize is a functional option method for configuing the producer's batch size.
 func ProducerBatchSize(size int) ProducerOptionsFn {
@@ -133,12 +142,11 @@ func ProducerStats(sc ProducerStatsCollector) ProducerOptionsFn {
 // Producer sends records to AWS Kinesis or Firehose.
 type Producer struct {
 	*producerOptions                         // contains all of the configuration settings for the Producer
-	*LogHelper                       // object for help with logging
-	writer             StreamWriter          // interface for abstracting the PutRecords call
+	*LogHelper                               // object for help with logging
 	msgCountLimiter    *rate.Limiter         // rate limiter to limit the number of messages dispatched per second
 	msgSizeLimiter     *rate.Limiter         // rate limiter to limit the total size (in bytes) of messages dispatched per second
 	workerCount        int                   // number of concurrent workers sending batch messages for the producer
-	messages           chan *Message // channel for enqueuing messages to be put on the stream
+	messages           chan *Message         // channel for enqueuing messages to be put on the stream
 	status             chan *statusReport    // channel for workers to communicate their current status
 	dismiss            chan empty            // channel for handling the decommissioning of a surplus of workers
 	stop               chan empty            // channel for handling shutdown
@@ -150,10 +158,17 @@ type Producer struct {
 }
 
 // NewProducer creates a new producer for writing records to a Kinesis or Firehose stream.
-func NewProducer(c *aws.Config, w StreamWriter, optionFns ...ProducerOptionsFn) (*Producer, error) {
+func NewProducer(c *aws.Config, stream string, optionFns ...ProducerOptionsFn) (*Producer, error) {
 	producerOptions := defaultProducerOptions()
 	for _, optionFn := range optionFns {
 		optionFn(producerOptions)
+	}
+	if producerOptions.writer == nil {
+		w, err := NewKinesisWriter(c, stream)
+		if err != nil {
+			return nil, err
+		}
+		producerOptions.writer = w
 	}
 	return &Producer{
 		producerOptions: producerOptions,
@@ -161,7 +176,6 @@ func NewProducer(c *aws.Config, w StreamWriter, optionFns ...ProducerOptionsFn) 
 			LogLevel: producerOptions.logLevel,
 			Logger:   c.Logger,
 		},
-		writer: w,
 	}, nil
 }
 

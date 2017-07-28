@@ -138,7 +138,8 @@ func TestKineticIntegration(t *testing.T) {
 	}
 
 	// Create a new kinetic producer
-	p, err := NewProducer(k.Session.Config, w,
+	p, err := NewProducer(k.Session.Config, stream,
+		ProducerWriter(w),
 		ProducerBatchSize(5),
 		ProducerBatchTimeout(time.Second),
 		ProducerMaxRetryAttempts(3),
@@ -168,7 +169,8 @@ func TestKineticIntegration(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a new kinetic consumer
-	l, err := NewConsumer(k.Session.Config, r,
+	l, err := NewConsumer(k.Session.Config, stream, shards[0],
+		ConsumerReader(r),
 		ConsumerQueueDepth(20),
 		ConsumerConcurrency(10),
 		ConsumerLogLevel(aws.LogOff),

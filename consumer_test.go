@@ -61,7 +61,8 @@ func TestConsumer(t *testing.T) {
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		l, err := NewConsumer(k.Session.Config, r,
+		l, err := NewConsumer(k.Session.Config, stream, shards[0],
+			ConsumerReader(r),
 			ConsumerQueueDepth(10),
 			ConsumerConcurrency(10),
 			ConsumerLogLevel(aws.LogOff),
@@ -71,10 +72,19 @@ func TestConsumer(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		Convey("given a kinesis reader", func() {
+			Convey("check that the reader was initialized correctly", func() {
+				So(l.reader, ShouldNotBeNil)
+				So(l.reader, ShouldEqual, r)
+			})
+
 			r := l.reader.(*KinesisReader)
 
 			Convey("check that the reader was initialized with the correct stream name", func() {
 				So(r.stream, ShouldEqual, stream)
+			})
+
+			Convey("check that the reader was initialized with the correct shard", func() {
+				So(r.shard, ShouldEqual, shards[0])
 			})
 
 			Convey("check that the kinesis client was initialized correctly", func() {

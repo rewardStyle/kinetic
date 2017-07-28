@@ -12,6 +12,7 @@ import (
 
 // consumerOptions is used to hold all of the configurable settings of a Consumer.
 type consumerOptions struct {
+	reader      StreamReader           // interface for abstracting the GetRecord/GetRecords call
 	queueDepth  int          	   // size of the consumer's message channel
 	concurrency int		           // number of concurrent routines processing messages off of the message channel
 	logLevel    aws.LogLevelType       // log level for configuring the LogHelper's log level
@@ -29,6 +30,14 @@ func defaultConsumerOptions() *consumerOptions {
 
 // ConsumerOptionsFn is a method signature for defining functional option methods for configuring the Consumer.
 type ConsumerOptionsFn func(*consumerOptions) error
+
+// ConsumerReader is a functional option method for configuring the consumer's stream reader.
+func ConsumerReader(r StreamReader) ConsumerOptionsFn {
+	return func(o *consumerOptions) error {
+		o.reader = r
+		return nil
+	}
+}
 
 // ConsumerQueueDepth is a functional option method for configuring the consumer's queueDepth.
 func ConsumerQueueDepth(depth int) ConsumerOptionsFn {
@@ -70,23 +79,29 @@ func ConsumerStats(sc ConsumerStatsCollector) ConsumerOptionsFn {
 
 // Consumer polls the StreamReader for messages.
 type Consumer struct {
-	*consumerOptions
-	*LogHelper
-	reader              StreamReader
-	txnCountRateLimiter *rate.Limiter
-	txSizeRateLimiter   *rate.Limiter
-	messages            chan *Message
-	concurrencySem      chan empty
-	pipeOfDeath         chan empty
-	consuming           bool
-	consumingMu         sync.Mutex
+	*consumerOptions		  // contains all of the configuration settings for the Consumer
+	*LogHelper			  // object for help with logging
+	txnCountRateLimiter *rate.Limiter // rate limiter to limit the number of transactions per second
+	txSizeRateLimiter   *rate.Limiter // rate limiter to limit the transmission size per seccond
+	messages            chan *Message // channel for storing messages that have been retrieved from the stream
+	concurrencySem      chan empty    // channel for controlling the number of concurrent workers processing messages from the message channel
+	pipeOfDeath         chan empty    // channel for handling pipe of death
+	consuming           bool	  // flag for indicating whether or not the consumer is consuming
+	consumingMu         sync.Mutex    // mutex for making the consuming flag thread safe
 }
 
 // NewConsumer creates a new Consumer object for retrieving and listening to message(s) on a StreamReader.
-func NewConsumer(c *aws.Config, r StreamReader, optionFns ...ConsumerOptionsFn) (*Consumer, error) {
+func NewConsumer(c *aws.Config, stream string, shard string, optionFns ...ConsumerOptionsFn) (*Consumer, error) {
 	consumerOptions := defaultConsumerOptions()
 	for _, optionFn := range optionFns {
 		optionFn(consumerOptions)
+	}
+	if consumerOptions.reader == nil {
+		r, err := NewKinesisReader(c, stream, shard)
+		if err != nil {
+			return nil, err
+		}
+		consumerOptions.reader = r
 	}
 	return &Consumer{
 		consumerOptions: consumerOptions,
@@ -94,7 +109,6 @@ func NewConsumer(c *aws.Config, r StreamReader, optionFns ...ConsumerOptionsFn) 
 			LogLevel: consumerOptions.logLevel,
 			Logger:   c.Logger,
 		},
-		reader: r,
 	}, nil
 }
 

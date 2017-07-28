@@ -39,7 +39,8 @@ func TestProducer(t *testing.T) {
 		So(w, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		p, err := NewProducer(k.Session.Config, w,
+		p, err := NewProducer(k.Session.Config, stream,
+			ProducerWriter(w),
 			ProducerBatchSize(5),
 			ProducerBatchTimeout(time.Second),
 			ProducerMaxRetryAttempts(3),
@@ -68,7 +69,8 @@ func TestProducer(t *testing.T) {
 		So(r, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-		l, err := NewConsumer(k.Session.Config, r,
+		l, err := NewConsumer(k.Session.Config, stream, shards[0],
+			ConsumerReader(r),
 			ConsumerQueueDepth(10),
 			ConsumerConcurrency(10),
 			ConsumerLogLevel(aws.LogOff),

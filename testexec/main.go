@@ -246,7 +246,8 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *kinetic.Producer
 		log.Fatalf("Unable to create a new kinesis stream writer due to: %v\n", err)
 	}
 
-	p, err := kinetic.NewProducer(k.Session.Config, w,
+	p, err := kinetic.NewProducer(k.Session.Config, streamName,
+		kinetic.ProducerWriter(w),
 		kinetic.ProducerBatchSize(500),
 		kinetic.ProducerBatchTimeout(time.Second),
 		kinetic.ProducerMaxRetryAttempts(3),
@@ -290,7 +291,8 @@ func newKineticConsumer(k *kinetic.Kinetic, streamName string) *kinetic.Consumer
 		log.Fatalf("Unable to create a new kinesis reader due to: %v\n", err)
 	}
 
-	l, err := kinetic.NewConsumer(k.Session.Config, r,
+	l, err := kinetic.NewConsumer(k.Session.Config, streamName, shards[0],
+		kinetic.ConsumerReader(r),
 		kinetic.ConsumerQueueDepth(500),
 		kinetic.ConsumerConcurrency(10),
 		kinetic.ConsumerLogLevel(aws.LogOff),
