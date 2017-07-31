@@ -4,13 +4,11 @@
 # kinetic
 Kinetic is an MIT-licensed high-performance AWS Kinesis Client for Go
 
-Kinetic wraps [sendgridlabs go-kinesis library](https://github.com/sendgridlabs/go-kinesis) to provide maximum throughput for AWS Kinesis producers and consumers.
-An instance of a Kinetic consumer/producer is meant to be used for each shard, so please use it accordingly. If you use more than one instance per-shard then you will
-hit the AWS Kinesis throughput [limits](http://docs.aws.amazon.com/kinesis/latest/dev/service-sizes-and-limits.html).
+Kinetic wraps [aws-sdk-go](https://github.com/aws/aws-sdk-go.git) to provide maximum throughput with built-in fault tolerance and retry logic for AWS Kinesis producers and consumers.
+The Kinetic producer can write to Kinesis or Firehose and the Kinetic listener can consume stream data from Kinesis using the aws-go-sdk or using the Kinesis client library (written in Java).  
 
 ### Getting Started
 Before using kinetic, you should make sure you have a created a Kinesis stream and your configuration file has the credentails necessary to read and write to the stream. Once this stream exists in AWS, kinetic will ensure it is in the "ACTIVE" state before running.
-
 
 ## Testing
 Tests are written using [goconvey](http://goconvey.co/) and [kinesalite](https://github.com/mhart/kinesalite). Make sure you have kinesalite running locally before attempting to run the tests. They can be run either via the comamnd line:
@@ -33,40 +31,34 @@ Kinetic can be used to interface with kinesis like so:
 ```go
 import (
 	"github.com/rewardStyle/kinetic"
-	"github.com/rewardStyle/kinetic/consumer"
-	"github.com/rewardStyle/kinetic/message"
-	"github.com/rewardStyle/kinetic/producer"
 	"sync"
 )
 
 // Create a kinetic object associated with a local kinesalite stream
-k, _ := kinetic.New(func(c *kinetic.Config) {
-    c.SetCredentials("some-access-key", "some-secret-key", "some-security-token")
-    c.SetRegion("some-region")
-    c.SetEndpoint("http://127.0.0.1:4567")
-})
+k, _ := kinetic.NewKinetic(
+    kinetic.AwsConfigCredentials("some-access-key", "some-secret-key", "some-security-token"),
+    kinetic.AwsConfigRegion("some-region"),
+    kinetic.AwsConfigEndpoint(""http://127.0.0.1:4567""),
+)
 
 // Create a kinetic producer
-p, _ := producer.NewProducer(func(c *producer.Config) {
-    c.SetAwsConfig(k.Session.Config)
-    c.SetKinesisStream("stream-name")
-})
+p, _ := kinetic.NewProducer(k.Session.Config, "stream-name")
 
 // Create a kinetic consumer
-l, _ := consumer.NewConsumer(func(c *consumer.Config) {
-    c.SetAwsConfig(k.Session.Config)
-    c.SetReader(consumer.NewKinesisReader("stream-name", "shard-name"))
-})
+c, err := kinetic.NewConsumer(k.Session.Config, "stream-name", "shard-name")
 
-msg, err := l.Retrieve()
+
+// Retrieve one message using the consumer's Retrieve function
+msg, err := c.Retrieve()
 if err != nil {
     println(err)
 }
 
 // Using Listen - will block unless sent in goroutine
-go l.Listen(func(b []byte, fnwg *sync.WaitGroup){
+go c.Listen(func(b []byte, wg *sync.WaitGroup){
+    defer wg.Done()
+    
     println(string(b))
-    fnwg.Done()
 })
 
 // Send a message using the producer 

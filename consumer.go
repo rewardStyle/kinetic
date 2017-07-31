@@ -88,6 +88,7 @@ type Consumer struct {
 	pipeOfDeath         chan empty    // channel for handling pipe of death
 	consuming           bool	  // flag for indicating whether or not the consumer is consuming
 	consumingMu         sync.Mutex    // mutex for making the consuming flag thread safe
+	noCopy              noCopy        // prevents the Consumer from being copied
 }
 
 // NewConsumer creates a new Consumer object for retrieving and listening to message(s) on a StreamReader.
@@ -114,14 +115,14 @@ func NewConsumer(c *aws.Config, stream string, shard string, optionFns ...Consum
 
 // startConsuming will initialize the message channel and set consuming to true if there is not already another consume
 // loop running.
-func (l *Consumer) startConsuming() bool {
-	l.consumingMu.Lock()
-	defer l.consumingMu.Unlock()
-	if !l.consuming {
-		l.consuming = true
-		l.messages = make(chan *Message, l.queueDepth)
-		l.concurrencySem = make(chan empty, l.concurrency)
-		l.pipeOfDeath = make(chan empty)
+func (c *Consumer) startConsuming() bool {
+	c.consumingMu.Lock()
+	defer c.consumingMu.Unlock()
+	if !c.consuming {
+		c.consuming = true
+		c.messages = make(chan *Message, c.queueDepth)
+		c.concurrencySem = make(chan empty, c.concurrency)
+		c.pipeOfDeath = make(chan empty)
 		return true
 	}
 	return false
@@ -129,9 +130,9 @@ func (l *Consumer) startConsuming() bool {
 
 // shouldConsume is a convenience function that allows functions to break their loops if the context receives a
 // cancellation or a pipe of death.
-func (l *Consumer) shouldConsume(ctx context.Context) (bool, error) {
+func (c *Consumer) shouldConsume(ctx context.Context) (bool, error) {
 	select {
-	case <-l.pipeOfDeath:
+	case <-c.pipeOfDeath:
 		return false, ErrPipeOfDeath
 	case <-ctx.Done():
 		return false, ctx.Err()
@@ -141,44 +142,41 @@ func (l *Consumer) shouldConsume(ctx context.Context) (bool, error) {
 }
 
 // stopConsuming handles any cleanup after consuming has stopped.
-func (l *Consumer) stopConsuming() {
-	l.consumingMu.Lock()
-	defer l.consumingMu.Unlock()
-	if l.consuming && l.messages != nil {
-		close(l.messages)
+func (c *Consumer) stopConsuming() {
+	c.consumingMu.Lock()
+	defer c.consumingMu.Unlock()
+	if c.consuming && c.messages != nil {
+		close(c.messages)
 	}
-	if l.concurrencySem != nil {
-		close(l.concurrencySem)
-	}
-	l.consuming = false
+	c.consuming = false
 }
 
 // enqueueSingle calls the readers's GetRecord method and enqueus a single message on the message channel.
-func (l *Consumer) enqueueSingle(ctx context.Context) (int, int, error) {
-	n, m, err := l.reader.GetRecord(ctx, func(msg *Message, wg *sync.WaitGroup) error {
+func (c *Consumer) enqueueSingle(ctx context.Context) (int, int, error) {
+	n, m, err := c.reader.GetRecord(ctx, func(msg *Message, wg *sync.WaitGroup) error {
 		defer wg.Done()
-		l.messages <- msg
+		c.messages <- msg
 
 		return nil
 	})
 	if err != nil {
-		l.handleErrorLogging(err)
+		c.handleErrorLogging(err)
 		return 0, 0, err
 	}
 	return n, m, nil
 }
 
 // enqueueBatch calls the reader's GetRecords method and enqueues a batch of messages on the message chanel.
-func (l *Consumer) enqueueBatch(ctx context.Context) (int, int, error) {
-	n, m, err := l.reader.GetRecords(ctx,
+func (c *Consumer) enqueueBatch(ctx context.Context) (int, int, error) {
+	n, m, err := c.reader.GetRecords(ctx,
 		func(msg *Message, wg *sync.WaitGroup) error {
 			defer wg.Done()
-			l.messages <- msg
+			c.messages <- msg
 
 			return nil
 		})
 	if err != nil {
-		l.handleErrorLogging(err)
+		c.handleErrorLogging(err)
 		return 0, 0, err
 	}
 	return n, m, nil
@@ -186,35 +184,35 @@ func (l *Consumer) enqueueBatch(ctx context.Context) (int, int, error) {
 
 // handleErrorLogging is a helper method for handling and logging errors from calling the reader's
 // GetRecord and GetRecords method.
-func (l *Consumer) handleErrorLogging(err error) {
+func (c *Consumer) handleErrorLogging(err error) {
 	switch err := err.(type) {
 	case net.Error:
 		if err.Timeout() {
-			l.Stats.AddGetRecordsTimeout(1)
-			l.LogError("Received net error:", err.Error())
+			c.Stats.AddGetRecordsTimeout(1)
+			c.LogError("Received net error:", err.Error())
 		} else {
-			l.LogError("Received unknown net error:", err.Error())
+			c.LogError("Received unknown net error:", err.Error())
 		}
 	case error:
 		switch err {
 		case ErrTimeoutReadResponseBody:
-			l.Stats.AddGetRecordsReadTimeout(1)
-			l.LogError("Received error:", err.Error())
+			c.Stats.AddGetRecordsReadTimeout(1)
+			c.LogError("Received error:", err.Error())
 		default:
-			l.LogError("Received error:", err.Error())
+			c.LogError("Received error:", err.Error())
 		}
 	default:
-		l.LogError("Received unknown error:", err.Error())
+		c.LogError("Received unknown error:", err.Error())
 	}
 }
 
 // RetrieveWithContext waits for a message from the stream and returns the  Cancellation is supported through
 // contexts.
-func (l *Consumer) RetrieveWithContext(ctx context.Context) (*Message, error) {
-	if !l.startConsuming() {
+func (c *Consumer) RetrieveWithContext(ctx context.Context) (*Message, error) {
+	if !c.startConsuming() {
 		return nil, ErrAlreadyConsuming
 	}
-	defer l.stopConsuming()
+	defer c.stopConsuming()
 
 	childCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -222,27 +220,27 @@ func (l *Consumer) RetrieveWithContext(ctx context.Context) (*Message, error) {
 		// A cancellation or closing the pipe of death will cause Retrieve (and related functions) to abort in
 		// between getRecord calls.  Note, that this would only occur when there are no new records to retrieve.
 		// Otherwise, getRecords will be allowed to run to completion and deliver one record.
-		ok, err := l.shouldConsume(ctx)
+		ok, err := c.shouldConsume(ctx)
 		if !ok {
 			return nil, err
 		}
-		n, _, err := l.enqueueSingle(childCtx)
+		n, _, _ := c.enqueueSingle(childCtx)
 		if n > 0 {
-			l.Stats.AddDelivered(n)
-			return <-l.messages, nil
+			c.Stats.AddDelivered(n)
+			return <-c.messages, nil
 		}
 	}
 }
 
 // Retrieve waits for a message from the stream and returns the value.
-func (l *Consumer) Retrieve() (*Message, error) {
-	return l.RetrieveWithContext(context.TODO())
+func (c *Consumer) Retrieve() (*Message, error) {
+	return c.RetrieveWithContext(context.TODO())
 }
 
 // RetrieveFnWithContext retrieves a message from the stream and dispatches it to the supplied function.  RetrieveFn
 // will wait until the function completes. Cancellation is supported through context.
-func (l *Consumer) RetrieveFnWithContext(ctx context.Context, fn MessageProcessor) error {
-	msg, err := l.RetrieveWithContext(ctx)
+func (c *Consumer) RetrieveFnWithContext(ctx context.Context, fn MessageProcessor) error {
+	msg, err := c.RetrieveWithContext(ctx)
 	if err != nil {
 		return err
 	}
@@ -253,8 +251,8 @@ func (l *Consumer) RetrieveFnWithContext(ctx context.Context, fn MessageProcesso
 	go func() {
 		start := time.Now()
 		fn(msg, &wg)
-		l.Stats.AddProcessedDuration(time.Since(start))
-		l.Stats.AddProcessed(1)
+		c.Stats.AddProcessedDuration(time.Since(start))
+		c.Stats.AddProcessed(1)
 	}()
 
 	return nil
@@ -262,24 +260,24 @@ func (l *Consumer) RetrieveFnWithContext(ctx context.Context, fn MessageProcesso
 
 // RetrieveFn retrieves a message from the stream and dispatches it to the supplied function.  RetrieveFn will wait
 // until the function completes.
-func (l *Consumer) RetrieveFn(fn MessageProcessor) error {
-	return l.RetrieveFnWithContext(context.TODO(), fn)
+func (c *Consumer) RetrieveFn(fn MessageProcessor) error {
+	return c.RetrieveFnWithContext(context.TODO(), fn)
 }
 
 // consume calls getRecords with configured batch size in a loop until the consumer is stopped.
-func (l *Consumer) consume(ctx context.Context) {
+func (c *Consumer) consume(ctx context.Context) {
 	// We need to run startConsuming to make sure that we are okay and ready to start consuming.  This is mainly to
 	// avoid a race condition where Listen() will attempt to read the messages channel prior to consume()
 	// initializing it.  We can then launch a goroutine to handle the actual consume operation.
-	if !l.startConsuming() {
+	if !c.startConsuming() {
 		return
 	}
 	go func() {
-		defer l.stopConsuming()
+		defer c.stopConsuming()
 
 		// TODO: make these parameters configurable also scale according to the shard count
-		l.txnCountRateLimiter = rate.NewLimiter(rate.Limit(5), 1)
-		l.txSizeRateLimiter = rate.NewLimiter(rate.Limit(2000000), 2000000)
+		c.txnCountRateLimiter = rate.NewLimiter(rate.Limit(5), 1)
+		c.txSizeRateLimiter = rate.NewLimiter(rate.Limit(2000000), 2000000)
 
 		childCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
@@ -289,13 +287,13 @@ func (l *Consumer) consume(ctx context.Context) {
 			// call below will be allowed to complete (as getRecords does not regard context cancellation).
 			// In the case of cancellation by pipe of death, however, the getRecords will immediately abort
 			// and allow the consume function to immediately abort as well.
-			if ok, _ := l.shouldConsume(ctx); !ok {
+			if ok, _ := c.shouldConsume(ctx); !ok {
 				return
 			}
 
-			_, payloadSize, err := l.enqueueBatch(childCtx)
+			_, payloadSize, err := c.enqueueBatch(childCtx)
 			if err != nil {
-				l.LogError("Encountered an error when calling enqueueBatch: ", err)
+				c.LogError("Encountered an error when calling enqueueBatch: ", err)
 				return
 			}
 
@@ -304,16 +302,16 @@ func (l *Consumer) consume(ctx context.Context) {
 			go func() {
 				defer wg.Done()
 
-				if err := l.txnCountRateLimiter.Wait(childCtx); err != nil {
-					l.LogError("Error occured waiting for transaction count tokens")
+				if err := c.txnCountRateLimiter.Wait(childCtx); err != nil {
+					c.LogError("Error occured waiting for transaction count tokens")
 				}
 			}()
 
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if err := l.txSizeRateLimiter.WaitN(childCtx, payloadSize); err != nil {
-					l.LogError("Error occured waiting for transmission size tokens")
+				if err := c.txSizeRateLimiter.WaitN(childCtx, payloadSize); err != nil {
+					c.LogError("Error occured waiting for transmission size tokens")
 				}
 			}()
 			wg.Wait()
@@ -323,43 +321,43 @@ func (l *Consumer) consume(ctx context.Context) {
 
 // ListenWithContext listens and delivers message to the supplied function.  Upon cancellation, Listen will stop the
 // consumer loop and wait until the messages channel is closed and all messages are delivered.
-func (l *Consumer) ListenWithContext(ctx context.Context, fn MessageProcessor) {
-	l.consume(ctx)
+func (c *Consumer) ListenWithContext(ctx context.Context, fn MessageProcessor) {
+	c.consume(ctx)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
 	for {
 		select {
-		case msg, ok := <-l.messages:
+		case msg, ok := <-c.messages:
 			if !ok {
 				return
 			}
-			l.Stats.AddDelivered(1)
+			c.Stats.AddDelivered(1)
 			// For simplicity, did not do the pipe of death here. If POD is received, we may deliver a
 			// couple more messages (especially since select is random in which channel is read from).
-			l.concurrencySem <- empty{}
+			c.concurrencySem <- empty{}
 			wg.Add(1)
 			go func(msg *Message) {
 				defer func() {
-					<-l.concurrencySem
+					<-c.concurrencySem
 				}()
 				var fnWg sync.WaitGroup
 				fnWg.Add(1)
 				start := time.Now()
 				fn(msg, &fnWg)
 				fnWg.Wait()
-				l.Stats.AddProcessedDuration(time.Since(start))
-				l.Stats.AddProcessed(1)
+				c.Stats.AddProcessedDuration(time.Since(start))
+				c.Stats.AddProcessed(1)
 				wg.Done()
 			}(msg)
-		case <-l.pipeOfDeath:
-			l.LogInfo("ListenWithContext received pipe of death")
+		case <-c.pipeOfDeath:
+			c.LogInfo("ListenWithContext received pipe of death")
 			return
 		}
 	}
 }
 
 // Listen listens and delivers message to the supplied function.
-func (l *Consumer) Listen(fn MessageProcessor) {
-	l.ListenWithContext(context.TODO(), fn)
+func (c *Consumer) Listen(fn MessageProcessor) {
+	c.ListenWithContext(context.TODO(), fn)
 }

@@ -36,6 +36,9 @@ func TestConsumer(t *testing.T) {
 			AwsConfigRegion("some-region"),
 			AwsConfigEndpoint("http://127.0.0.1:4567"),
 		)
+		So(k, ShouldNotBeNil)
+		So(err, ShouldBeNil)
+
 
 		stream := "some-consumer-stream"
 
@@ -302,19 +305,21 @@ func TestConsumer(t *testing.T) {
 			}
 			var count int64
 			ctx, cancel := context.WithCancel(context.TODO())
-			l.ListenWithContext(ctx, func(m *Message, wg *sync.WaitGroup) error {
-				defer wg.Done()
-				time.AfterFunc(time.Duration(rand.Intn(10))*time.Second, func() {
-					n, err := strconv.Atoi(string(m.Data))
-					c.So(err, ShouldBeNil)
-					atomic.AddInt64(&count, 1)
-					if n >= 15 {
-						cancel()
-					}
-				})
+			go func() {
+				l.ListenWithContext(ctx, func(m *Message, wg *sync.WaitGroup) error {
+					defer wg.Done()
+					time.AfterFunc(time.Duration(rand.Intn(3))*time.Second, func() {
+						n, err := strconv.Atoi(string(m.Data))
+						c.So(n, ShouldBeBetweenOrEqual, 0, 19)
+						c.So(err, ShouldBeNil)
+						atomic.AddInt64(&count, 1)
+					})
 
-				return nil
-			})
+					return nil
+				})
+			}()
+			<-time.After(1 * time.Second)
+			cancel()
 			So(atomic.LoadInt64(&count), ShouldBeBetweenOrEqual, 1, 20)
 			Printf("(count was %d)", atomic.LoadInt64(&count))
 		})

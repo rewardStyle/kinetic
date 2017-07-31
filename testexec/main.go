@@ -239,7 +239,7 @@ func newKineticProducer(k *kinetic.Kinetic, streamName string) *kinetic.Producer
 		kinetic.KinesisWriterResponseReadTimeout(time.Second),
 		kinetic.KinesisWriterMsgCountRateLimit(1000),
 		kinetic.KinesisWriterMsgSizeRateLimit(1000000),
-		kinetic.KinesisWriterLogLevel(kinetic.LogDebug),
+		kinetic.KinesisWriterLogLevel(aws.LogOff),
 		kinetic.KinesisWriterStats(psc),
 	)
 	if err != nil {
@@ -279,30 +279,30 @@ func newKineticConsumer(k *kinetic.Kinetic, streamName string) *kinetic.Consumer
 		log.Fatalf("Unable to get shards for stream %s due to: %v\n", streamName, err)
 	}
 
-	lsc := kinetic.NewDefaultConsumerStatsCollector(registry)
+	csc := kinetic.NewDefaultConsumerStatsCollector(registry)
 	r, err := kinetic.NewKinesisReader(k.Session.Config, streamName, shards[0],
 		kinetic.KinesisReaderBatchSize(10000),
 		//kinetic.KinesisReaderShardIterator(),
 		kinetic.KinesisReaderResponseReadTimeout(time.Second),
 		kinetic.KinesisReaderLogLevel(aws.LogOff),
-		kinetic.KinesisReaderStats(lsc),
+		kinetic.KinesisReaderStats(csc),
 	)
 	if err != nil {
 		log.Fatalf("Unable to create a new kinesis reader due to: %v\n", err)
 	}
 
-	l, err := kinetic.NewConsumer(k.Session.Config, streamName, shards[0],
+	c, err := kinetic.NewConsumer(k.Session.Config, streamName, shards[0],
 		kinetic.ConsumerReader(r),
 		kinetic.ConsumerQueueDepth(500),
 		kinetic.ConsumerConcurrency(10),
 		kinetic.ConsumerLogLevel(aws.LogOff),
-		kinetic.ConsumerStats(lsc),
+		kinetic.ConsumerStats(csc),
 	)
 	if err != nil {
 		log.Fatalf("Unable to create a new consumer due to: %v\n", err)
 	}
 
-	return l
+	return c
 }
 
 func handlePoD() {
@@ -416,7 +416,7 @@ func produce(sd *StreamData, p *kinetic.Producer, wg *sync.WaitGroup) {
 		if *cfg.Blast {
 			sendTicker = time.NewTicker(time.Nanosecond)
 		} else {
-			sendTicker = time.NewTicker(time.Millisecond)
+			sendTicker = time.NewTicker(time.Duration(rand.Intn(1) + 1) * time.Millisecond)
 		}
 	produce:
 		for {

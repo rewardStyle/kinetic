@@ -169,14 +169,14 @@ func TestKineticIntegration(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create a new kinetic consumer
-	l, err := NewConsumer(k.Session.Config, stream, shards[0],
+	c, err := NewConsumer(k.Session.Config, stream, shards[0],
 		ConsumerReader(r),
 		ConsumerQueueDepth(20),
 		ConsumerConcurrency(10),
 		ConsumerLogLevel(aws.LogOff),
 		ConsumerStats(&NilConsumerStatsCollector{}),
 	)
-	assert.NotNil(t, l)
+	assert.NotNil(t, c)
 	assert.Nil(t, err)
 
 	numMsg := 1000
@@ -204,7 +204,7 @@ func TestKineticIntegration(t *testing.T) {
 
 	// Use the consumer to read messages from the kinetic stream
 	go func() {
-		l.Listen(func(m *Message, fnwg *sync.WaitGroup) error {
+		c.Listen(func(m *Message, fnwg *sync.WaitGroup) error {
 			defer fnwg.Done()
 
 			msg := &TestMessage{}

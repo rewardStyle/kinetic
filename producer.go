@@ -221,7 +221,7 @@ func (p *Producer) produce() {
 					timer.Stop()
 					return
 				case <-timer.C:
-					break
+					continue
 				}
 			}
 		}()

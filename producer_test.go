@@ -19,6 +19,8 @@ func TestProducer(t *testing.T) {
 			AwsConfigRegion("some-region"),
 			AwsConfigEndpoint("http://127.0.0.1:4567"),
 		)
+		So(k, ShouldNotBeNil)
+		So(err, ShouldBeNil)
 
 		stream := "some-producer-stream"
 
