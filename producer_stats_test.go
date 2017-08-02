@@ -46,8 +46,8 @@ func TestProducerStatsCollector(t *testing.T) {
 			sc.AddDroppedRetries(1)
 		})
 
-		Convey("check that AddPutRecordsProvisionedThroughputExceeded does not error", func() {
-			sc.AddPutRecordsProvisionedThroughputExceeded(1)
+		Convey("check that WriteProvisionedThroughputExceeded does not error", func() {
+			sc.AddWriteProvisionedThroughputExceeded(1)
 		})
 
 		Convey("check that AddPutRecordsCalled does not eroror", func() {
@@ -55,7 +55,7 @@ func TestProducerStatsCollector(t *testing.T) {
 		})
 
 		Convey("check that AddProvisionedThroughputExceeded does not erro", func() {
-			sc.AddPutRecordsProvisionedThroughputExceeded(1)
+			sc.AddWriteProvisionedThroughputExceeded(1)
 		})
 
 		Convey("check that AddPutRecordsTimeout does not error", func() {
@@ -126,9 +126,9 @@ func TestProducerStatsCollector(t *testing.T) {
 			So(sc.(*DefaultProducerStatsCollector).DroppedRetries.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddPutRecordsProvisionedThroughputExceeded does not error", func() {
+		Convey("check that WriteProvisionedThroughputExceeded does not error", func() {
 			count := rand.Int()
-			sc.AddPutRecordsProvisionedThroughputExceeded(count)
+			sc.AddWriteProvisionedThroughputExceeded(count)
 			So(sc.(*DefaultProducerStatsCollector).PutRecordsProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
 		})
 
@@ -138,9 +138,9 @@ func TestProducerStatsCollector(t *testing.T) {
 			So(sc.(*DefaultProducerStatsCollector).PutRecordsCalled.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddPutRecordsProvisionedThroughputExceeded does not erro", func() {
+		Convey("check that WriteProvisionedThroughputExceeded does not erro", func() {
 			count := rand.Int()
-			sc.AddPutRecordsProvisionedThroughputExceeded(count)
+			sc.AddWriteProvisionedThroughputExceeded(count)
 			So(sc.(*DefaultProducerStatsCollector).PutRecordsProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
 		})
 

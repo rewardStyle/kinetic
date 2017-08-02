@@ -182,8 +182,10 @@ func NewProducer(c *aws.Config, stream string, optionFns ...ProducerOptionsFn) (
 // produce is called once to initialize a pool of workers which send batches of messages concurrently
 func (p *Producer) produce() {
 	p.startupOnce.Do(func() {
-		// Reset shutdownOnce to allow the shut down sequence to happen again
-		p.shutdownOnce = sync.Once{}
+		defer func() {
+			// Reset shutdownOnce to allow the shut down sequence to happen again
+			p.shutdownOnce = sync.Once{}
+		}()
 
 		// Instantiate rate limiters
 		p.msgCountLimiter = rate.NewLimiter(rate.Limit(float64(p.writer.getMsgCountRateLimit())), p.batchSize)
@@ -312,6 +314,11 @@ func (p *Producer) produce() {
 // shutdown is called once to handle the graceful shutdown of the produce function
 func (p *Producer) shutdown() {
 	p.shutdownOnce.Do(func() {
+		defer func() {
+			// Reset startupOnce to allow the start up sequence to happen again
+			p.startupOnce = sync.Once{}
+		}()
+
 		// Close the messages channel to prevent any more incoming messages
 		if p.messages != nil {
 			close(p.messages)
@@ -365,9 +372,6 @@ func (p *Producer) shutdown() {
 		if p.pipeOfDeath != nil {
 			close(p.pipeOfDeath)
 		}
-
-		// Reset startupOnce to allow the start up sequence to happen again
-		p.startupOnce = sync.Once{}
 	})
 }
 

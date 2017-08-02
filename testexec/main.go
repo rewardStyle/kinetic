@@ -395,9 +395,11 @@ func produce(sd *StreamData, p *kinetic.Producer, wg *sync.WaitGroup) {
 	go func() {
 		for {
 			<-sendSignal
+			key := make([]byte, 16)
+			rand.Read(key)
 			jsonStr, _ := json.Marshal(NewMessage())
 			if err := p.TryToSend(&kinetic.Message{
-				PartitionKey: aws.String("key"),
+				PartitionKey: aws.String(string(key)),
 				Data:         []byte(jsonStr),
 			}); err == nil {
 				sd.incrementMsgCount()
@@ -416,7 +418,7 @@ func produce(sd *StreamData, p *kinetic.Producer, wg *sync.WaitGroup) {
 		if *cfg.Blast {
 			sendTicker = time.NewTicker(time.Nanosecond)
 		} else {
-			sendTicker = time.NewTicker(time.Duration(rand.Intn(1)+1) * time.Millisecond)
+			sendTicker = time.NewTicker(time.Millisecond)
 		}
 	produce:
 		for {

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"strconv"
+	"math/rand"
 	"sync/atomic"
 )
 
@@ -15,10 +15,16 @@ type Message struct {
 
 // NewMessage creates a new Message struct with a unique identifier
 func NewMessage() *Message {
+	// Increment ID
 	atomic.AddUint64(&msgCount, 1)
 	id := atomic.LoadUint64(&msgCount)
+
+	// Create random string as message
+	message := make([]byte, 100)
+	rand.Read(message)
+
 	return &Message{
 		ID:      id,
-		Message: "hello_" + strconv.Itoa(int(id)),
+		Message: string(message),
 	}
 }

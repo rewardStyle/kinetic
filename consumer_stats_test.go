@@ -38,8 +38,8 @@ func TestConsumerStatsCollector(t *testing.T) {
 			sc.AddGetRecordsCalled(1)
 		})
 
-		Convey("check that AddGetRecordsProvisionedThroughputExceeded does not error", func() {
-			sc.AddGetRecordsProvisionedThroughputExceeded(1)
+		Convey("check that AddReadProvisionedThroughputExceeded does not error", func() {
+			sc.AddReadProvisionedThroughputExceeded(1)
 		})
 
 		Convey("check that AddGetRecordsTimeout does not error", func() {
@@ -102,10 +102,10 @@ func TestConsumerStatsCollector(t *testing.T) {
 			So(sc.(*DefaultConsumerStatsCollector).GetRecordsCalled.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddGetRecordsProvisionedThroughputExceeded does not error", func() {
+		Convey("check that AddReadProvisionedThroughputExceeded does not error", func() {
 			count := rand.Int()
-			sc.AddGetRecordsProvisionedThroughputExceeded(count)
-			So(sc.(*DefaultConsumerStatsCollector).GetRecordsProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
+			sc.AddReadProvisionedThroughputExceeded(count)
+			So(sc.(*DefaultConsumerStatsCollector).ReadProvisionedThroughputExceeded.Count(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddGetRecordsTimeout does not error", func() {

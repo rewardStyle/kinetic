@@ -20,7 +20,7 @@ type ProducerStatsCollector interface {
 	AddDroppedRetries(int)
 	AddPutRecordsCalled(int)
 	AddPutRecordsTimeout(int)
-	AddPutRecordsProvisionedThroughputExceeded(int)
+	AddWriteProvisionedThroughputExceeded(int)
 	UpdatePutRecordsDuration(time.Duration)
 	UpdatePutRecordsBuildDuration(time.Duration)
 	UpdatePutRecordsSendDuration(time.Duration)
@@ -61,9 +61,9 @@ func (nsc *NilProducerStatsCollector) AddPutRecordsCalled(int) {}
 // by the WithHTTPClientTimeout configuration.
 func (nsc *NilProducerStatsCollector) AddPutRecordsTimeout(int) {}
 
-// AddPutRecordsProvisionedThroughputExceeded records the number of times the PutRecords API returned a
+// AddWriteProvisionedThroughputExceeded records the number of times the PutRecords API returned a
 // ErrCodeProvisionedThroughputExceededException by the producer.
-func (nsc *NilProducerStatsCollector) AddPutRecordsProvisionedThroughputExceeded(int) {}
+func (nsc *NilProducerStatsCollector) AddWriteProvisionedThroughputExceeded(int) {}
 
 // UpdatePutRecordsDuration records the duration that the PutRecords API request took.  Only the times of successful calls
 // are measured.
@@ -184,9 +184,9 @@ func (dsc *DefaultProducerStatsCollector) AddPutRecordsTimeout(count int) {
 	dsc.PutRecordsTimeout.Inc(int64(count))
 }
 
-// AddPutRecordsProvisionedThroughputExceeded records the number of times the PutRecords API returned a
+// AddWriteProvisionedThroughputExceeded records the number of times the PutRecords API returned a
 // ErrCodeProvisionedThroughputExceededException by the producer.
-func (dsc *DefaultProducerStatsCollector) AddPutRecordsProvisionedThroughputExceeded(count int) {
+func (dsc *DefaultProducerStatsCollector) AddWriteProvisionedThroughputExceeded(count int) {
 	dsc.PutRecordsProvisionedThroughputExceeded.Inc(int64(count))
 }
 

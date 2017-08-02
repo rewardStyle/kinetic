@@ -153,22 +153,30 @@ func (c *Consumer) stopConsuming() {
 
 // enqueueSingle calls the readers's GetRecord method and enqueus a single message on the message channel.
 func (c *Consumer) enqueueSingle(ctx context.Context) (count int, size int) {
-	count, size, _ = c.reader.GetRecord(ctx,
+	var err error
+	count, size, err = c.reader.GetRecord(ctx,
 		func(msg *Message) error {
 			c.messages <- msg
 			return nil
 		})
+	if err != nil {
+		c.handleErrorLogging(err)
+	}
 
 	return count, size
 }
 
 // enqueueBatch calls the reader's GetRecords method and enqueues a batch of messages on the message chanel.
 func (c *Consumer) enqueueBatch(ctx context.Context) (count, size int) {
-	count, size, _ = c.reader.GetRecords(ctx,
+	var err error
+	count, size, err = c.reader.GetRecords(ctx,
 		func(msg *Message) error {
 			c.messages <- msg
 			return nil
 		})
+	if err != nil {
+		c.handleErrorLogging(err)
+	}
 
 	return count, size
 }

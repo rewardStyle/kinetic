@@ -250,7 +250,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn messageHandler, batch
 		r.LogError("Error getting records:", err)
 		switch err.(awserr.Error).Code() {
 		case kinesis.ErrCodeProvisionedThroughputExceededException:
-			r.Stats.AddGetRecordsProvisionedThroughputExceeded(1)
+			r.Stats.AddReadProvisionedThroughputExceeded(1)
 		default:
 			r.LogDebug("Received AWS error:", err.Error())
 		}

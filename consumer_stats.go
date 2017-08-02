@@ -16,7 +16,7 @@ type ConsumerStatsCollector interface {
 	AddProcessed(int)
 	AddBatchSize(int)
 	AddGetRecordsCalled(int)
-	AddGetRecordsProvisionedThroughputExceeded(int)
+	AddReadProvisionedThroughputExceeded(int)
 	AddGetRecordsTimeout(int)
 	AddGetRecordsReadTimeout(int)
 	AddProcessedDuration(time.Duration)
@@ -50,9 +50,9 @@ func (nsc *NilConsumerStatsCollector) AddBatchSize(int) {}
 // by the consumer.
 func (nsc *NilConsumerStatsCollector) AddGetRecordsCalled(int) {}
 
-// AddGetRecordsProvisionedThroughputExceeded records the number of times the GetRecords
+// AddReadProvisionedThroughputExceeded records the number of times the GetRecords
 // API returned a ErrCodeProvisionedThroughputExceededException by the consumer.
-func (nsc *NilConsumerStatsCollector) AddGetRecordsProvisionedThroughputExceeded(int) {}
+func (nsc *NilConsumerStatsCollector) AddReadProvisionedThroughputExceeded(int) {}
 
 // AddGetRecordsTimeout records the number of times the GetRecords API timed out
 // on the HTTP level.  This is influenced by the WithHTTPClientTimeout
@@ -87,7 +87,7 @@ const (
 	MetricsProcessed                      	       = "kinetic.consumer.processed"
 	MetricsBatchSize                      	       = "kinetic.consumer.batchsize"
 	MetricsSent                           	       = "kinetic.consumer.sent"
-	MetricsGetRecordsProvisionedThroughputExceeded = "kinetic.consumer.getrecords.provisionedthroughputexceeded"
+	MetricsReadProvisionedThroughputExceeded = "kinetic.consumer.getrecords.provisionedthroughputexceeded"
 	MetricsGetRecordsTimeout              	       = "kinetic.consumer.getrecords.timeout"
 	MetricsGetRecordsReadTimeout          	       = "kinetic.consumer.getrecords.readtimeout"
 	MetricsProcessedDuration              	       = "kinetic.consumer.processed.duration"
@@ -104,7 +104,7 @@ type DefaultConsumerStatsCollector struct {
 	Processed                               metrics.Counter
 	BatchSize                               metrics.Counter
 	GetRecordsCalled                        metrics.Counter
-	GetRecordsProvisionedThroughputExceeded metrics.Counter
+	ReadProvisionedThroughputExceeded metrics.Counter
 	GetRecordsTimeout                       metrics.Counter
 	GetRecordsReadTimeout                   metrics.Counter
 	ProcessedDuration                       metrics.Gauge
@@ -121,7 +121,7 @@ func NewDefaultConsumerStatsCollector(r metrics.Registry) *DefaultConsumerStatsC
 		Processed:                     	   	  metrics.GetOrRegisterCounter(MetricsProcessed, r),
 		BatchSize:                      	  metrics.GetOrRegisterCounter(MetricsBatchSize, r),
 		GetRecordsCalled:               	  metrics.GetOrRegisterCounter(MetricsSent, r),
-		GetRecordsProvisionedThroughputExceeded:  metrics.GetOrRegisterCounter(MetricsGetRecordsProvisionedThroughputExceeded, r),
+		ReadProvisionedThroughputExceeded:  metrics.GetOrRegisterCounter(MetricsReadProvisionedThroughputExceeded, r),
 		GetRecordsTimeout:              	  metrics.GetOrRegisterCounter(MetricsGetRecordsTimeout, r),
 		GetRecordsReadTimeout:          	  metrics.GetOrRegisterCounter(MetricsGetRecordsReadTimeout, r),
 		ProcessedDuration:              	  metrics.GetOrRegisterGauge(MetricsProcessedDuration, r),
@@ -163,10 +163,10 @@ func (dsc *DefaultConsumerStatsCollector) AddGetRecordsCalled(count int) {
 	dsc.GetRecordsCalled.Inc(int64(count))
 }
 
-// AddGetRecordsProvisionedThroughputExceeded records the number of times the GetRecords
+// AddReadProvisionedThroughputExceeded records the number of times the GetRecords
 // API returned a ErrCodeProvisionedThroughputExceededException by the consumer.
-func (dsc *DefaultConsumerStatsCollector) AddGetRecordsProvisionedThroughputExceeded(count int) {
-	dsc.GetRecordsProvisionedThroughputExceeded.Inc(int64(count))
+func (dsc *DefaultConsumerStatsCollector) AddReadProvisionedThroughputExceeded(count int) {
+	dsc.ReadProvisionedThroughputExceeded.Inc(int64(count))
 }
 
 // AddGetRecordsTimeout records the number of times the GetRecords API timed out
@@ -216,7 +216,7 @@ func (dsc *DefaultConsumerStatsCollector) PrintStats() {
 	log.Printf("Consumer stats: GetRecords Called: [%d]\n", dsc.GetRecordsCalled.Count())
 	log.Printf("Consumer stats: GetRecords Timeout: [%d]\n", dsc.GetRecordsTimeout.Count())
 	log.Printf("Consumer stats: GetRecords Read Timeout: [%d]\n", dsc.GetRecordsReadTimeout.Count())
-	log.Printf("Consumer stats: GetRecords Provisioned Throughput Exceeded: [%d]\n", dsc.GetRecordsProvisionedThroughputExceeded.Count())
+	log.Printf("Consumer stats: GetRecords Provisioned Throughput Exceeded: [%d]\n", dsc.ReadProvisionedThroughputExceeded.Count())
 	log.Printf("Consumer stats: Processed Duration (ns): [%d]\n", dsc.ProcessedDuration.Value())
 	log.Printf("Consumer stats: GetRecords Duration (ns): [%d]\n", dsc.GetRecordsDuration.Value())
 	log.Printf("Consumer stats: GetRecords Read Response Duration (ns): [%d]\n", dsc.GetRecordsReadResponseDuration.Value())

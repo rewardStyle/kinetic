@@ -185,7 +185,7 @@ func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*Message, fn 
 		} else {
 			switch aws.StringValue(record.ErrorCode) {
 			case kinesis.ErrCodeProvisionedThroughputExceededException:
-				w.Stats.AddPutRecordsProvisionedThroughputExceeded(1)
+				w.Stats.AddWriteProvisionedThroughputExceeded(1)
 			default:
 				w.LogDebug("PutRecords record failed with error:", aws.StringValue(record.ErrorCode), aws.StringValue(record.ErrorMessage))
 			}

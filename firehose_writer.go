@@ -186,7 +186,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*Message, fn
 		} else {
 			switch aws.StringValue(record.ErrorCode) {
 			case firehose.ErrCodeLimitExceededException:
-				w.Stats.AddPutRecordsProvisionedThroughputExceeded(1)
+				w.Stats.AddWriteProvisionedThroughputExceeded(1)
 			default:
 				w.LogDebug("PutRecords record failed with error:", aws.StringValue(record.ErrorCode), aws.StringValue(record.ErrorMessage))
 			}
