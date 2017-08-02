@@ -152,34 +152,25 @@ func (c *Consumer) stopConsuming() {
 }
 
 // enqueueSingle calls the readers's GetRecord method and enqueus a single message on the message channel.
-func (c *Consumer) enqueueSingle(ctx context.Context) (int, int, error) {
-	n, m, err := c.reader.GetRecord(ctx, func(msg *Message, wg *sync.WaitGroup) error {
-		defer wg.Done()
-		c.messages <- msg
+func (c *Consumer) enqueueSingle(ctx context.Context) (count int, size int) {
+	count, size, _ = c.reader.GetRecord(ctx,
+		func(msg *Message) error {
+			c.messages <- msg
+			return nil
+		})
 
-		return nil
-	})
-	if err != nil {
-		c.handleErrorLogging(err)
-		return 0, 0, err
-	}
-	return n, m, nil
+	return count, size
 }
 
 // enqueueBatch calls the reader's GetRecords method and enqueues a batch of messages on the message chanel.
-func (c *Consumer) enqueueBatch(ctx context.Context) (int, int, error) {
-	n, m, err := c.reader.GetRecords(ctx,
-		func(msg *Message, wg *sync.WaitGroup) error {
-			defer wg.Done()
+func (c *Consumer) enqueueBatch(ctx context.Context) (count, size int) {
+	count, size, _ = c.reader.GetRecords(ctx,
+		func(msg *Message) error {
 			c.messages <- msg
-
 			return nil
 		})
-	if err != nil {
-		c.handleErrorLogging(err)
-		return 0, 0, err
-	}
-	return n, m, nil
+
+	return count, size
 }
 
 // handleErrorLogging is a helper method for handling and logging errors from calling the reader's
@@ -224,7 +215,7 @@ func (c *Consumer) RetrieveWithContext(ctx context.Context) (*Message, error) {
 		if !ok {
 			return nil, err
 		}
-		n, _, _ := c.enqueueSingle(childCtx)
+		n, _ := c.enqueueSingle(childCtx)
 		if n > 0 {
 			c.Stats.AddDelivered(n)
 			return <-c.messages, nil
@@ -245,16 +236,10 @@ func (c *Consumer) RetrieveFnWithContext(ctx context.Context, fn MessageProcesso
 		return err
 	}
 
-	var wg sync.WaitGroup
-	defer wg.Wait()
-	wg.Add(1)
-	go func() {
-		start := time.Now()
-		fn(msg, &wg)
-		c.Stats.AddProcessedDuration(time.Since(start))
-		c.Stats.AddProcessed(1)
-	}()
-
+	start := time.Now()
+	fn(msg)
+	c.Stats.AddProcessedDuration(time.Since(start))
+	c.Stats.AddProcessed(1)
 	return nil
 }
 
@@ -291,11 +276,7 @@ func (c *Consumer) consume(ctx context.Context) {
 				return
 			}
 
-			_, payloadSize, err := c.enqueueBatch(childCtx)
-			if err != nil {
-				c.LogError("Encountered an error when calling enqueueBatch: ", err)
-				return
-			}
+			_, size := c.enqueueBatch(childCtx)
 
 			wg := sync.WaitGroup{}
 			wg.Add(1)
@@ -310,7 +291,7 @@ func (c *Consumer) consume(ctx context.Context) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				if err := c.txSizeRateLimiter.WaitN(childCtx, payloadSize); err != nil {
+				if err := c.txSizeRateLimiter.WaitN(childCtx, size); err != nil {
 					c.LogError("Error occured waiting for transmission size tokens")
 				}
 			}()
@@ -341,11 +322,8 @@ func (c *Consumer) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 				defer func() {
 					<-c.concurrencySem
 				}()
-				var fnWg sync.WaitGroup
-				fnWg.Add(1)
 				start := time.Now()
-				fn(msg, &fnWg)
-				fnWg.Wait()
+				fn(msg)
 				c.Stats.AddProcessedDuration(time.Since(start))
 				c.Stats.AddProcessed(1)
 				wg.Done()

@@ -416,7 +416,7 @@ func produce(sd *StreamData, p *kinetic.Producer, wg *sync.WaitGroup) {
 		if *cfg.Blast {
 			sendTicker = time.NewTicker(time.Nanosecond)
 		} else {
-			sendTicker = time.NewTicker(time.Duration(rand.Intn(1) + 1) * time.Millisecond)
+			sendTicker = time.NewTicker(time.Duration(rand.Intn(1)+1) * time.Millisecond)
 		}
 	produce:
 		for {
@@ -496,9 +496,7 @@ func listen(sd *StreamData, c *kinetic.Consumer, wg *sync.WaitGroup) {
 
 	// Call Listen within a go routine
 	go func() {
-		c.Listen(func(m *kinetic.Message, wg *sync.WaitGroup) error {
-			defer wg.Done()
-
+		c.Listen(func(m *kinetic.Message) error {
 			// Unmarshal data
 			msg := &Message{}
 			json.Unmarshal(m.Data, msg)

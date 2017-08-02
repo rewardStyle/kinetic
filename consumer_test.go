@@ -205,8 +205,7 @@ func TestConsumer(t *testing.T) {
 			go func() {
 				ctx, cancel := context.WithTimeout(context.TODO(), 1000*time.Millisecond)
 				defer cancel()
-				l.ListenWithContext(ctx, func(msg *Message, wg *sync.WaitGroup) error {
-					defer wg.Done()
+				l.ListenWithContext(ctx, func(msg *Message) error {
 					return nil
 				})
 				wg.Done()
@@ -217,15 +216,12 @@ func TestConsumer(t *testing.T) {
 			wg.Wait()
 		})
 
-		// TODO: Move this test to kinesis_reader_test.go
 		Convey("check that throttle mechanism prevents more than 5 calls to get records", func() {
 			start := time.Now()
 			secs := []float64{}
 			for i := 1; i <= 6; i++ {
 				start := time.Now()
-				l.reader.GetRecord(context.TODO(), func(msg *Message, wg *sync.WaitGroup) error {
-					defer wg.Done()
-
+				l.reader.GetRecord(context.TODO(), func(msg *Message) error {
 					return nil
 				})
 				secs = append(secs, time.Since(start).Seconds())
@@ -240,9 +236,7 @@ func TestConsumer(t *testing.T) {
 			data := "retrieved"
 			_, err := putRecord(l, []byte(data))
 			So(err, ShouldBeNil)
-			err = l.RetrieveFn(func(msg *Message, wg *sync.WaitGroup) error {
-				defer wg.Done()
-
+			err = l.RetrieveFn(func(msg *Message) error {
 				called = true
 				// Note that because this is called in a goroutine, we have to use
 				// the goconvey context
@@ -261,8 +255,7 @@ func TestConsumer(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				l.Listen(func(msg *Message, wg *sync.WaitGroup) error {
-					defer wg.Done()
+				l.Listen(func(msg *Message) error {
 					atomic.AddInt64(&count, 1)
 
 					return nil
@@ -306,8 +299,7 @@ func TestConsumer(t *testing.T) {
 			var count int64
 			ctx, cancel := context.WithCancel(context.TODO())
 			go func() {
-				l.ListenWithContext(ctx, func(m *Message, wg *sync.WaitGroup) error {
-					defer wg.Done()
+				l.ListenWithContext(ctx, func(m *Message) error {
 					time.AfterFunc(time.Duration(rand.Intn(3))*time.Second, func() {
 						n, err := strconv.Atoi(string(m.Data))
 						c.So(n, ShouldBeBetweenOrEqual, 0, 19)

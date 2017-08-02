@@ -185,7 +185,7 @@ func TestKineticIntegration(t *testing.T) {
 	// Use the producer to write messages to the kinetic stream
 	wg := sync.WaitGroup{}
 	wg.Add(numMsg + 1)
-	go func(sent *int) {
+	go func() {
 		defer wg.Done()
 		for i := 0; i < numMsg; i++ {
 			msg := &TestMessage{
@@ -197,16 +197,14 @@ func TestKineticIntegration(t *testing.T) {
 				PartitionKey: aws.String("key"),
 				Data:         []byte(jsonStr),
 			}); err == nil {
-				*sent++
+				numSent++
 			}
 		}
-	}(&numSent)
+	}()
 
 	// Use the consumer to read messages from the kinetic stream
 	go func() {
-		c.Listen(func(m *Message, fnwg *sync.WaitGroup) error {
-			defer fnwg.Done()
-
+		c.Listen(func(m *Message) error {
 			msg := &TestMessage{}
 			json.Unmarshal(m.Data, msg)
 
@@ -221,8 +219,8 @@ func TestKineticIntegration(t *testing.T) {
 			return nil
 		})
 	}()
-
 	wg.Wait()
+
 	assert.Equal(t, int(numSent), numMsg, "Number of message sent should equal the number of messages")
 	assert.Equal(t, streamData.size(), numMsg, "Number of messages")
 

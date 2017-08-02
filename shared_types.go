@@ -2,12 +2,11 @@ package kinetic
 
 import (
 	"context"
-	"sync"
 )
 
 // StreamWriter is an interface that abstracts the differences in API between Kinesis and Firehose.
 type StreamWriter interface {
-	PutRecords(context.Context, []*Message, MessageHandlerAsync) error
+	PutRecords(context.Context, []*Message, messageHandler) error
 	getMsgCountRateLimit() int
 	getMsgSizeRateLimit() int
 	getConcurrencyMultiplier() (int, error)
@@ -15,22 +14,20 @@ type StreamWriter interface {
 
 // StreamReader is an interface that abstracts out a stream reader.
 type StreamReader interface {
-	GetRecord(context.Context, MessageHandler) (int, int, error)
-	GetRecords(context.Context, MessageHandler) (int, int, error)
+	GetRecord(context.Context, messageHandler) (count int, size int, err error)
+	GetRecords(context.Context, messageHandler) (count int, size int, err error)
 }
 
-// MessageProcessor defines the signature of a message handler used by Listen, RetrieveFn and their associated
-// *WithContext functions.  MessageHandler accepts a WaitGroup so the function can be run as a blocking operation as
-// opposed to MessageHandlerAsync.
-type MessageProcessor func(*Message, *sync.WaitGroup) error
+// MessageProcessor defines the signature of a (asynchronous) callback function used by Listen, RetrieveFn and
+// their associated *WithContext functions.  MessageProcessor is a user-defined callback function for processing
+// messages after they have been pulled off of the consumer's message channel or for processing the producer's
+// dropped message.
+type MessageProcessor func(*Message) error
 
-// MessageHandler defines the signature of a message handler used by PutRecords().  MessageHandler accepts a WaitGroup
-// so the function can be run as a blocking operation as opposed to MessageHandlerAsync.
-type MessageHandler func(*Message, *sync.WaitGroup) error
-
-// MessageHandlerAsync defines the signature of a message handler used by PutRecords().  MessageHandlerAsync is meant to
-// be run asynchronously.
-type MessageHandlerAsync func(*Message) error
+// messageHandler defines the signature of a message handler used by PutRecords(), GetRecord() and GetRecords().
+// The messageHandler is used as a callback function defined by the producer/consumer so the writers/readers
+// don't need to know about the producer's/consumer's message channels.
+type messageHandler func(*Message) error
 
 // empty is used a as a dummy type for counting semaphore channels.
 type empty struct{}

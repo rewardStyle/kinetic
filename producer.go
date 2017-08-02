@@ -24,7 +24,7 @@ type producerOptions struct {
 	maxRetryAttempts int                    // maximum number of retry attempts for failed messages
 	concurrency      int                    // number of concurrent workers per shard
 	shardCheckFreq   time.Duration          // frequency (specified as a duration) with which to check the the shard size
-	dataSpillFn      MessageHandlerAsync    // callback function for handling dropped messages that the producer was unable to send to the stream
+	dataSpillFn      MessageProcessor       // callback function for handling dropped messages that the producer was unable to send to the stream
 	logLevel         aws.LogLevelType       // log level for configuring the LogHelper's log level
 	Stats            ProducerStatsCollector // stats collection mechanism
 }
@@ -116,7 +116,7 @@ func ProducerShardCheckFrequency(duration time.Duration) ProducerOptionsFn {
 }
 
 // ProducerDataSpillFn is a functional option method for configuing the producer's data spill callback function.
-func ProducerDataSpillFn(fn MessageHandlerAsync) ProducerOptionsFn {
+func ProducerDataSpillFn(fn MessageProcessor) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.dataSpillFn = fn
 		return nil

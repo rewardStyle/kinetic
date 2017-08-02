@@ -6,73 +6,55 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"os"
-	"sync"
 
 	"github.com/aws/aws-sdk-go/aws"
 )
 
+const (
+	kclReaderMaxBatchSize = 10000
+)
+
 // kclReaderOptions is a struct that holds all of the KclReader's configurable parameters.
 type kclReaderOptions struct {
-	onInitCallbackFn       func() error	      // callback function that gets called after initialization
-	onCheckpointCallbackFn func() error	      // callback function that gets called after checkpointing
-	onShutdownCallbackFn   func() error	      // callback function that gets called after shutdown
+	batchSize              int                    // maximum records per GetRecordsRequest call // callback function that gets called after shutdown
 	logLevel               aws.LogLevelType       // log level for configuring the LogHelper's log level
 	Stats                  ConsumerStatsCollector // stats collection mechanism
 }
 
-// defaultKlcReaderOptions instantiates a kclReaderOptions with default values.
-func defaultKlcReaderOptions() *kclReaderOptions {
+// defaultkclReaderOptions instantiates a kclReaderOptions with default values.
+func defaultKclReaderOptions() *kclReaderOptions {
 	return &kclReaderOptions{
-		onInitCallbackFn:       func() error { return nil },
-		onCheckpointCallbackFn: func() error { return nil },
-		onShutdownCallbackFn:   func() error { return nil },
+		batchSize:              kclReaderMaxBatchSize,
 		logLevel:               aws.LogOff,
 		Stats:                  &NilConsumerStatsCollector{},
 	}
 }
 
-// KlcReaderOptionsFn is a method signature for defining functional option methods for configuring the KclReader.
-type KlcReaderOptionsFn func(*kclReaderOptions) error
+// kclReaderOptionsFn is a method signature for defining functional option methods for configuring the KclReader.
+type kclReaderOptionsFn func(*kclReaderOptions) error
 
-// KlcReaderOnInitCallbackFn is a functional option method for configuring the KclReader's
-// onInitCallbackFn.
-func KlcReaderOnInitCallbackFn(fn func() error) KlcReaderOptionsFn {
+// kclReaderBatchSize is a functional option method for configuring the KclReader's batch size
+func kclReaderBatchSize(size int) kclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
-		o.onInitCallbackFn = fn
-		return nil
+		if size >= 0 && size <= kclReaderMaxBatchSize {
+			o.batchSize = size
+			return nil
+		}
+		return ErrInvalidBatchSize
 	}
 }
 
-// KlcReaderOnCheckpointCallbackFn is a functional option method for configuring the KclReader's
-// onCheckpointCallbackFn.
-func KlcReaderOnCheckpointCallbackFn(fn func() error) KlcReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
-		o.onCheckpointCallbackFn = fn
-		return nil
-	}
-}
-
-// KlcReaderOnShutdownCallbackFn is a functional option method for configuring the KclReader's
-// onShutdownCallbackFn.
-func KlcReaderOnShutdownCallbackFn(fn func() error) KlcReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
-		o.onShutdownCallbackFn = fn
-		return nil
-	}
-}
-
-// KlcReaderLogLevel is a functional option method for configuring the KclReader's log level.
-func KlcReaderLogLevel(ll aws.LogLevelType) KlcReaderOptionsFn {
+// kclReaderLogLevel is a functional option method for configuring the KclReader's log level.
+func kclReaderLogLevel(ll aws.LogLevelType) kclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.logLevel = ll
 		return nil
 	}
 }
 
-// KlcReaderStats is a functional option method for configuring the KclReader's stats collector.
-func KlcReaderStats(sc ConsumerStatsCollector) KlcReaderOptionsFn {
+// kclReaderStats is a functional option method for configuring the KclReader's stats collector.
+func kclReaderStats(sc ConsumerStatsCollector) kclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.Stats = sc
 		return nil
@@ -84,19 +66,20 @@ type KclReader struct {
 	*kclReaderOptions
 	*LogHelper
 	pipeOfDeath chan empty
+	stop        chan empty
 	scanner     *bufio.Scanner
 	reader      *bufio.Reader
-	msgBuffer   []Message
+	messages    chan *Message
 }
 
 // NewKclReader creates a new stream reader to read records from KCL
-func NewKclReader(c *aws.Config, optionFns ...KlcReaderOptionsFn) (*KclReader, error) {
-	kclReaderOptions := defaultKlcReaderOptions()
+func NewKclReader(c *aws.Config, optionFns ...kclReaderOptionsFn) (*KclReader, error) {
+	kclReaderOptions := defaultKclReaderOptions()
 	for _, optionFn := range optionFns {
 		optionFn(kclReaderOptions)
 	}
 	return &KclReader{
-		msgBuffer:        []Message{},
+		messages: make(chan *Message),
 		kclReaderOptions: kclReaderOptions,
 		LogHelper: &LogHelper{
 			LogLevel: kclReaderOptions.logLevel,
@@ -105,48 +88,29 @@ func NewKclReader(c *aws.Config, optionFns ...KlcReaderOptionsFn) (*KclReader, e
 	}, nil
 }
 
-// processRecords is a helper method which loops through the message buffer and puts messages on the consumer's
-// message channel.  After all the messages on the message buffer have been moved to the consumer's message
-// channel, a message is sent (following the Multilang protocol) to acknowledge that the processRecords message
-// has been received / processed
-func (r *KclReader) processRecords(fn MessageHandler, numRecords int) (int, int, error) {
-	// Define the batchSize
-	batchSize := 0
-	if len(r.msgBuffer) > 0 {
-		if numRecords < 0 {
-			batchSize = len(r.msgBuffer)
-		} else {
-			batchSize = int(math.Min(float64(len(r.msgBuffer)), float64(numRecords)))
-		}
-	}
-	r.Stats.AddBatchSize(batchSize)
-
-	// TODO: Define the payloadSize
-	var payloadSize int
-
-	// Loop through the message buffer and call the message handler function on each message
-	var wg sync.WaitGroup
+// processRecords is a helper method which pulls from the reader's message channel and calls the callback function
+func (r *KclReader) processRecords(batchSize int, fn messageHandler) (count int, size int, err error) {
 	for i := 0; i < batchSize; i++ {
-		wg.Add(1)
-		go fn(&r.msgBuffer[0], &wg)
-		r.msgBuffer = r.msgBuffer[1:]
-		r.Stats.AddConsumed(1)
-	}
-	wg.Wait()
-
-	// Send an acknowledgement that the 'ProcessRecords' message was received/processed
-	if len(r.msgBuffer) == 0 {
-		err := r.sendMessage(NewStatusMessage(PROCESSRECORDS))
+		msg := <-r.messages
+		err = fn(msg)
 		if err != nil {
-			r.LogError(err)
-			return batchSize, payloadSize, err
+			r.LogError("messageHandler resulted in an error: ", err)
+		} else {
+			r.Stats.AddConsumed(1)
+			count++
+			b, err := json.Marshal(msg)
+			if err != nil {
+				r.LogError("Unable to marshal message: ", err)
+			} else {
+				size += len(b)
+			}
 		}
 	}
 
-	return batchSize, payloadSize, nil
+	return count, size, nil
 }
 
-func (r *KclReader) getAction() (*ActionMessage, error) {
+func (r *KclReader) getAction() (*actionMessage, error) {
 	buffer := &bytes.Buffer{}
 	for {
 		line, isPrefix, err := r.reader.ReadLine()
@@ -159,7 +123,7 @@ func (r *KclReader) getAction() (*ActionMessage, error) {
 		}
 	}
 
-	actionMsg := &ActionMessage{}
+	actionMsg := &actionMessage{}
 	err := json.Unmarshal(buffer.Bytes(), actionMsg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not understand line read from input: %s\n", buffer.String())
@@ -170,7 +134,6 @@ func (r *KclReader) getAction() (*ActionMessage, error) {
 // processAction listens to STDIN and processes action messages based on the Multilang protocol from KCL
 func (r *KclReader) processAction() error {
 	for {
-
 		// Retrieve action message
 		actionMessage, err := r.getAction()
 		if err != nil {
@@ -181,30 +144,41 @@ func (r *KclReader) processAction() error {
 		}
 
 		switch actionMessage.Action {
-		case INITIALIZE:
-			r.onInit()
-			r.sendMessage(NewStatusMessage(INITIALIZE))
-		case CHECKPOINT:
-			r.onCheckpoint()
-			r.sendMessage(NewStatusMessage(CHECKPOINT))
-		case SHUTDOWN:
-			r.onShutdown()
-			r.sendMessage(NewStatusMessage(SHUTDOWN))
-		case PROCESSRECORDS:
-			go func() error {
-				for _, msg := range actionMessage.Records {
-					r.msgBuffer = append(r.msgBuffer, *msg.ToMessage())
-				}
+		case kclActionTypeInitialize:
+			err := r.sendMessage(newStatusMessage(kclActionTypeInitialize))
+			if err != nil {
+				r.LogError("Unable to send Initialize acknowledgement due to: ", err)
+			}
+		case kclActionTypeCheckpoint:
+			err := r.sendMessage(newStatusMessage(kclActionTypeCheckpoint))
+			if err != nil {
+				r.LogError("Unable to send Checkpoint acknowledgement due to: ", err)
+			}
+		case kcActionTypeShutdown:
+			err := r.sendMessage(newStatusMessage(kcActionTypeShutdown))
+			if err != nil {
+				r.LogError("Unable to send Shutdown acknowledgement due to: ", err)
+			}
+		case kclActionTypeProcessRecords:
+			// Put all the messages on the reader's message channel
+			for _, msg := range actionMessage.Records {
+				r.messages <-msg.ToMessage()
+			}
 
-				return nil
-			}()
+			// Send an acknowledgement that all the messages were received
+			err := r.sendMessage(newStatusMessage(kclActionTypeProcessRecords))
+			if err != nil {
+				r.LogError("Unable to send ProcessRecords acknowledgement due to: ", err)
+			}
 		default:
+			r.LogError("processAction received an invalid action: ", actionMessage.Action)
 		}
 	}
 
 	return nil
 }
 
+// sendMessage
 func (r *KclReader) sendMessage(msg interface{}) error {
 	b, err := json.Marshal(msg)
 	if err != nil {
@@ -217,47 +191,16 @@ func (r *KclReader) sendMessage(msg interface{}) error {
 	return nil
 }
 
-func (r *KclReader) onInit() error {
-	if r.onInitCallbackFn != nil {
-		err := r.onInitCallbackFn()
-		if err != nil {
-			r.LogError(err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *KclReader) onCheckpoint() error {
-	if r.onCheckpointCallbackFn != nil {
-		err := r.onCheckpointCallbackFn()
-		if err != nil {
-			r.LogError(err)
-			return err
-		}
-	}
-	return nil
-}
-
-func (r *KclReader) onShutdown() error {
-	if r.onShutdownCallbackFn != nil {
-		err := r.onShutdownCallbackFn()
-		if err != nil {
-			r.LogError(err)
-			return err
-		}
-	}
-	return nil
-}
-
 // GetRecord calls processRecords to attempt to put one message from message buffer to the consumer's message
 // channel
-func (r *KclReader) GetRecord(ctx context.Context, fn MessageHandler) (int, int, error) {
-	return r.processRecords(fn, 1)
+func (r *KclReader) GetRecord(ctx context.Context, fn messageHandler) (count int, size int, err error) {
+	count, size, err = r.processRecords(1, fn)
+	return count, size, err
 }
 
 // GetRecords calls processRecords to attempt to put all messages on the message buffer on the consumer's
 // message channel
-func (r *KclReader) GetRecords(ctx context.Context, fn MessageHandler) (int, int, error) {
-	return r.processRecords(fn, -1)
+func (r *KclReader) GetRecords(ctx context.Context, fn messageHandler) (count int, size int, err error) {
+	count, size, err = r.processRecords(r.batchSize, fn)
+	return count, size, err
 }

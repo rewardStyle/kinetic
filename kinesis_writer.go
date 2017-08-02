@@ -120,7 +120,7 @@ func NewKinesisWriter(c *aws.Config, stream string, optionFns ...KinesisWriterOp
 }
 
 // PutRecords sends a batch of records to Kinesis and returns a list of records that need to be retried.
-func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*Message, fn MessageHandlerAsync) error {
+func (w *KinesisWriter) PutRecords(ctx context.Context, messages []*Message, fn messageHandler) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 

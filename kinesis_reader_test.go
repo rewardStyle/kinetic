@@ -38,7 +38,7 @@ func TestNewKinesisReader(t *testing.T) {
 		})
 
 		Convey("check that we can create a new KinesisReader with configured values", func() {
-			batchSize := rand.Intn(kinesisReaderBatchSize)
+			batchSize := rand.Intn(kinesisReaderMaxBatchSize)
 			respReadTimeout := time.Duration(rand.Int()) * time.Second
 			logLevel := aws.LogDebug | aws.LogDebugWithSigning | LogDebug
 			shardIterator := NewShardIterator()

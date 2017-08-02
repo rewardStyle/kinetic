@@ -7,47 +7,47 @@ import (
 )
 
 // ActionType is used as an enum for KCL Multilang protocol action message types
-type ActionType string
+type kclActionType string
 
 // These are the enumerated KCL Multilang protocol action message types
 const (
-	INITIALIZE     ActionType = "initialize"
-	PROCESSRECORDS ActionType = "processRecords"
-	RECORD         ActionType = "record"
-	CHECKPOINT     ActionType = "checkpoint"
-	SHUTDOWN       ActionType = "shutdown"
-	STATUS         ActionType = "status"
+	kclActionTypeInitialize     kclActionType = "initialize"
+	kclActionTypeProcessRecords kclActionType = "processRecords"
+	kclActionTypeRecord         kclActionType = "record"
+	kclActionTypeCheckpoint     kclActionType = "checkpoint"
+	kcActionTypeShutdown        kclActionType = "shutdown"
+	KclActionTypeStatus         kclActionType = "status"
 )
 
-// ActionMessage is a struct used to marshal / unmarshal KCL Multilang protocol action messages
-type ActionMessage struct {
-	Action         ActionType `json:"action"`
-	ShardID        string     `json:"shardId,omitempty"`
-	SequenceNumber string     `json:"sequenceNumber,omitempty"`
-	Records        []Record   `json:"records,omitempty"`
-	Checkpoint     string     `json:"checkpoint,omitempty"`
-	Error          string     `json:"error,omitempty"`
-	Reason         string     `json:"reason,omitempty"`
-	ResponseFor    ActionType `json:"responseFor,omitempty"`
+// actionMessage is a struct used to marshal / unmarshal KCL Multilang protocol action messages
+type actionMessage struct {
+	Action         kclActionType `json:"action"`
+	ShardID        string        `json:"shardId,omitempty"`
+	SequenceNumber string        `json:"sequenceNumber,omitempty"`
+	Records        []record      `json:"records,omitempty"`
+	Checkpoint     string        `json:"checkpoint,omitempty"`
+	Error          string        `json:"error,omitempty"`
+	Reason         string        `json:"reason,omitempty"`
+	ResponseFor    kclActionType `json:"responseFor,omitempty"`
 }
 
-// Record is a struct used to marshal / unmarshal kinesis records from KCL Multilang protocol
-type Record struct {
-	Action             ActionType `json:"action"`
-	ApproximateArrival Timestamp  `json:"approximateArrivalTimestamp"`
-	Data               string     `json:"data,omitempty"`
-	PartitionKey       string     `json:"partitionKey,omitempty"`
-	SequenceNumber     string     `json:"sequenceNumber,omitempty"`
-	SubSequenceNumber  int        `json:"subSequenceNumber,omitempty"`
+// record is a struct used to marshal / unmarshal kinesis records from KCL Multilang protocol
+type record struct {
+	Action             kclActionType `json:"action"`
+	ApproximateArrival timestamp     `json:"approximateArrivalTimestamp"`
+	Data               string        `json:"data,omitempty"`
+	PartitionKey       string        `json:"partitionKey,omitempty"`
+	SequenceNumber     string        `json:"sequenceNumber,omitempty"`
+	SubSequenceNumber  int           `json:"subSequenceNumber,omitempty"`
 }
 
-// Timestamp is a time.Time type
-type Timestamp struct {
+// timestamp is a time.Time type
+type timestamp struct {
 	time.Time
 }
 
 // UnmarshalJSON is used as a custom unmarshaller unmarshal unix time stamps
-func (t *Timestamp) UnmarshalJSON(b []byte) error {
+func (t *timestamp) UnmarshalJSON(b []byte) error {
 	ts, err := strconv.Atoi(string(b))
 	if err != nil {
 		return err
@@ -61,7 +61,7 @@ func (t *Timestamp) UnmarshalJSON(b []byte) error {
 }
 
 // ToMessage is used to transform a multilang.Record struct into a Message struct
-func (r *Record) ToMessage() *Message {
+func (r *record) ToMessage() *Message {
 	b, err := base64.StdEncoding.DecodeString(r.Data)
 	if err != nil {
 		panic("There was a problem decoding kcl data")
@@ -75,18 +75,18 @@ func (r *Record) ToMessage() *Message {
 	}
 }
 
-// NewCheckpointMessage is used to create a new checkpoint message
-func NewCheckpointMessage(seqNum string) *ActionMessage {
-	return &ActionMessage{
-		Action:     CHECKPOINT,
+// newCheckpointMessage is used to create a new checkpoint message
+func newCheckpointMessage(seqNum string) *actionMessage {
+	return &actionMessage{
+		Action:     kclActionTypeCheckpoint,
 		Checkpoint: seqNum,
 	}
 }
 
-// NewStatusMessage is used to create a new status message
-func NewStatusMessage(actionType ActionType) *ActionMessage {
-	return &ActionMessage{
-		Action:      STATUS,
+// newStatusMessage is used to create a new status message
+func newStatusMessage(actionType kclActionType) *actionMessage {
+	return &actionMessage{
+		Action:      KclActionTypeStatus,
 		ResponseFor: actionType,
 	}
 }

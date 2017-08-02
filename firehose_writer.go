@@ -37,13 +37,13 @@ func defaultFirehoseWriterOptions() *firehoseWriterOptions {
 	}
 }
 
-// FireHoseWriterOptionsFn is a method signature for defining functional option methods for configuring
+// FirehoseWriterOptionsFn is a method signature for defining functional option methods for configuring
 // the FirehoseWriter.
-type FireHoseWriterOptionsFn func(*firehoseWriterOptions) error
+type FirehoseWriterOptionsFn func(*firehoseWriterOptions) error
 
 // FirehoseWriterMsgCountRateLimit is a functional option method for configuring the FirehoseWriter's
 // message count rate limit.
-func FirehoseWriterMsgCountRateLimit(limit int) FireHoseWriterOptionsFn {
+func FirehoseWriterMsgCountRateLimit(limit int) FirehoseWriterOptionsFn {
 	return func(o *firehoseWriterOptions) error {
 		if limit > 0 && limit <= firehoseMsgCountRateLimit {
 			o.msgCountRateLimit = limit
@@ -55,7 +55,7 @@ func FirehoseWriterMsgCountRateLimit(limit int) FireHoseWriterOptionsFn {
 
 // FirehoseWriterMsgSizeRateLimit is a functional option method for configuring the FirehoseWriter's
 // messsage size rate limit.
-func FirehoseWriterMsgSizeRateLimit(limit int) FireHoseWriterOptionsFn {
+func FirehoseWriterMsgSizeRateLimit(limit int) FirehoseWriterOptionsFn {
 	return func(o *firehoseWriterOptions) error {
 		if limit > 0 && limit <= firehoseMsgSizeRateLimit {
 			o.msgSizeRateLimit = limit
@@ -67,7 +67,7 @@ func FirehoseWriterMsgSizeRateLimit(limit int) FireHoseWriterOptionsFn {
 
 // FirehoseWriterThroughputMultiplier is a functional option method for configuring the FirehoseWriter's
 // throughput multiplier.
-func FirehoseWriterThroughputMultiplier(multiplier int) FireHoseWriterOptionsFn {
+func FirehoseWriterThroughputMultiplier(multiplier int) FirehoseWriterOptionsFn {
 	return func(o *firehoseWriterOptions) error {
 		if multiplier > 0 {
 			o.throughputMultiplier = multiplier
@@ -78,7 +78,7 @@ func FirehoseWriterThroughputMultiplier(multiplier int) FireHoseWriterOptionsFn 
 }
 
 // FirehoseWriterLogLevel is a functional option method for configuring the FirehoseWriter's log level.
-func FirehoseWriterLogLevel(ll aws.LogLevelType) FireHoseWriterOptionsFn {
+func FirehoseWriterLogLevel(ll aws.LogLevelType) FirehoseWriterOptionsFn {
 	return func(o *firehoseWriterOptions) error {
 		o.logLevel = ll & 0xffff0000
 		return nil
@@ -86,7 +86,7 @@ func FirehoseWriterLogLevel(ll aws.LogLevelType) FireHoseWriterOptionsFn {
 }
 
 // FirehoseWriterStats is a functional option method for configuring the FirehoseWriter's stats collector.
-func FirehoseWriterStats(sc ProducerStatsCollector) FireHoseWriterOptionsFn {
+func FirehoseWriterStats(sc ProducerStatsCollector) FirehoseWriterOptionsFn {
 	return func(o *firehoseWriterOptions) error {
 		o.Stats = sc
 		return nil
@@ -102,7 +102,7 @@ type FirehoseWriter struct {
 }
 
 // NewFirehoseWriter creates a new stream writer to write records to a Kinesis.
-func NewFirehoseWriter(c *aws.Config, stream string, optionFns ...FireHoseWriterOptionsFn) (*FirehoseWriter, error) {
+func NewFirehoseWriter(c *aws.Config, stream string, optionFns ...FirehoseWriterOptionsFn) (*FirehoseWriter, error) {
 	firehoseWriterOptions := defaultFirehoseWriterOptions()
 	for _, optionFn := range optionFns {
 		optionFn(firehoseWriterOptions)
@@ -123,7 +123,7 @@ func NewFirehoseWriter(c *aws.Config, stream string, optionFns ...FireHoseWriter
 }
 
 // PutRecords sends a batch of records to Firehose and returns a list of records that need to be retried.
-func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*Message, fn MessageHandlerAsync) error {
+func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*Message, fn messageHandler) error {
 	var startSendTime time.Time
 	var startBuildTime time.Time
 

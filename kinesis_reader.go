@@ -3,7 +3,6 @@ package kinetic
 import (
 	"context"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -15,14 +14,14 @@ import (
 )
 
 const (
-	kinesisReaderBatchSize = 10000
+	kinesisReaderMaxBatchSize = 10000
 )
 
 // kinesisReaderOptions a struct that holds all of the KinesisReader's configurable parameters.
 type kinesisReaderOptions struct {
-	batchSize           int
-	shardIterator       *ShardIterator
-	responseReadTimeout time.Duration
+	batchSize           int                    // maximum records per GetRecordsRequest call
+	shardIterator       *ShardIterator         // shard iterator for Kinesis stream
+	responseReadTimeout time.Duration          // response read time out for GetRecordsRequest API call
 	logLevel            aws.LogLevelType       // log level for configuring the LogHelper's log level
 	Stats               ConsumerStatsCollector // stats collection mechanism
 }
@@ -30,7 +29,7 @@ type kinesisReaderOptions struct {
 // defaultKinesisReaderOptions instantiates a kinesisReaderOptions with default values.
 func defaultKinesisReaderOptions() *kinesisReaderOptions {
 	return &kinesisReaderOptions{
-		batchSize:           kinesisReaderBatchSize,
+		batchSize:           kinesisReaderMaxBatchSize,
 		shardIterator:       NewShardIterator(),
 		responseReadTimeout: time.Second,
 		Stats:               &NilConsumerStatsCollector{},
@@ -45,7 +44,7 @@ type KinesisReaderOptionsFn func(*kinesisReaderOptions) error
 // batch size.
 func KinesisReaderBatchSize(size int) KinesisReaderOptionsFn {
 	return func(o *kinesisReaderOptions) error {
-		if size > 0 && size <= kinesisReaderBatchSize {
+		if size > 0 && size <= kinesisReaderMaxBatchSize {
 			o.batchSize = size
 			return nil
 		}
@@ -188,9 +187,10 @@ func (r *KinesisReader) throttle(sem chan empty) {
 	})
 }
 
-func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batchSize int) (int, int, error) {
-	if err := r.ensureShardIterator(); err != nil {
-		return 0, 0, err
+func (r *KinesisReader) getRecords(ctx context.Context, fn messageHandler, batchSize int) (count int, size int, err error) {
+	if err = r.ensureShardIterator(); err != nil {
+		r.LogError("Error calling ensureShardIterator(): ", err)
+		return count, size, err
 	}
 
 	r.throttle(r.throttleSem)
@@ -237,9 +237,8 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		}
 	})
 
-	var payloadSize int
 	req.Handlers.Unmarshal.PushBack(func(req *request.Request) {
-		payloadSize += int(req.HTTPRequest.ContentLength)
+		size += int(req.HTTPRequest.ContentLength)
 		r.Stats.AddGetRecordsUnmarshalDuration(time.Since(startUnmarshalTime))
 		r.LogDebug("Finished GetRecords Unmarshal, took", time.Since(start))
 	})
@@ -247,7 +246,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 	// Send the GetRecords request
 	r.LogDebug("Starting GetRecords Build/Sign request, took", time.Since(start))
 	r.Stats.AddGetRecordsCalled(1)
-	if err := req.Send(); err != nil {
+	if err = req.Send(); err != nil {
 		r.LogError("Error getting records:", err)
 		switch err.(awserr.Error).Code() {
 		case kinesis.ErrCodeProvisionedThroughputExceededException:
@@ -255,16 +254,15 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		default:
 			r.LogDebug("Received AWS error:", err.Error())
 		}
-		return 0, 0, err
+		return count, size, err
 	}
 	r.Stats.AddGetRecordsDuration(time.Since(start))
 
 	// Process Records
 	r.LogDebug(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), r.shard, time.Since(start)))
 	if resp == nil {
-		return 0, 0, ErrNilGetRecordsResponse
+		return count, size, ErrNilGetRecordsResponse
 	}
-	delivered := 0
 	r.Stats.AddBatchSize(len(resp.Records))
 	for _, record := range resp.Records {
 		if record != nil {
@@ -273,14 +271,11 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 			// the current batch of records.
 			select {
 			case <-ctx.Done():
-				r.LogInfo(fmt.Sprintf("getRecords received ctx.Done() while delivering messages, %d delivered, ~%d dropped", delivered, len(resp.Records)-delivered))
-				return delivered, payloadSize, ctx.Err()
+				r.LogInfo(fmt.Sprintf("getRecords received ctx.Done() while delivering messages, %d delivered, ~%d dropped", count, len(resp.Records)-count))
+				return count, size, ctx.Err()
 			default:
-				var wg sync.WaitGroup
-				wg.Add(1)
-				go fn(FromRecord(record), &wg)
-				wg.Wait()
-				delivered++
+				fn(FromRecord(record))
+				count++
 				r.Stats.AddConsumed(1)
 				if record.SequenceNumber != nil {
 					// We can safely ignore if this call returns error, as if we somehow receive an
@@ -308,15 +303,17 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn MessageHandler, batch
 		// around.
 		r.setNextShardIterator(*resp.NextShardIterator)
 	}
-	return delivered, payloadSize, nil
+	return count, size, nil
 }
 
 // GetRecord calls getRecords and delivers one record into the messages channel.
-func (r *KinesisReader) GetRecord(ctx context.Context, fn MessageHandler) (int, int, error) {
-	return r.getRecords(ctx, fn, 1)
+func (r *KinesisReader) GetRecord(ctx context.Context, fn messageHandler) (count int, size int, err error) {
+	count, size, err = r.getRecords(ctx, fn, 1)
+	return count, size, err
 }
 
 // GetRecords calls getRecords and delivers each record into the messages channel.
-func (r *KinesisReader) GetRecords(ctx context.Context, fn MessageHandler) (int, int, error) {
-	return r.getRecords(ctx, fn, r.batchSize)
+func (r *KinesisReader) GetRecords(ctx context.Context, fn messageHandler) (count int, size int, err error) {
+	count, size, err = r.getRecords(ctx, fn, r.batchSize)
+	return count, size, err
 }
