@@ -47,7 +47,7 @@ func defaultProducerOptions() *producerOptions {
 // ProducerOptionsFn is a method signature for defining functional option methods for configuring the Producer.
 type ProducerOptionsFn func(*producerOptions) error
 
-// ProducerWriter is a functional option method for configuing the producer's stream writer.
+// ProducerWriter is a functional option method for configuring the producer's stream writer.
 func ProducerWriter(w StreamWriter) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.writer = w
@@ -55,7 +55,7 @@ func ProducerWriter(w StreamWriter) ProducerOptionsFn {
 	}
 }
 
-// ProducerBatchSize is a functional option method for configuing the producer's batch size.
+// ProducerBatchSize is a functional option method for configuring the producer's batch size.
 func ProducerBatchSize(size int) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		if size > 0 && size <= putRecordsMaxBatchSize {
@@ -66,7 +66,7 @@ func ProducerBatchSize(size int) ProducerOptionsFn {
 	}
 }
 
-// ProducerBatchTimeout is a functional option method for configuing the producer's batch timeout.
+// ProducerBatchTimeout is a functional option method for configuring the producer's batch timeout.
 func ProducerBatchTimeout(timeout time.Duration) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.batchTimeout = timeout
@@ -74,7 +74,7 @@ func ProducerBatchTimeout(timeout time.Duration) ProducerOptionsFn {
 	}
 }
 
-// ProducerQueueDepth is a functional option method for configuing the producer's queue depth.
+// ProducerQueueDepth is a functional option method for configuring the producer's queue depth.
 func ProducerQueueDepth(queueDepth int) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		if queueDepth > 0 {
@@ -85,10 +85,10 @@ func ProducerQueueDepth(queueDepth int) ProducerOptionsFn {
 	}
 }
 
-// ProducerMaxRetryAttempts is a functional option method for configuing the producer's max retry attempts.
+// ProducerMaxRetryAttempts is a functional option method for configuring the producer's max retry attempts.
 func ProducerMaxRetryAttempts(attemtps int) ProducerOptionsFn {
 	return func(o *producerOptions) error {
-		if attemtps > 0  {
+		if attemtps > 0 {
 			o.maxRetryAttempts = attemtps
 			return nil
 		}
@@ -96,7 +96,7 @@ func ProducerMaxRetryAttempts(attemtps int) ProducerOptionsFn {
 	}
 }
 
-// ProducerConcurrency is a functional option method for configuing the producer's concurrency.
+// ProducerConcurrency is a functional option method for configuring the producer's concurrency.
 func ProducerConcurrency(count int) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		if count > 0 {
@@ -107,7 +107,7 @@ func ProducerConcurrency(count int) ProducerOptionsFn {
 	}
 }
 
-// ProducerShardCheckFrequency is a functional option method for configuing the producer's shard check frequency.
+// ProducerShardCheckFrequency is a functional option method for configuring the producer's shard check frequency.
 func ProducerShardCheckFrequency(duration time.Duration) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.shardCheckFreq = duration
@@ -115,7 +115,7 @@ func ProducerShardCheckFrequency(duration time.Duration) ProducerOptionsFn {
 	}
 }
 
-// ProducerDataSpillFn is a functional option method for configuing the producer's data spill callback function.
+// ProducerDataSpillFn is a functional option method for configuring the producer's data spill callback function.
 func ProducerDataSpillFn(fn MessageProcessor) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.dataSpillFn = fn
@@ -123,7 +123,7 @@ func ProducerDataSpillFn(fn MessageProcessor) ProducerOptionsFn {
 	}
 }
 
-// ProducerLogLevel is a functional option method for configuing the producer's log level.
+// ProducerLogLevel is a functional option method for configuring the producer's log level.
 func ProducerLogLevel(ll aws.LogLevelType) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.logLevel = ll & 0xffff0000
@@ -131,7 +131,7 @@ func ProducerLogLevel(ll aws.LogLevelType) ProducerOptionsFn {
 	}
 }
 
-// ProducerStats is a functional option method for configuing the producer's stats collector.
+// ProducerStats is a functional option method for configuring the producer's stats collector.
 func ProducerStats(sc ProducerStatsCollector) ProducerOptionsFn {
 	return func(o *producerOptions) error {
 		o.Stats = sc
@@ -141,20 +141,20 @@ func ProducerStats(sc ProducerStatsCollector) ProducerOptionsFn {
 
 // Producer sends records to AWS Kinesis or Firehose.
 type Producer struct {
-	*producerOptions                         // contains all of the configuration settings for the Producer
-	*LogHelper                               // object for help with logging
-	msgCountLimiter    *rate.Limiter         // rate limiter to limit the number of messages dispatched per second
-	msgSizeLimiter     *rate.Limiter         // rate limiter to limit the total size (in bytes) of messages dispatched per second
-	workerCount        int                   // number of concurrent workers sending batch messages for the producer
-	messages           chan *Message         // channel for enqueuing messages to be put on the stream
-	status             chan *statusReport    // channel for workers to communicate their current status
-	dismiss            chan empty            // channel for handling the decommissioning of a surplus of workers
-	stop               chan empty            // channel for handling shutdown
-	pipeOfDeath        chan empty            // channel for handling pipe of death
-	startupOnce        sync.Once             // used to ensure that the startup function is called once
-	shutdownOnce       sync.Once             // used to ensure that the shutdown function is called once
-	resizeMu           sync.Mutex            // used to prevent resizeWorkerPool from being called synchronously with itself
-	noCopy             noCopy                // prevents the Producer from being copied
+	*producerOptions                    // contains all of the configuration settings for the Producer
+	*LogHelper                          // object for help with logging
+	msgCountLimiter  *rate.Limiter      // rate limiter to limit the number of messages dispatched per second
+	msgSizeLimiter   *rate.Limiter      // rate limiter to limit the total size (in bytes) of messages dispatched per second
+	workerCount      int                // number of concurrent workers sending batch messages for the producer
+	messages         chan *Message      // channel for enqueuing messages to be put on the stream
+	status           chan *statusReport // channel for workers to communicate their current status
+	dismiss          chan empty         // channel for handling the decommissioning of a surplus of workers
+	stop             chan empty         // channel for handling shutdown
+	pipeOfDeath      chan empty         // channel for handling pipe of death
+	startupOnce      sync.Once          // used to ensure that the startup function is called once
+	shutdownOnce     sync.Once          // used to ensure that the shutdown function is called once
+	resizeMu         sync.Mutex         // used to prevent resizeWorkerPool from being called synchronously with itself
+	noCopy           noCopy             // prevents the Producer from being copied
 }
 
 // NewProducer creates a new producer for writing records to a Kinesis or Firehose stream.

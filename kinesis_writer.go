@@ -109,8 +109,8 @@ func NewKinesisWriter(c *aws.Config, stream string, optionFns ...KinesisWriterOp
 		return nil, err
 	}
 	return &KinesisWriter{
-		stream: stream,
-		client: kinesis.New(sess),
+		stream:               stream,
+		client:               kinesis.New(sess),
 		kinesisWriterOptions: kinesisWriterOptions,
 		LogHelper: &LogHelper{
 			LogLevel: kinesisWriterOptions.logLevel,

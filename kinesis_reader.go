@@ -317,3 +317,21 @@ func (r *KinesisReader) GetRecords(ctx context.Context, fn messageHandler) (coun
 	count, size, err = r.getRecords(ctx, fn, r.batchSize)
 	return count, size, err
 }
+
+// Checkpoint sends a message to KCL if there is sequence number that can be checkpointed
+func (r *KinesisReader) Checkpoint() error {
+	// No-op (only applicable to KclReader)
+	return nil
+}
+
+// CheckpointInsert registers a sequence number with the checkpointing system
+func (r *KinesisReader) CheckpointInsert(seqNum string) error {
+	// No-op (only applicable to KclReader)
+	return nil
+}
+
+// CheckpointDone marks the given sequence number as done in the checkpointing system
+func (r *KinesisReader) CheckpointDone(seqNum string) error {
+	// No-op (only applicable to KclReader)
+	return nil
+}

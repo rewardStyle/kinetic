@@ -112,8 +112,8 @@ func NewFirehoseWriter(c *aws.Config, stream string, optionFns ...FirehoseWriter
 		return nil, err
 	}
 	return &FirehoseWriter{
-		stream: stream,
-		client: firehose.New(sess),
+		stream:                stream,
+		client:                firehose.New(sess),
 		firehoseWriterOptions: firehoseWriterOptions,
 		LogHelper: &LogHelper{
 			LogLevel: firehoseWriterOptions.logLevel,

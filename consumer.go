@@ -13,8 +13,8 @@ import (
 // consumerOptions is used to hold all of the configurable settings of a Consumer.
 type consumerOptions struct {
 	reader      StreamReader           // interface for abstracting the GetRecord/GetRecords call
-	queueDepth  int          	   // size of the consumer's message channel
-	concurrency int		           // number of concurrent routines processing messages off of the message channel
+	queueDepth  int                    // size of the consumer's message channel
+	concurrency int                    // number of concurrent routines processing messages off of the message channel
 	logLevel    aws.LogLevelType       // log level for configuring the LogHelper's log level
 	Stats       ConsumerStatsCollector // stats collection mechanism
 }
@@ -79,14 +79,14 @@ func ConsumerStats(sc ConsumerStatsCollector) ConsumerOptionsFn {
 
 // Consumer polls the StreamReader for messages.
 type Consumer struct {
-	*consumerOptions		  // contains all of the configuration settings for the Consumer
-	*LogHelper			  // object for help with logging
+	*consumerOptions                  // contains all of the configuration settings for the Consumer
+	*LogHelper                        // object for help with logging
 	txnCountRateLimiter *rate.Limiter // rate limiter to limit the number of transactions per second
 	txSizeRateLimiter   *rate.Limiter // rate limiter to limit the transmission size per seccond
 	messages            chan *Message // channel for storing messages that have been retrieved from the stream
 	concurrencySem      chan empty    // channel for controlling the number of concurrent workers processing messages from the message channel
 	pipeOfDeath         chan empty    // channel for handling pipe of death
-	consuming           bool	  // flag for indicating whether or not the consumer is consuming
+	consuming           bool          // flag for indicating whether or not the consumer is consuming
 	consumingMu         sync.Mutex    // mutex for making the consuming flag thread safe
 	noCopy              noCopy        // prevents the Consumer from being copied
 }

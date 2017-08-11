@@ -82,52 +82,52 @@ func (nsc *NilConsumerStatsCollector) AddGetRecordsUnmarshalDuration(time.Durati
 
 // Metric names to be exported
 const (
-	MetricsConsumed                       	       = "kinetic.consumer.consumed"
-	MetricsDelivered                      	       = "kinetic.consumer.delivered"
-	MetricsProcessed                      	       = "kinetic.consumer.processed"
-	MetricsBatchSize                      	       = "kinetic.consumer.batchsize"
-	MetricsSent                           	       = "kinetic.consumer.sent"
+	MetricsConsumed                          = "kinetic.consumer.consumed"
+	MetricsDelivered                         = "kinetic.consumer.delivered"
+	MetricsProcessed                         = "kinetic.consumer.processed"
+	MetricsBatchSize                         = "kinetic.consumer.batchsize"
+	MetricsSent                              = "kinetic.consumer.sent"
 	MetricsReadProvisionedThroughputExceeded = "kinetic.consumer.getrecords.provisionedthroughputexceeded"
-	MetricsGetRecordsTimeout              	       = "kinetic.consumer.getrecords.timeout"
-	MetricsGetRecordsReadTimeout          	       = "kinetic.consumer.getrecords.readtimeout"
-	MetricsProcessedDuration              	       = "kinetic.consumer.processed.duration"
-	MetricsGetRecordsDuration             	       = "kinetic.consumer.getrecords.duration"
-	MetricsGetRecordsReadResponseDuration 	       = "kinetic.consumer.getrecords.readresponse.duration"
-	MetricsGetRecordsUnmarshalDuration    	       = "kinetic.consumer.getrecords.unmarshal.duration"
+	MetricsGetRecordsTimeout                 = "kinetic.consumer.getrecords.timeout"
+	MetricsGetRecordsReadTimeout             = "kinetic.consumer.getrecords.readtimeout"
+	MetricsProcessedDuration                 = "kinetic.consumer.processed.duration"
+	MetricsGetRecordsDuration                = "kinetic.consumer.getrecords.duration"
+	MetricsGetRecordsReadResponseDuration    = "kinetic.consumer.getrecords.readresponse.duration"
+	MetricsGetRecordsUnmarshalDuration       = "kinetic.consumer.getrecords.unmarshal.duration"
 )
 
 // DefaultConsumerStatsCollector is a type that implements the consumer's StatsCollector interface using the
 // rcrowley/go-metrics library
 type DefaultConsumerStatsCollector struct {
-	Consumed                                metrics.Counter
-	Delivered                               metrics.Counter
-	Processed                               metrics.Counter
-	BatchSize                               metrics.Counter
-	GetRecordsCalled                        metrics.Counter
+	Consumed                          metrics.Counter
+	Delivered                         metrics.Counter
+	Processed                         metrics.Counter
+	BatchSize                         metrics.Counter
+	GetRecordsCalled                  metrics.Counter
 	ReadProvisionedThroughputExceeded metrics.Counter
-	GetRecordsTimeout                       metrics.Counter
-	GetRecordsReadTimeout                   metrics.Counter
-	ProcessedDuration                       metrics.Gauge
-	GetRecordsDuration                      metrics.Gauge
-	GetRecordsReadResponseDuration          metrics.Gauge
-	GetRecordsUnmarshalDuration             metrics.Gauge
+	GetRecordsTimeout                 metrics.Counter
+	GetRecordsReadTimeout             metrics.Counter
+	ProcessedDuration                 metrics.Gauge
+	GetRecordsDuration                metrics.Gauge
+	GetRecordsReadResponseDuration    metrics.Gauge
+	GetRecordsUnmarshalDuration       metrics.Gauge
 }
 
 // NewDefaultConsumerStatsCollector instantiates a new DefaultStatsCollector object
 func NewDefaultConsumerStatsCollector(r metrics.Registry) *DefaultConsumerStatsCollector {
 	return &DefaultConsumerStatsCollector{
-		Consumed:                       	  metrics.GetOrRegisterCounter(MetricsConsumed, r),
-		Delivered:                      	  metrics.GetOrRegisterCounter(MetricsDelivered, r),
-		Processed:                     	   	  metrics.GetOrRegisterCounter(MetricsProcessed, r),
-		BatchSize:                      	  metrics.GetOrRegisterCounter(MetricsBatchSize, r),
-		GetRecordsCalled:               	  metrics.GetOrRegisterCounter(MetricsSent, r),
-		ReadProvisionedThroughputExceeded:  metrics.GetOrRegisterCounter(MetricsReadProvisionedThroughputExceeded, r),
-		GetRecordsTimeout:              	  metrics.GetOrRegisterCounter(MetricsGetRecordsTimeout, r),
-		GetRecordsReadTimeout:          	  metrics.GetOrRegisterCounter(MetricsGetRecordsReadTimeout, r),
-		ProcessedDuration:              	  metrics.GetOrRegisterGauge(MetricsProcessedDuration, r),
-		GetRecordsDuration:             	  metrics.GetOrRegisterGauge(MetricsGetRecordsDuration, r),
-		GetRecordsReadResponseDuration: 	  metrics.GetOrRegisterGauge(MetricsGetRecordsReadResponseDuration, r),
-		GetRecordsUnmarshalDuration:    	  metrics.GetOrRegisterGauge(MetricsGetRecordsUnmarshalDuration, r),
+		Consumed:                          metrics.GetOrRegisterCounter(MetricsConsumed, r),
+		Delivered:                         metrics.GetOrRegisterCounter(MetricsDelivered, r),
+		Processed:                         metrics.GetOrRegisterCounter(MetricsProcessed, r),
+		BatchSize:                         metrics.GetOrRegisterCounter(MetricsBatchSize, r),
+		GetRecordsCalled:                  metrics.GetOrRegisterCounter(MetricsSent, r),
+		ReadProvisionedThroughputExceeded: metrics.GetOrRegisterCounter(MetricsReadProvisionedThroughputExceeded, r),
+		GetRecordsTimeout:                 metrics.GetOrRegisterCounter(MetricsGetRecordsTimeout, r),
+		GetRecordsReadTimeout:             metrics.GetOrRegisterCounter(MetricsGetRecordsReadTimeout, r),
+		ProcessedDuration:                 metrics.GetOrRegisterGauge(MetricsProcessedDuration, r),
+		GetRecordsDuration:                metrics.GetOrRegisterGauge(MetricsGetRecordsDuration, r),
+		GetRecordsReadResponseDuration:    metrics.GetOrRegisterGauge(MetricsGetRecordsReadResponseDuration, r),
+		GetRecordsUnmarshalDuration:       metrics.GetOrRegisterGauge(MetricsGetRecordsUnmarshalDuration, r),
 	}
 }
 

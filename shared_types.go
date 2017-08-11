@@ -16,6 +16,9 @@ type StreamWriter interface {
 type StreamReader interface {
 	GetRecord(context.Context, messageHandler) (count int, size int, err error)
 	GetRecords(context.Context, messageHandler) (count int, size int, err error)
+	Checkpoint() error                    // only applicable for KclReader
+	CheckpointInsert(seqNum string) error // only applicable for KclReader
+	CheckpointDone(seqNum string) error   // only applicable for KclReader
 }
 
 // MessageProcessor defines the signature of a (asynchronous) callback function used by Listen, RetrieveFn and
@@ -40,8 +43,8 @@ func (*noCopy) Lock() {}
 
 // statusReport is used to communicate a worker's capacity for new messages and to which channel they should be sent.
 type statusReport struct {
-	capacity    int                     // maximum message capacity the worker can handle
-	failedCount int                     // number of previous messages that failed to send
-	failedSize  int                     // size in bytes of the previous messages that failed to send
+	capacity    int             // maximum message capacity the worker can handle
+	failedCount int             // number of previous messages that failed to send
+	failedSize  int             // size in bytes of the previous messages that failed to send
 	channel     chan []*Message // channel of the worker to which the batch messages should be sent
 }

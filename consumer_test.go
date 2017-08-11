@@ -39,7 +39,6 @@ func TestConsumer(t *testing.T) {
 		So(k, ShouldNotBeNil)
 		So(err, ShouldBeNil)
 
-
 		stream := "some-consumer-stream"
 
 		err = k.CreateStream(stream, 1)
