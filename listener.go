@@ -7,9 +7,12 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
+
+	gokinesis "github.com/rewardStyle/go-kinesis"
 )
 
 var (
@@ -205,6 +208,27 @@ retry:
 	l.messageMu.Unlock()
 }
 
+func (l *Listener) getRecords(GsiCounter int, GsiTimer time.Time) (*gokinesis.GetRecordsResp, error) {
+	// args() will give us the shard iterator and type as well as the shard id
+	response, err := l.client.GetRecords(l.args())
+	if err != nil {
+		// We receive ProvisionedThroughputExceededException if the request rate
+		// for the stream is too high, or the requested data is too large for the
+		// available throughput. Reduce the frequency or size of your requests.
+		// For more information, see Streams Limits in the Amazon Kinesis Streams
+		// Developer Guide, and Error Retries and Exponential Backoff in AWS in
+		// the AWS General Reference.
+		if strings.Contains(err.Error(), `ProvisionedThroughputExceededException`) {
+			log.Println("Received ProvisionedThroughputExceededException. Temporarily decreasing request limit and retrying.")
+			log.Println("Previous Request Limit: ", l.limit)
+			l.decreaseRequestLimit()
+			log.Println("New Request Limit: ", l.limit)
+		}
+	}
+
+	return response, err
+}
+
 // Continually poll the Kinesis stream
 func (l *Listener) consume() {
 	l.setConsuming(true)
@@ -222,9 +246,7 @@ func (l *Listener) consume() {
 		}
 
 		l.throttle(&readCounter, &readTimer)
-
-		// args() will give us the shard iterator and type as well as the shard id
-		response, err := l.client.GetRecords(l.args())
+		response, err := l.getRecords(GsiCounter, GsiTimer)
 		if err != nil {
 			go func() {
 				l.errors <- err
@@ -260,6 +282,7 @@ func (l *Listener) consume() {
 
 		if response != nil {
 			l.setShardIterator(response.NextShardIterator)
+			l.resetRequestLimit()
 
 			if len(response.Records) > 0 {
 				for _, record := range response.Records {
