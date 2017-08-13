@@ -63,6 +63,7 @@ type kinesis struct {
 
 	limit     int
 	origLimit int
+	limitMu   sync.Mutex
 	client    gokinesis.KinesisClient
 
 	msgCount int64
@@ -198,9 +199,13 @@ func getLock(sem chan bool) {
 }
 
 func (k *kinesis) decreaseRequestLimit() {
+	k.limitMu.Lock()
 	k.limit = k.limit >> 1
+	k.limitMu.Unlock()
 }
 
 func (k *kinesis) resetRequestLimit() {
+	k.limitMu.Lock()
 	k.limit = k.origLimit
+	k.limitMu.Unlock()
 }
