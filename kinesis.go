@@ -20,6 +20,9 @@ const (
 	statusActive
 	staticUpdating
 
+	// http://docs.aws.amazon.com/kinesis/latest/APIReference/API_GetRecords.html#API_GetRecords_RequestSyntax
+	defaultLimit int = 10000
+
 	kinesisWritesPerSec int = 1000
 	kinesisReadsPerSec  int = 5
 
@@ -58,7 +61,9 @@ type kinesis struct {
 	sequenceNumber    string
 	sequenceNumberMu  sync.Mutex
 
-	client gokinesis.KinesisClient
+	limit     int
+	origLimit int
+	client    gokinesis.KinesisClient
 
 	msgCount int64
 	errCount int64
@@ -71,6 +76,8 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 		stream:            stream,
 		shard:             shard,
 		shardIteratorType: shardIteratorType,
+		limit:             defaultLimit,
+		origLimit:         defaultLimit,
 		client:            gokinesis.New(auth, region),
 	}
 	if err != nil {
@@ -90,6 +97,7 @@ func (k *kinesis) args() *gokinesis.RequestArgs {
 	args.Add("StreamName", k.stream)
 	args.Add("ShardId", k.shard)
 	args.Add("ShardIterator", k.shardIterator)
+	args.Add("Limit", k.limit)
 
 	if k.sequenceNumber != "" {
 		args.Add("StartingSequenceNumber", k.sequenceNumber)
@@ -187,4 +195,12 @@ func (k *kinesis) getErrCount() int64 {
 
 func getLock(sem chan bool) {
 	sem <- true
+}
+
+func (k *kinesis) decreaseRequestLimit() {
+	k.limit = k.limit >> 1
+}
+
+func (k *kinesis) resetRequestLimit() {
+	k.limit = k.origLimit
 }
