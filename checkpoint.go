@@ -557,7 +557,7 @@ func (c *checkpoint) trim(checkpointStr string) error {
 	return c.keys.trim(&cp, nil)
 }
 
-// expire safely removes sequence numberse from the checkpointing system that are older than the given age.
+// expire safely removes sequence numbers from the checkpointing system that are older than the given age.
 func (c *checkpoint) expire(age time.Duration) error {
 	c.keysMu.Lock()
 	defer c.keysMu.Unlock()

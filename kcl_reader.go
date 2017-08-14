@@ -117,16 +117,16 @@ func KclReaderOnShutdownCallbackFn(fn func() error) KclReaderOptionsFn {
 	}
 }
 
-// kclReaderLogLevel is a functional option method for configuring the KclReader's log level.
-func kclReaderLogLevel(ll aws.LogLevelType) KclReaderOptionsFn {
+// KclReaderLogLevel is a functional option method for configuring the KclReader's log level.
+func KclReaderLogLevel(ll aws.LogLevelType) KclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.logLevel = ll
 		return nil
 	}
 }
 
-// kclReaderStats is a functional option method for configuring the KclReader's stats collector.
-func kclReaderStats(sc ConsumerStatsCollector) KclReaderOptionsFn {
+// KclReaderStats is a functional option method for configuring the KclReader's stats collector.
+func KclReaderStats(sc ConsumerStatsCollector) KclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.Stats = sc
 		return nil
