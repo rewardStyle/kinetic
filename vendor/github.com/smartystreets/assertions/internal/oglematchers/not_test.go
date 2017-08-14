@@ -40,7 +40,6 @@ func (m *fakeMatcher) Description() string {
 }
 
 type NotTest struct {
-
 }
 
 func init()                     { RegisterTestSuite(&NotTest{}) }

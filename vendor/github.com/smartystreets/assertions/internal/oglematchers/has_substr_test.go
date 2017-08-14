@@ -25,7 +25,6 @@ import (
 ////////////////////////////////////////////////////////////////////////
 
 type HasSubstrTest struct {
-
 }
 
 func init() { RegisterTestSuite(&HasSubstrTest{}) }
