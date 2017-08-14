@@ -135,6 +135,64 @@ func TestRetrieveMessage(t *testing.T) {
 	listener.Close()
 }
 
+func TestLimitReset(t *testing.T) {
+	l, _ := new(Listener).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1", 10)
+	l.NewEndpoint(testEndpoint, "your-stream")
+
+	testLimitResetDuration := 2 * time.Second
+
+	Convey("If the request limit has not been decreased", t, func() {
+		Convey("It should be equal to the defaultLimit", func() {
+			So(l.limit, ShouldEqual, defaultLimit)
+
+			Convey("If the request limit has been decreased", func() {
+				l.decreaseRequestLimit()
+				Convey("It should not be reset until the timer has elapsed", func() {
+
+					go l.startRequestLimitReset(testLimitResetDuration)
+					<-time.After(1 * time.Second)
+					l.limitMu.Lock()
+					So(l.limit, ShouldBeLessThan, defaultLimit)
+					l.limitMu.Unlock()
+
+					go l.startRequestLimitReset(testLimitResetDuration)
+					<-time.After(1 * time.Second)
+					l.limitMu.Lock()
+					So(l.limit, ShouldBeLessThan, defaultLimit)
+					l.limitMu.Unlock()
+
+					go l.startRequestLimitReset(testLimitResetDuration)
+					<-time.After(1 * time.Second)
+					l.limitMu.Lock()
+					So(l.limit, ShouldBeLessThan, defaultLimit)
+					l.limitMu.Unlock()
+
+					<-time.After(testLimitResetDuration + 1*time.Second)
+					l.limitMu.Lock()
+					So(l.limit, ShouldEqual, defaultLimit)
+					l.limitMu.Unlock()
+				})
+			})
+		})
+	})
+}
+
+func TestLimitGreaterThanZero(t *testing.T) {
+	l, _ := new(Listener).InitC("your-stream", "0", ShardIterTypes[3], "accesskey", "secretkey", "us-east-1", 10)
+	l.NewEndpoint(testEndpoint, "your-stream")
+
+	Convey("If the listener limit is decreased", t, func() {
+
+		for idx := 0; idx < 100; idx++ {
+			l.decreaseRequestLimit()
+		}
+
+		Convey("it should always be greater than zero", func() {
+			So(l.limit, ShouldBeGreaterThan, 0)
+		})
+	})
+}
+
 var cases = []struct {
 	message []byte
 }{

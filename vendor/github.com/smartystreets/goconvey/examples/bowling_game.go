@@ -65,11 +65,11 @@ func (self *Game) framePointsAt(throw int) int {
 
 const (
 	// allPins is the number of pins allocated per fresh throw.
-	allPins          = 10
-	
+	allPins = 10
+
 	// framesPerGame is the number of frames per bowling game.
-	framesPerGame    = 10
-	
+	framesPerGame = 10
+
 	// maxThrowsPerGame is the maximum number of throws possible in a single game.
 	maxThrowsPerGame = 21
 )

@@ -26,8 +26,9 @@ import (
 // Helpers
 ////////////////////////////////////////////////////////////////////////
 
-type PointeeTest struct {}
-func init()                     { RegisterTestSuite(&PointeeTest{}) }
+type PointeeTest struct{}
+
+func init() { RegisterTestSuite(&PointeeTest{}) }
 
 func TestPointee(t *testing.T) { RunTests(t) }
 

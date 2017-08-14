@@ -43,6 +43,9 @@ type Listener struct {
 	consumingMu sync.Mutex
 	messageMu   sync.Mutex
 
+	paused  bool
+	pauseMu sync.Mutex
+
 	errors     chan error
 	messages   chan *Message
 	interrupts chan os.Signal
@@ -208,6 +211,28 @@ retry:
 	l.messageMu.Unlock()
 }
 
+func (l *Listener) pause(duration time.Duration) {
+	l.pauseMu.Lock()
+
+	if l.paused == false {
+		go func() {
+			<-time.After(duration)
+			l.pauseMu.Lock()
+			l.paused = false
+			l.pauseMu.Unlock()
+		}()
+	}
+
+	l.paused = true
+	l.pauseMu.Unlock()
+}
+
+func (l *Listener) isPaused() bool {
+	l.pauseMu.Lock()
+	defer l.pauseMu.Unlock()
+	return l.paused
+}
+
 func (l *Listener) getRecords(GsiCounter int, GsiTimer time.Time) (*gokinesis.GetRecordsResp, error) {
 	// args() will give us the shard iterator and type as well as the shard id
 	response, err := l.client.GetRecords(l.args())
@@ -220,9 +245,19 @@ func (l *Listener) getRecords(GsiCounter int, GsiTimer time.Time) (*gokinesis.Ge
 		// the AWS General Reference.
 		if strings.Contains(err.Error(), `ProvisionedThroughputExceededException`) {
 			log.Println("Received ProvisionedThroughputExceededException. Temporarily decreasing request limit and retrying.")
+
 			log.Println("Previous Request Limit: ", l.limit)
 			l.decreaseRequestLimit()
 			log.Println("New Request Limit: ", l.limit)
+
+			// The maximum size of data that GetRecords can return is 10 MB.
+			// If a call returns this amount of data, subsequent calls made
+			// within the next 5 seconds throw ProvisionedThroughputExceededException.
+			// If there is insufficient provisioned throughput on the stream,
+			/// subsequent calls made within the next 1 second throw ProvisionedThroughputExceededException.
+			l.pause(5 * time.Second)
+
+			go l.startRequestLimitReset(limitResetDuration)
 		}
 	}
 
@@ -282,7 +317,6 @@ func (l *Listener) consume() {
 
 		if response != nil {
 			l.setShardIterator(response.NextShardIterator)
-			l.resetRequestLimit()
 
 			if len(response.Records) > 0 {
 				for _, record := range response.Records {
@@ -427,6 +461,9 @@ func (l *Listener) handleError(err error) {
 // Kinesis allows five read ops per second per shard
 // http://docs.aws.amazon.com/kinesis/latest/dev/service-sizes-and-limits.html
 func (l *Listener) throttle(counter *int, timer *time.Time) {
+	for l.isPaused() {
+		runtime.Gosched()
+	}
 	// If a second has passed since the last timer start, reset the timer
 	if time.Now().After(timer.Add(1 * time.Second)) {
 		*timer = time.Now()

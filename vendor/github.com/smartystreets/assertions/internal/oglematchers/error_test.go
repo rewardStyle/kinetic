@@ -26,9 +26,9 @@ import (
 ////////////////////////////////////////////////////////////////////////
 
 type ErrorTest struct {
-	matcherCalled bool
+	matcherCalled     bool
 	suppliedCandidate interface{}
-	wrappedError error
+	wrappedError      error
 
 	matcher Matcher
 }

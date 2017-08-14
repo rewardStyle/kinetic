@@ -26,9 +26,9 @@ import (
 ////////////////////////////////////////////////////////////////////////
 
 type PanicsTest struct {
-	matcherCalled bool
+	matcherCalled     bool
 	suppliedCandidate interface{}
-	wrappedError error
+	wrappedError      error
 
 	matcher Matcher
 }
