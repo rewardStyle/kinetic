@@ -28,7 +28,7 @@ const (
 	staticUpdating
 
 	kinesisWritesPerSec int = 1000
-	kinesisReadsPerSec  int = 5
+	kinesisReadsPerSec  int = 2
 	// Timeout TODO
 )
 
