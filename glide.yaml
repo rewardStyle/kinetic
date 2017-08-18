@@ -21,6 +21,8 @@ testImport:
   version: v1.6.2
   subpackages:
   - convey
+- package: github.com/smartystreets/assertions
+  version: v1.6.0
 - package: github.com/stretchr/testify
   version: v1.1.4
   subpackages:

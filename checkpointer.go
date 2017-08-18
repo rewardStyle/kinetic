@@ -12,9 +12,8 @@ import (
 
 // btreeNode is a binary tree node used to encapsulate checkpointing information in a binary search tree.
 type btreeNode struct {
-	seqNum int        // key to store the sequence number in the checkpointing system
+	seqNum int        // key to store the sequence number in the checkpointer
 	done   bool       // flag to indicate whether or not processing of a record is complete
-	age    time.Time  // time stamp used to expire btreeNodes from the checkpointing system
 	left   *btreeNode // pointer to a btreeNode whose sequence number is less than own
 	right  *btreeNode // pointer to a btreeNode whose sequence number is greater than own
 }
@@ -32,7 +31,6 @@ func (n *btreeNode) insert(seqNum int) error {
 		if n.left == nil {
 			n.left = &btreeNode{
 				seqNum: seqNum,
-				age:    time.Now(),
 			}
 			return nil
 		}
@@ -41,7 +39,6 @@ func (n *btreeNode) insert(seqNum int) error {
 		if n.right == nil {
 			n.right = &btreeNode{
 				seqNum: seqNum,
-				age:    time.Now(),
 			}
 			return nil
 		}
@@ -125,7 +122,6 @@ func (n *btreeNode) delete(seqNum int, parent *btreeNode) error {
 		replacement, replacementParent := n.left.findMax(n)
 		n.seqNum = replacement.seqNum
 		n.done = replacement.done
-		n.age = replacement.age
 
 		return replacement.delete(replacement.seqNum, replacementParent)
 	}
@@ -141,12 +137,11 @@ type btree struct {
 	root *btreeNode // the root node for the binary search tree
 }
 
-// insert is a method used to insert sequence numbers into the binary search tree of the checkpointing system.
+// insert is a method used to insert sequence numbers into the binary search tree of the checkpointer.
 func (t *btree) insert(seqNum int) error {
 	if t.root == nil {
 		t.root = &btreeNode{
 			seqNum: seqNum,
-			age:    time.Now(),
 		}
 		return nil
 	}
@@ -263,31 +258,11 @@ func (t *btree) trim(minSeqNum, maxSeqNum *int) error {
 	return nil
 }
 
-// expire is a method used to delete btreeNodes from the binary search tree whose age is older than the given age.
-func (t *btree) expire(age time.Duration) error {
-	fakeParent := &btreeNode{right: t.root}
-	t.traverseChildren(fakeParent, func(n *btreeNode) {
-		if n.left != nil && time.Since(n.left.age) > age {
-			n.delete(n.left.seqNum, n)
-		}
-		if n.right != nil && time.Since(n.right.age) > age {
-			n.delete(n.right.seqNum, n)
-		}
-	})
-	t.root = fakeParent.right
-
-	return nil
-}
-
 // checkpointOptions is a struct containing all of the configurable options for a checkpoint object.
 type checkpointOptions struct {
 	autoCheckpointCount int                           // count of newly inserted messages before triggering an automatic checkpoint call
 	autoCheckpointFreq  time.Duration                 // frequency with which to automatically call checkpoint
-	maxAge              time.Duration                 // maximum duration for an inserted sequence number to live before being expired
-	maxSize             int                           // maximum capacity (number of btreeNodes) of the checkpoint system
 	checkpointFn        func(checkpoint string) error // callback function to call on a sequence number when a checkpoint is discovered with the checkpoint call
-	expireFn            func(checkpoint string) error // callback function to call when a sequence number is aged out
-	capacityFn          func(checkpoint string) error // callback function to call when the checkpoint system has reached max capacity
 	countCheckFreq      time.Duration                 // frequency with which to check the insert count
 }
 
@@ -296,11 +271,7 @@ func defaultCheckpointOptions() *checkpointOptions {
 	return &checkpointOptions{
 		autoCheckpointCount: 10000,
 		autoCheckpointFreq:  time.Minute,
-		maxAge:              time.Hour,
-		maxSize:             1000000,
 		checkpointFn:        func(string) error { return nil },
-		expireFn:            func(string) error { return nil },
-		capacityFn:          func(string) error { return nil },
 		countCheckFreq:      time.Second,
 	}
 }
@@ -326,42 +297,10 @@ func checkpointAutoCheckpointFreq(freq time.Duration) checkpointOptionsFn {
 	}
 }
 
-// checkpointMaxAge is a functional option method for configuring the checkpoint's maximum age.
-func checkpointMaxAge(age time.Duration) checkpointOptionsFn {
-	return func(o *checkpointOptions) error {
-		o.maxAge = age
-		return nil
-	}
-}
-
-// checkpointMaxSize is a functional option method for configuring the checkpoint's maximum size.
-func checkpointMaxSize(size int) checkpointOptionsFn {
-	return func(o *checkpointOptions) error {
-		o.maxSize = size
-		return nil
-	}
-}
-
 // checkpointCheckpointFn is a functional option method for configuring the checkpoint's checkpoint callback function.
 func checkpointCheckpointFn(fn func(string) error) checkpointOptionsFn {
 	return func(o *checkpointOptions) error {
 		o.checkpointFn = fn
-		return nil
-	}
-}
-
-// checkpointExpireFn is a functional option method for configuring the checkpoint's expire callback function.
-func checkpointExpireFn(fn func(string) error) checkpointOptionsFn {
-	return func(o *checkpointOptions) error {
-		o.expireFn = fn
-		return nil
-	}
-}
-
-// checkpointCapacityFn is a functional option method for configuring the checkpoint's capacity callback function.
-func checkpointCapacityFn(fn func(string) error) checkpointOptionsFn {
-	return func(o *checkpointOptions) error {
-		o.capacityFn = fn
 		return nil
 	}
 }
@@ -381,43 +320,41 @@ func checkpointCountCheckFreq(freq time.Duration) checkpointOptionsFn {
 // channel and should be marked done using the markDone() function after data processing is completed.  The
 // checkpoint() can be called periodically which may trigger a checkpoint call to KCL if the oldest sequence
 // numbers have been marked complete.  Call startup() to enable automatic checkpointing and expiration.
-type checkpoint struct {
-	*checkpointOptions               // contains all of the configuration settings for the checkpoint object
-	keys               *btree        // binary search tree used to store Kinesis record sequence numbers
-	keysMu             sync.Mutex    // mutex to make keys thread safe
-	counter            uint64        // counter to track the number of messages inserted since the last checkpoint
-	checkpointCh       chan struct{} // channel with which to communicate / coordinate checkpointing
-	startupOnce        sync.Once     // used to ensure that the startup function is called once
-	shutdownOnce       sync.Once     // used to ensure that the shutdown function is called once
+type checkpointer struct {
+	*checkpointOptions            // contains all of the configuration settings for the checkpoint object
+	keys               *btree     // binary search tree used to store Kinesis record sequence numbers
+	keysMu             sync.Mutex // mutex to make keys thread safe
+	counter            uint64     // counter to track the number of messages inserted since the last checkpoint
+	checkpointCh       chan empty // channel with which to communicate / coordinate checkpointing
+	startupOnce        sync.Once  // used to ensure that the startup function is called once
+	shutdownOnce       sync.Once  // used to ensure that the shutdown function is called once
 }
 
 // newCheckpoint instantiates a new checkpoint object with default configuration settings unless the function option
 // methods are provided to change the default values.
-func newCheckpoint(optionFns ...checkpointOptionsFn) *checkpoint {
+func newCheckpointer(optionFns ...checkpointOptionsFn) *checkpointer {
 	checkpointOptions := defaultCheckpointOptions()
 	for _, optionFn := range optionFns {
 		optionFn(checkpointOptions)
 	}
-	return &checkpoint{
+	return &checkpointer{
 		checkpointOptions: checkpointOptions,
 		keys:              &btree{},
 	}
 }
 
-// startup is a method used to enable automatic checkpointing and expiration of btreeNodes from the
-// checkpointing system.
-func (c *checkpoint) startup(ctx context.Context) {
+// startup is a method used to enable automatic checkpointing.
+func (c *checkpointer) startup(ctx context.Context) {
 	c.startupOnce.Do(func() {
 		defer func() {
 			c.shutdownOnce = sync.Once{}
 		}()
 
-		c.checkpointCh = make(chan struct{})
+		c.checkpointCh = make(chan empty)
 		go func() {
 			defer c.shutdown()
 
 			autoCheckpointTimer := time.NewTimer(c.autoCheckpointFreq)
-			expirationTicker := time.NewTicker(c.maxAge)
 			counterCheckTicker := time.NewTicker(c.countCheckFreq)
 
 			for {
@@ -426,16 +363,12 @@ func (c *checkpoint) startup(ctx context.Context) {
 					select {
 					case <-ctx.Done():
 						autoCheckpointTimer.Stop()
-						expirationTicker.Stop()
 						counterCheckTicker.Stop()
 						return
 					case <-c.checkpointCh:
 						break wait
 					case <-autoCheckpointTimer.C:
 						break wait
-					case <-expirationTicker.C:
-						c.expire(c.maxAge)
-						break
 					case <-counterCheckTicker.C:
 						break
 					}
@@ -457,7 +390,7 @@ func (c *checkpoint) startup(ctx context.Context) {
 }
 
 // shutdown is a method used to clean up the checkpoint object
-func (c *checkpoint) shutdown() {
+func (c *checkpointer) shutdown() {
 	c.shutdownOnce.Do(func() {
 		defer func() {
 			c.startupOnce = sync.Once{}
@@ -469,15 +402,18 @@ func (c *checkpoint) shutdown() {
 	})
 }
 
-// insert safely inserts a sequence number into the binary search tree.
-func (c *checkpoint) insert(seqNumStr string) error {
+// size safely determines the number of nodes in the checkpointer.
+func (c *checkpointer) size() int {
 	c.keysMu.Lock()
 	defer c.keysMu.Unlock()
 
-	if c.keys.size() >= c.maxSize {
-		c.capacityFn(seqNumStr)
-		return errors.New("Unable to insert due to capacity")
-	}
+	return c.keys.size()
+}
+
+// insert safely inserts a sequence number into the binary search tree.
+func (c *checkpointer) insert(seqNumStr string) error {
+	c.keysMu.Lock()
+	defer c.keysMu.Unlock()
 
 	if seqNum, err := strconv.Atoi(seqNumStr); err == nil {
 		err := c.keys.insert(seqNum)
@@ -491,7 +427,7 @@ func (c *checkpoint) insert(seqNumStr string) error {
 }
 
 // markDone safely marks the given sequence number as done.
-func (c *checkpoint) markDone(seqNumStr string) error {
+func (c *checkpointer) markDone(seqNumStr string) error {
 	c.keysMu.Lock()
 	defer c.keysMu.Unlock()
 
@@ -511,7 +447,7 @@ func (c *checkpoint) markDone(seqNumStr string) error {
 
 // check returns the largest sequence number marked as done where all smaller sequence numbers have
 // also been marked as done.
-func (c *checkpoint) check() (checkpoint string, found bool) {
+func (c *checkpointer) check() (checkpoint string, found bool) {
 	c.keysMu.Lock()
 	defer c.keysMu.Unlock()
 
@@ -538,9 +474,9 @@ func (c *checkpoint) check() (checkpoint string, found bool) {
 	return checkpoint, found
 }
 
-// trim safely simplifies the binary tree housing the sequence numbers so that only the smallest element is
-// marked as done.
-func (c *checkpoint) trim(checkpointStr string) error {
+// trim safely simplifies the binary tree housing the sequence numbers so that oldest sequence numbers
+// chained and marked as done are removed.
+func (c *checkpointer) trim(checkpointStr string) error {
 	c.keysMu.Lock()
 	defer c.keysMu.Unlock()
 
@@ -557,19 +493,11 @@ func (c *checkpoint) trim(checkpointStr string) error {
 	return c.keys.trim(&cp, nil)
 }
 
-// expire safely removes sequence numbers from the checkpointing system that are older than the given age.
-func (c *checkpoint) expire(age time.Duration) error {
-	c.keysMu.Lock()
-	defer c.keysMu.Unlock()
-
-	return c.keys.expire(age)
-}
-
-// checkpoint sends a signal to the checkpointCh channel to enable a call to checkpoint.
-func (c *checkpoint) checkpoint() error {
+// checkpoint sends a signal to the checkpointCh channel to trigger a call to checkpoint (potentially).
+func (c *checkpointer) checkpoint() error {
 	if c.checkpointCh == nil {
 		return errors.New("Nil checkpoint channel")
 	}
-	c.checkpointCh <- struct{}{}
+	c.checkpointCh <- empty{}
 	return nil
 }

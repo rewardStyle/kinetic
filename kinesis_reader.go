@@ -230,7 +230,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn messageHandler, batch
 		req.HTTPResponse.Body = &ReadCloserWrapper{
 			ReadCloser: req.HTTPResponse.Body,
 			OnCloseFn: func() {
-				r.Stats.AddGetRecordsReadResponseDuration(time.Since(startReadTime))
+				r.Stats.UpdateGetRecordsReadResponseDuration(time.Since(startReadTime))
 				r.LogDebug("Finished GetRecords body read, took", time.Since(start))
 				startUnmarshalTime = time.Now()
 			},
@@ -239,7 +239,7 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn messageHandler, batch
 
 	req.Handlers.Unmarshal.PushBack(func(req *request.Request) {
 		size += int(req.HTTPRequest.ContentLength)
-		r.Stats.AddGetRecordsUnmarshalDuration(time.Since(startUnmarshalTime))
+		r.Stats.UpdateGetRecordsUnmarshalDuration(time.Since(startUnmarshalTime))
 		r.LogDebug("Finished GetRecords Unmarshal, took", time.Since(start))
 	})
 
@@ -256,14 +256,14 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn messageHandler, batch
 		}
 		return count, size, err
 	}
-	r.Stats.AddGetRecordsDuration(time.Since(start))
+	r.Stats.UpdateGetRecordsDuration(time.Since(start))
 
 	// Process Records
 	r.LogDebug(fmt.Sprintf("Finished GetRecords request, %d records from shard %s, took %v\n", len(resp.Records), r.shard, time.Since(start)))
 	if resp == nil {
 		return count, size, ErrNilGetRecordsResponse
 	}
-	r.Stats.AddBatchSize(len(resp.Records))
+	r.Stats.UpdateBatchSize(len(resp.Records))
 	for _, record := range resp.Records {
 		if record != nil {
 			// Allow (only) a pipeOfDeath to trigger an instance shutdown of the loop to deliver messages.
@@ -324,13 +324,13 @@ func (r *KinesisReader) Checkpoint() error {
 	return nil
 }
 
-// CheckpointInsert registers a sequence number with the checkpointing system
+// CheckpointInsert registers a sequence number with the checkpointer
 func (r *KinesisReader) CheckpointInsert(seqNum string) error {
 	// No-op (only applicable to KclReader)
 	return nil
 }
 
-// CheckpointDone marks the given sequence number as done in the checkpointing system
+// CheckpointDone marks the given sequence number as done in the checkpointer
 func (r *KinesisReader) CheckpointDone(seqNum string) error {
 	// No-op (only applicable to KclReader)
 	return nil

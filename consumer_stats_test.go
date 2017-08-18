@@ -30,8 +30,8 @@ func TestConsumerStatsCollector(t *testing.T) {
 			sc.AddProcessed(1)
 		})
 
-		Convey("check that AddBatchSize does not error", func() {
-			sc.AddBatchSize(1)
+		Convey("check that UpdateBatchSize does not error", func() {
+			sc.UpdateBatchSize(1)
 		})
 
 		Convey("check that AddGetRecordsCalled does not error", func() {
@@ -50,20 +50,44 @@ func TestConsumerStatsCollector(t *testing.T) {
 			sc.AddGetRecordsReadTimeout(1)
 		})
 
-		Convey("check that AddProcessedDuration does not error", func() {
-			sc.AddProcessedDuration(1)
+		Convey("check that UpdateProcessedDuration does not error", func() {
+			sc.UpdateProcessedDuration(1)
 		})
 
-		Convey("check that AddGetRecordsDuration does not error", func() {
-			sc.AddGetRecordsDuration(1)
+		Convey("check that UpdateGetRecordsDuration does not error", func() {
+			sc.UpdateGetRecordsDuration(1)
 		})
 
-		Convey("check that AddGetRecordsReadResponseDuration does not error", func() {
-			sc.AddGetRecordsReadResponseDuration(1)
+		Convey("check that UpdateGetRecordsReadResponseDuration does not error", func() {
+			sc.UpdateGetRecordsReadResponseDuration(1)
 		})
 
-		Convey("check that AddGetRecordsUnmarshalDuration does not error", func() {
-			sc.AddGetRecordsUnmarshalDuration(1)
+		Convey("check that UpdateGetRecordsUnmarshalDuration does not error", func() {
+			sc.UpdateGetRecordsUnmarshalDuration(1)
+		})
+
+		Convey("check that AddCheckpointInsert does not error", func() {
+			sc.AddCheckpointInsert(1)
+		})
+
+		Convey("check that AddCheckpointDone does not error", func() {
+			sc.AddCheckpointDone(1)
+		})
+
+		Convey("check that UpdateCheckpointSize does not error", func() {
+			sc.UpdateCheckpointSize(1)
+		})
+
+		Convey("check that AddCheckpointSent does not error", func() {
+			sc.AddCheckpointSent(1)
+		})
+
+		Convey("check that AddCheckpointSuccess does not error", func() {
+			sc.AddCheckpointSuccess(1)
+		})
+
+		Convey("check that AddCheckpointError does not error", func() {
+			sc.AddCheckpointError(1)
 		})
 	})
 
@@ -90,10 +114,10 @@ func TestConsumerStatsCollector(t *testing.T) {
 			So(sc.(*DefaultConsumerStatsCollector).Processed.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddBatchSize does not error", func() {
+		Convey("check that UpdateBatchSize does not error", func() {
 			count := rand.Int()
-			sc.AddBatchSize(count)
-			So(sc.(*DefaultConsumerStatsCollector).BatchSize.Count(), ShouldEqual, int64(count))
+			sc.UpdateBatchSize(count)
+			So(sc.(*DefaultConsumerStatsCollector).BatchSize.Value(), ShouldEqual, int64(count))
 		})
 
 		Convey("check that AddGetRecordsCalled does not error", func() {
@@ -120,24 +144,60 @@ func TestConsumerStatsCollector(t *testing.T) {
 			So(sc.(*DefaultConsumerStatsCollector).GetRecordsReadTimeout.Count(), ShouldEqual, int64(count))
 		})
 
-		Convey("check that AddProcessedDuration does not error", func() {
-			sc.AddProcessedDuration(time.Second)
+		Convey("check that UpdateProcessedDuration does not error", func() {
+			sc.UpdateProcessedDuration(time.Second)
 			So(sc.(*DefaultConsumerStatsCollector).ProcessedDuration.Value(), ShouldEqual, 1000000000)
 		})
 
-		Convey("check that AddGetRecordsDuration does not error", func() {
-			sc.AddGetRecordsDuration(time.Second)
+		Convey("check that UpdateGetRecordsDuration does not error", func() {
+			sc.UpdateGetRecordsDuration(time.Second)
 			So(sc.(*DefaultConsumerStatsCollector).GetRecordsDuration.Value(), ShouldEqual, 1000000000)
 		})
 
-		Convey("check that AddGetRecordsReadResponseDuration does not error", func() {
-			sc.AddGetRecordsReadResponseDuration(time.Second)
+		Convey("check that UpdateGetRecordsReadResponseDuration does not error", func() {
+			sc.UpdateGetRecordsReadResponseDuration(time.Second)
 			So(sc.(*DefaultConsumerStatsCollector).GetRecordsReadResponseDuration.Value(), ShouldEqual, 1000000000)
 		})
 
-		Convey("check that AddGetRecordsUnmarshalDuration does not error", func() {
-			sc.AddGetRecordsUnmarshalDuration(time.Second)
+		Convey("check that UpdateGetRecordsUnmarshalDuration does not error", func() {
+			sc.UpdateGetRecordsUnmarshalDuration(time.Second)
 			So(sc.(*DefaultConsumerStatsCollector).GetRecordsUnmarshalDuration.Value(), ShouldEqual, 1000000000)
+		})
+
+		Convey("check that AddCheckpointInsert does not error", func() {
+			count := rand.Int()
+			sc.AddCheckpointInsert(count)
+			So(sc.(*DefaultConsumerStatsCollector).CheckpointInsert.Count(), ShouldEqual, int64(count))
+		})
+
+		Convey("check that AddCheckpointDone does not error", func() {
+			count := rand.Int()
+			sc.AddCheckpointDone(count)
+			So(sc.(*DefaultConsumerStatsCollector).CheckpointDone.Count(), ShouldEqual, int64(count))
+		})
+
+		Convey("check that UpdateCheckpointSize does not error", func() {
+			count := rand.Int()
+			sc.UpdateCheckpointSize(count)
+			So(sc.(*DefaultConsumerStatsCollector).CheckpointSize.Value(), ShouldEqual, int64(count))
+		})
+
+		Convey("check that AddCheckpointSent does not error", func() {
+			count := rand.Int()
+			sc.AddCheckpointSent(count)
+			So(sc.(*DefaultConsumerStatsCollector).CheckpointSent.Count(), ShouldEqual, int64(count))
+		})
+
+		Convey("check that AddCheckpointSuccess does not error", func() {
+			count := rand.Int()
+			sc.AddCheckpointSuccess(count)
+			So(sc.(*DefaultConsumerStatsCollector).CheckpointSuccess.Count(), ShouldEqual, int64(count))
+		})
+
+		Convey("check that AddCheckpointError does not error", func() {
+			count := rand.Int()
+			sc.AddCheckpointError(count)
+			So(sc.(*DefaultConsumerStatsCollector).CheckpointError.Count(), ShouldEqual, int64(count))
 		})
 	})
 }

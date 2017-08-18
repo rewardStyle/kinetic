@@ -93,7 +93,7 @@ func intPointer(x int) *int {
 	return &x
 }
 
-func TestCheckpointBTreeInsert(t *testing.T) {
+func TestCheckpointerBTreeInsert(t *testing.T) {
 	var tests = []struct {
 		scenario string
 		keys     []int
@@ -174,7 +174,7 @@ func TestCheckpointBTreeInsert(t *testing.T) {
 	}
 }
 
-func TestCheckpointBTreeFind(t *testing.T) {
+func TestCheckpointerBTreeFind(t *testing.T) {
 	var tests = []struct {
 		scenario   string
 		keys       []int
@@ -232,7 +232,7 @@ func TestCheckpointBTreeFind(t *testing.T) {
 	}
 }
 
-func TestCheckpointBTreeDelete(t *testing.T) {
+func TestCheckpointerBTreeDelete(t *testing.T) {
 	var tests = []struct {
 		scenario    string
 		keys        []int
@@ -413,7 +413,7 @@ func TestCheckpointBTreeDelete(t *testing.T) {
 	}
 }
 
-func TestCheckpointBTreeTrim(t *testing.T) {
+func TestCheckpointerBTreeTrim(t *testing.T) {
 	testKeys := []int{50, 20, 60, 40, 0, 10, 30}
 	var tests = []struct {
 		scenario string
@@ -545,105 +545,9 @@ func TestCheckpointBTreeTrim(t *testing.T) {
 	}
 }
 
-func TestCheckpointBTreeExpire(t *testing.T) {
-	testKeys1 := []int{20, 30, 10}
-	testKeys2 := []int{15, 25, -5}
-	var tests = []struct {
-		scenario     string
-		keys1        []int
-		keys2        []int
-		pause1       time.Duration
-		pause2       time.Duration
-		expiration   time.Duration
-		expectedSize int
-	}{
-		{
-			scenario:     "expire on an empty tree",
-			keys1:        []int{},
-			keys2:        []int{},
-			pause1:       0 * time.Second,
-			pause2:       0 * time.Second,
-			expiration:   time.Second,
-			expectedSize: 0,
-		},
-		{
-			scenario:     "expire none",
-			keys1:        testKeys1,
-			keys2:        testKeys2,
-			pause1:       0 * time.Second,
-			pause2:       0 * time.Second,
-			expiration:   time.Second,
-			expectedSize: len(testKeys1) + len(testKeys2),
-		},
-		{
-			scenario:     "expire some",
-			keys1:        testKeys1,
-			keys2:        testKeys2,
-			pause1:       time.Second,
-			pause2:       0 * time.Second,
-			expiration:   time.Second,
-			expectedSize: len(testKeys2),
-		},
-		{
-			scenario:     "expire all",
-			keys1:        testKeys1,
-			keys2:        testKeys2,
-			pause1:       0 * time.Second,
-			pause2:       time.Second,
-			expiration:   time.Second,
-			expectedSize: 0,
-		},
-	}
-
-	for _, test := range tests {
-		var b btree
-		sortedKeys := sortUnique(append(test.keys1, test.keys2...))
-		Convey(fmt.Sprintf("running binary tree expire test suit on scenario: [%s]", test.scenario), t, func() {
-			ok1 := insertKeys(&b, test.keys1)
-			So(ok1, ShouldBeTrue)
-			<-time.After(test.pause1)
-
-			ok2 := insertKeys(&b, test.keys2)
-			So(ok2, ShouldBeTrue)
-			<-time.After(test.pause2)
-
-			Convey("should be able to find all inserted keys", func() {
-				ok := findKeys(&b, sortedKeys)
-				So(ok, ShouldBeTrue)
-
-				Convey("calling trim with expiration", func() {
-					err := b.expire(test.expiration)
-					So(err, ShouldBeNil)
-
-					Convey("size should match expected size", func() {
-						So(b.size(), ShouldEqual, test.expectedSize)
-
-						if test.expectedSize > 0 {
-							Convey("remaining nodes should be under the age limit", func() {
-								var failed bool
-								b.traverseOrdered(b.root, func(n *btreeNode) {
-									var stop bool
-									if stop {
-										return
-									}
-									if time.Since(n.age) > test.expiration {
-										failed = false
-										stop = true
-									}
-								})
-								So(failed, ShouldBeFalse)
-							})
-						}
-					})
-				})
-			})
-		})
-	}
-}
-
-func TestCheckpointOffNominal(t *testing.T) {
+func TestCheckpointerOffNominal(t *testing.T) {
 	Convey("off nominal operations on an empty tree", t, func() {
-		cp := newCheckpoint()
+		cp := newCheckpointer()
 		Convey("markDone on an empty tree should error", func() {
 			err := cp.markDone("1")
 			So(err, ShouldNotBeNil)
@@ -657,7 +561,7 @@ func TestCheckpointOffNominal(t *testing.T) {
 	})
 
 	Convey("off nominal operations on a non-empty tree", t, func() {
-		cp := newCheckpoint()
+		cp := newCheckpointer()
 		cp.insert("2")
 		cp.insert("3")
 		cp.insert("1")
@@ -674,13 +578,13 @@ func TestCheckpointOffNominal(t *testing.T) {
 	})
 }
 
-func TestCheckpointConfigs(t *testing.T) {
+func TestCheckpointerConfigs(t *testing.T) {
 	testKeys := []int{1, -2, 3, -4, 5}
 	Convey("test auto checkpoint using autoCheckpointCount", t, func() {
 		autoCheckpointCount := 5
 		Convey("instantiating a new checkpoint with options", func() {
 			var checkpointFnCalled uint64
-			cp := newCheckpoint(
+			cp := newCheckpointer(
 				checkpointCountCheckFreq(time.Millisecond),
 				checkpointAutoCheckpointCount(autoCheckpointCount),
 				checkpointCheckpointFn(func(seqNum string) error {
@@ -723,7 +627,7 @@ func TestCheckpointConfigs(t *testing.T) {
 		autoCheckpointFreq := 100 * time.Millisecond
 		Convey("instantiating a new checkpoint with options", func() {
 			var checkpointFnCalled uint64
-			cp := newCheckpoint(
+			cp := newCheckpointer(
 				checkpointAutoCheckpointFreq(autoCheckpointFreq),
 				checkpointCheckpointFn(func(seqNum string) error {
 					atomic.AddUint64(&checkpointFnCalled, 1)
@@ -762,78 +666,10 @@ func TestCheckpointConfigs(t *testing.T) {
 
 	})
 
-	Convey("test auto expiration using maxAge", t, func() {
-		maxAge := 500 * time.Millisecond
-		Convey("instantiating a new checkpoint with options", func() {
-			cp := newCheckpoint(
-				checkpointMaxAge(maxAge),
-			)
-			So(cp, ShouldNotBeNil)
-			So(cp.maxAge, ShouldEqual, maxAge)
-
-			ctx, cancel := context.WithCancel(context.TODO())
-			defer cancel()
-			cp.startup(ctx)
-
-			Convey("inserting and marking all keys as done", func() {
-				var failedCount int
-				for _, testKey := range testKeys {
-					key := strconv.Itoa(testKey)
-					if err := cp.insert(key); err != nil {
-						failedCount++
-					}
-					if err := cp.markDone(key); err != nil {
-						failedCount++
-					}
-				}
-				So(failedCount, ShouldEqual, 0)
-
-				<-time.After(time.Duration(2) * maxAge)
-				Convey("confirming that expire was called", func() {
-					cp.keysMu.Lock()
-					So(cp.keys.size(), ShouldEqual, 0)
-					cp.keysMu.Unlock()
-				})
-			})
-		})
-	})
-
-	Convey("test preventing inserts after maxSize capacity is reached", t, func() {
-		Convey("instantiating a new checkpoint with max size set", func() {
-			testKeys := []int{1, -23, 45, -67, 89}
-			maxSize := 4
-			var capacityFnCalled bool
-			cp := newCheckpoint(
-				checkpointMaxSize(maxSize),
-				checkpointCapacityFn(func(seqNum string) error {
-					capacityFnCalled = true
-					return nil
-				}),
-			)
-			So(cp, ShouldNotBeNil)
-			So(cp.maxSize, ShouldEqual, maxSize)
-
-			ctx, cancel := context.WithCancel(context.TODO())
-			defer cancel()
-			cp.startup(ctx)
-
-			Convey("inserting one too many keys than allowed", func() {
-				var failCount int
-				for _, testKey := range testKeys {
-					if err := cp.insert(strconv.Itoa(testKey)); err != nil {
-						failCount++
-					}
-				}
-				So(failCount, ShouldBeGreaterThan, 0)
-				So(capacityFnCalled, ShouldBeTrue)
-			})
-		})
-	})
-
 	Convey("test calling checkpoint function", t, func() {
 		testKeys := []int{1, -2, 3, -4, 5}
 		var checkpointFnCalled uint64
-		cp := newCheckpoint(
+		cp := newCheckpointer(
 			checkpointCheckpointFn(func(seqNum string) error {
 				atomic.AddUint64(&checkpointFnCalled, 1)
 				return nil
@@ -874,7 +710,7 @@ func TestCheckpointConfigs(t *testing.T) {
 	})
 }
 
-func TestCheckpointNominal(t *testing.T) {
+func TestCheckpointerNominal(t *testing.T) {
 	testKeys := []int{5, 2, 6, 4, 0, 1, 3}
 	var tests = []struct {
 		scenario   string
@@ -921,7 +757,7 @@ func TestCheckpointNominal(t *testing.T) {
 	}
 
 	for _, test := range tests {
-		cp := newCheckpoint()
+		cp := newCheckpointer()
 		Convey(fmt.Sprintf("running checkpoint test suit on scenario: [%s]", test.scenario), t, func() {
 			Convey("inserting the test keys", func() {
 				var errCount int

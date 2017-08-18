@@ -246,7 +246,7 @@ func (c *Consumer) RetrieveFnWithContext(ctx context.Context, fn MessageProcesso
 
 	start := time.Now()
 	fn(msg)
-	c.Stats.AddProcessedDuration(time.Since(start))
+	c.Stats.UpdateProcessedDuration(time.Since(start))
 	c.Stats.AddProcessed(1)
 	return nil
 }
@@ -332,7 +332,7 @@ func (c *Consumer) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 				}()
 				start := time.Now()
 				fn(msg)
-				c.Stats.AddProcessedDuration(time.Since(start))
+				c.Stats.UpdateProcessedDuration(time.Since(start))
 				c.Stats.AddProcessed(1)
 				wg.Done()
 			}(msg)

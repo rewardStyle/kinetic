@@ -19,28 +19,26 @@ const (
 
 // kclReaderOptions is a struct that holds all of the KclReader's configurable parameters.
 type kclReaderOptions struct {
-	batchSize              int
-	autoCheckpointCount    int                    // maximum number of messages pulled off the message queue before triggering an auto checkpoint
-	autoCheckpointFreq     time.Duration          // frequency with which to auto checkpoint
-	checkpointMaxAge       time.Duration          // maximum duration for which a sequence number lives in the checkpoint system
-	checkpointMaxSize      int                    // maximum records per GetRecordsRequest call
-	onInitCallbackFn       func() error           // callback function that gets called after initialization
-	onCheckpointCallbackFn func() error           // callback function that gets called after checkpointing
-	onShutdownCallbackFn   func() error           // callback function that gets called after shutdown
-	logLevel               aws.LogLevelType       // log level for configuring the LogHelper's log level
-	Stats                  ConsumerStatsCollector // stats collection mechanism
+	batchSize                int
+	autoCheckpointCount      int                        // maximum number of messages pulled off the message queue before triggering an auto checkpoint
+	autoCheckpointFreq       time.Duration              // frequency with which to auto checkpoint
+	updateCheckpointSizeFreq time.Duration              // frequency with which to update the CheckpointSize stats
+	onInitCallbackFn         func() error               // callback function that gets called after an initialize action message is sent from KCL
+	onCheckpointCallbackFn   func(string, string) error // callback function that gets called after a checkpoint action message is sent from KCL
+	onShutdownCallbackFn     func() error               // callback function that gets called after shutdown action message is sent from KCL
+	logLevel                 aws.LogLevelType           // log level for configuring the LogHelper's log level
+	Stats                    ConsumerStatsCollector     // stats collection mechanism
 }
 
 // defaultKclReaderOptions instantiates a kclReaderOptions with default values.
 func defaultKclReaderOptions() *kclReaderOptions {
 	return &kclReaderOptions{
-		batchSize:           kclReaderMaxBatchSize,
-		autoCheckpointCount: 10000,
-		autoCheckpointFreq:  time.Minute,
-		checkpointMaxSize:   1000000,
-		checkpointMaxAge:    time.Hour,
-		logLevel:            aws.LogOff,
-		Stats:               &NilConsumerStatsCollector{},
+		batchSize:                kclReaderMaxBatchSize,
+		autoCheckpointCount:      10000,
+		autoCheckpointFreq:       time.Minute,
+		updateCheckpointSizeFreq: time.Minute,
+		logLevel:                 aws.LogOff,
+		Stats:                    &NilConsumerStatsCollector{},
 	}
 }
 
@@ -58,14 +56,6 @@ func kclReaderBatchSize(size int) KclReaderOptionsFn {
 	}
 }
 
-// KclReaderAutoCheckpointFreq is a functional option method for configuring the KclReader's checkpoint frequency
-func KclReaderAutoCheckpointFreq(freq time.Duration) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
-		o.autoCheckpointFreq = freq
-		return nil
-	}
-}
-
 // KclReaderAutoCheckpointCount is a functional option method for configuring the KclReader's checkpoint count
 func KclReaderAutoCheckpointCount(count int) KclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
@@ -74,18 +64,19 @@ func KclReaderAutoCheckpointCount(count int) KclReaderOptionsFn {
 	}
 }
 
-// KclReaderCheckpointMaxAge is a functional option method for configuring the KclReader's checkpoint max age
-func KclReaderCheckpointMaxAge(age time.Duration) KclReaderOptionsFn {
+// KclReaderAutoCheckpointFreq is a functional option method for configuring the KclReader's checkpoint frequency
+func KclReaderAutoCheckpointFreq(freq time.Duration) KclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
-		o.checkpointMaxAge = age
+		o.autoCheckpointFreq = freq
 		return nil
 	}
 }
 
-// KclReaderCheckpointMaxSize is a functional option method for configuring the KclReader's checkpoint max age
-func KclReaderCheckpointMaxSize(size int) KclReaderOptionsFn {
+// KclReaderUpdateCheckpointSizeFreq is a functional option method for configuring the KclReader's
+// update checkpoint size stats frequency
+func KclReaderUpdateCheckpointSizeFreq(freq time.Duration) KclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
-		o.checkpointMaxSize = size
+		o.updateCheckpointSizeFreq = freq
 		return nil
 	}
 }
@@ -101,7 +92,7 @@ func KclReaderOnInitCallbackFn(fn func() error) KclReaderOptionsFn {
 
 // KclReaderOnCheckpointCallbackFn is a functional option method for configuring the KclReader's
 // onCheckpointCallbackFn.
-func KclReaderOnCheckpointCallbackFn(fn func() error) KclReaderOptionsFn {
+func KclReaderOnCheckpointCallbackFn(fn func(seqNum string, err string) error) KclReaderOptionsFn {
 	return func(o *kclReaderOptions) error {
 		o.onCheckpointCallbackFn = fn
 		return nil
@@ -138,7 +129,9 @@ type KclReader struct {
 	*kclReaderOptions                     // contains all of the configuration settings for the KclReader
 	*LogHelper                            // object for help with logging
 	reader            *bufio.Reader       // io reader to read from STDIN
-	checkpoint        *checkpoint         // data structure used to manage checkpointing
+	checkpointer      *checkpointer       // data structure used to manage checkpointing
+	ticker            *time.Ticker        // a ticker with which to update the CheckpointSize stats
+	tickerDone        chan empty          // a channel used to communicate when to stop updating the CheckpointSize stats
 	messages          chan *Message       // unbuffered message channel used to throttle the record processing from KCL
 	actions           chan *actionMessage // unbuffered action message channel used internally to coordinate sending action messages to KCL
 	startupOnce       sync.Once           // used to ensure that the startup function is called once
@@ -170,34 +163,25 @@ func (r *KclReader) process(ctx context.Context) {
 		// create communication channels
 		r.messages = make(chan *Message)
 		r.actions = make(chan *actionMessage)
+		r.tickerDone = make(chan empty)
 
-		// instantiate and start the checkpointing system
-		r.checkpoint = newCheckpoint(
+		// instantiate and start the checkpointer
+		r.checkpointer = newCheckpointer(
 			checkpointAutoCheckpointCount(r.autoCheckpointCount),
 			checkpointAutoCheckpointFreq(r.autoCheckpointFreq),
-			checkpointMaxAge(r.checkpointMaxAge),
-			checkpointMaxSize(r.checkpointMaxSize),
 			checkpointCheckpointFn(func(checkpoint string) error {
 				r.actions <- newCheckpointMessage(checkpoint)
-				return nil
-			}),
-			checkpointExpireFn(func(checkpoint string) error {
-				r.LogError(fmt.Sprintf("Checkpoint: Sequence number [%s] exceeded max age", checkpoint))
-				return nil
-			}),
-			checkpointCapacityFn(func(checkpoint string) error {
-				r.LogError(fmt.Sprintf("Checkpoint: Sequence number [%s] exceeded max size", checkpoint))
+				r.Stats.AddCheckpointSent(1)
 				return nil
 			}),
 		)
-		r.checkpoint.startup(ctx)
+		r.checkpointer.startup(ctx)
 
 		// send messages to KCL
 		go func() {
-			for {
-				actionMessage := <-r.actions
+			for actionMessage := range r.actions {
 				r.LogInfo(fmt.Sprintf("Sending a %s action message to KCL", actionMessage.Action))
-				err := r.sendMessage(actionMessage)
+				err := r.sendToStdOut(actionMessage)
 				if err != nil {
 					r.LogError(fmt.Sprintf("Unable to send %s action message due to: ",
 						actionMessage.Action), err)
@@ -218,7 +202,7 @@ func (r *KclReader) process(ctx context.Context) {
 				}
 
 				// Retrieve action message
-				actionMessage, err := r.getAction()
+				actionMessage, err := r.receiveFromStdIn()
 				if err != nil || actionMessage == nil {
 					return
 				}
@@ -230,8 +214,16 @@ func (r *KclReader) process(ctx context.Context) {
 					r.actions <- newStatusMessage(actionMessage.Action)
 				case kclActionTypeCheckpoint:
 					r.LogDebug("Receieved Checkpoint action from KCL")
-					r.onCheckpointCallbackFn()
-					r.actions <- newStatusMessage(actionMessage.Action)
+					if actionMessage.Error == "" {
+						r.LogInfo("Checkpoint acknowledgement from KCL was successful "+
+							"for sequence number: ", actionMessage.SequenceNumber)
+						r.Stats.AddCheckpointSuccess(1)
+					} else {
+						r.LogError("Checkpoint acknowledgement from KCL had an error: ",
+							actionMessage.Error)
+						r.Stats.AddCheckpointError(1)
+					}
+					r.onCheckpointCallbackFn(actionMessage.SequenceNumber, actionMessage.Error)
 				case kcActionTypeShutdown:
 					r.LogDebug("Receieved Shutdown action from KCL")
 					r.onShutdownCallbackFn()
@@ -251,6 +243,19 @@ func (r *KclReader) process(ctx context.Context) {
 				}
 			}
 		}()
+
+		// Periodically update the CheckpointSize stats
+		go func() {
+			r.ticker = time.NewTicker(r.updateCheckpointSizeFreq)
+			defer r.ticker.Stop()
+
+			select {
+			case <-r.ticker.C:
+				r.Stats.UpdateCheckpointSize(r.checkpointer.size())
+			case <-r.tickerDone:
+				return
+			}
+		}()
 	})
 }
 
@@ -263,10 +268,18 @@ func (r *KclReader) shutdown() {
 	if r.messages != nil {
 		close(r.messages)
 	}
+
+	if r.actions != nil {
+		close(r.actions)
+	}
+
+	if r.tickerDone != nil {
+		close(r.tickerDone)
+	}
 }
 
-// getAction reads messages from STDIN based on the Multilang Daemon protocol from KCL
-func (r *KclReader) getAction() (*actionMessage, error) {
+// receiveFromStdIn reads messages from STDIN based on the Multilang Daemon protocol from KCL
+func (r *KclReader) receiveFromStdIn() (*actionMessage, error) {
 	buffer := &bytes.Buffer{}
 	for {
 		line, isPrefix, err := r.reader.ReadLine()
@@ -289,8 +302,8 @@ func (r *KclReader) getAction() (*actionMessage, error) {
 	return actionMsg, nil
 }
 
-// sendMessage writes messages to STDOUT based on the Multilang Daemon protocol from KCL
-func (r *KclReader) sendMessage(msg interface{}) error {
+// sendToStdOut writes messages to STDOUT based on the Multilang Daemon protocol from KCL
+func (r *KclReader) sendToStdOut(msg interface{}) error {
 	b, err := json.Marshal(msg)
 	if err != nil {
 		r.LogError(err)
@@ -344,15 +357,25 @@ func (r *KclReader) GetRecords(ctx context.Context, fn messageHandler) (count in
 
 // Checkpoint sends a message to KCL if there is sequence number that can be checkpointed
 func (r *KclReader) Checkpoint() error {
-	return r.checkpoint.checkpoint()
+	return r.checkpointer.checkpoint()
 }
 
-// CheckpointInsert registers a sequence number with the checkpointing system
+// CheckpointInsert registers a sequence number with the checkpointer
 func (r *KclReader) CheckpointInsert(seqNum string) error {
-	return r.checkpoint.insert(seqNum)
+	err := r.checkpointer.insert(seqNum)
+	if err != nil {
+		return err
+	}
+	r.Stats.AddCheckpointInsert(1)
+	return nil
 }
 
-// CheckpointDone marks the given sequence number as done in the checkpointing system
+// CheckpointDone marks the given sequence number as done in the checkpointer
 func (r *KclReader) CheckpointDone(seqNum string) error {
-	return r.checkpoint.markDone(seqNum)
+	err := r.checkpointer.markDone(seqNum)
+	if err != nil {
+		return err
+	}
+	r.Stats.AddCheckpointDone(1)
+	return nil
 }
