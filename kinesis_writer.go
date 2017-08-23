@@ -39,12 +39,12 @@ func defaultKinesisWriterOptions() *kinesisWriterOptions {
 
 // KinesisWriterOptionsFn is a method signature for defining functional option methods for configuring
 // the KinesisWriter.
-type KinesisWriterOptionsFn func(*kinesisWriterOptions) error
+type KinesisWriterOptionsFn func(*KinesisWriter) error
 
 // KinesisWriterResponseReadTimeout is a functional option method for configuring the KinesisWriter's
 // response read timeout
 func KinesisWriterResponseReadTimeout(timeout time.Duration) KinesisWriterOptionsFn {
-	return func(o *kinesisWriterOptions) error {
+	return func(o *KinesisWriter) error {
 		o.responseReadTimeout = timeout
 		return nil
 	}
@@ -53,7 +53,7 @@ func KinesisWriterResponseReadTimeout(timeout time.Duration) KinesisWriterOption
 // KinesisWriterMsgCountRateLimit is a functional option method for configuring the KinesisWriter's
 // message count rate limit
 func KinesisWriterMsgCountRateLimit(limit int) KinesisWriterOptionsFn {
-	return func(o *kinesisWriterOptions) error {
+	return func(o *KinesisWriter) error {
 		if limit > 0 && limit <= kinesisMsgCountRateLimit {
 			o.msgSizeRateLimit = limit
 			return nil
@@ -65,7 +65,7 @@ func KinesisWriterMsgCountRateLimit(limit int) KinesisWriterOptionsFn {
 // KinesisWriterMsgSizeRateLimit is a functional option method for configuring the KinesisWriter's
 // message size rate limit
 func KinesisWriterMsgSizeRateLimit(limit int) KinesisWriterOptionsFn {
-	return func(o *kinesisWriterOptions) error {
+	return func(o *KinesisWriter) error {
 		if limit > 0 && limit <= kinesisMsgSizeRateLimit {
 			o.msgSizeRateLimit = limit
 			return nil
@@ -76,7 +76,7 @@ func KinesisWriterMsgSizeRateLimit(limit int) KinesisWriterOptionsFn {
 
 // KinesisWriterLogLevel is a functional option method for configuring the KinesisWriter's log level
 func KinesisWriterLogLevel(ll aws.LogLevelType) KinesisWriterOptionsFn {
-	return func(o *kinesisWriterOptions) error {
+	return func(o *KinesisWriter) error {
 		o.logLevel = ll & 0xffff0000
 		return nil
 	}
@@ -84,7 +84,7 @@ func KinesisWriterLogLevel(ll aws.LogLevelType) KinesisWriterOptionsFn {
 
 // KinesisWriterStats is a functional option method for configuring the KinesisWriter's stats collector
 func KinesisWriterStats(sc ProducerStatsCollector) KinesisWriterOptionsFn {
-	return func(o *kinesisWriterOptions) error {
+	return func(o *KinesisWriter) error {
 		o.Stats = sc
 		return nil
 	}
@@ -100,23 +100,26 @@ type KinesisWriter struct {
 
 // NewKinesisWriter creates a new stream writer to write records to a Kinesis.
 func NewKinesisWriter(c *aws.Config, stream string, optionFns ...KinesisWriterOptionsFn) (*KinesisWriter, error) {
-	kinesisWriterOptions := defaultKinesisWriterOptions()
-	for _, option := range optionFns {
-		option(kinesisWriterOptions)
-	}
 	sess, err := session.NewSession(c)
 	if err != nil {
 		return nil, err
 	}
-	return &KinesisWriter{
+
+	kinesisWriter := &KinesisWriter{
+		kinesisWriterOptions: defaultKinesisWriterOptions(),
 		stream:               stream,
 		client:               kinesis.New(sess),
-		kinesisWriterOptions: kinesisWriterOptions,
-		LogHelper: &LogHelper{
-			LogLevel: kinesisWriterOptions.logLevel,
-			Logger:   c.Logger,
-		},
-	}, nil
+	}
+	for _, option := range optionFns {
+		option(kinesisWriter)
+	}
+
+	kinesisWriter.LogHelper = &LogHelper{
+		LogLevel: kinesisWriter.logLevel,
+		Logger:   c.Logger,
+	}
+
+	return kinesisWriter, nil
 }
 
 // PutRecords sends a batch of records to Kinesis and returns a list of records that need to be retried.

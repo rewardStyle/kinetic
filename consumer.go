@@ -29,11 +29,11 @@ func defaultConsumerOptions() *consumerOptions {
 }
 
 // ConsumerOptionsFn is a method signature for defining functional option methods for configuring the Consumer.
-type ConsumerOptionsFn func(*consumerOptions) error
+type ConsumerOptionsFn func(*Consumer) error
 
 // ConsumerReader is a functional option method for configuring the consumer's stream reader.
 func ConsumerReader(r StreamReader) ConsumerOptionsFn {
-	return func(o *consumerOptions) error {
+	return func(o *Consumer) error {
 		o.reader = r
 		return nil
 	}
@@ -41,7 +41,7 @@ func ConsumerReader(r StreamReader) ConsumerOptionsFn {
 
 // ConsumerQueueDepth is a functional option method for configuring the consumer's queueDepth.
 func ConsumerQueueDepth(depth int) ConsumerOptionsFn {
-	return func(o *consumerOptions) error {
+	return func(o *Consumer) error {
 		if depth > 0 {
 			o.queueDepth = depth
 			return nil
@@ -52,7 +52,7 @@ func ConsumerQueueDepth(depth int) ConsumerOptionsFn {
 
 // ConsumerConcurrency is a functional option method for configuring the consumer's concurrency.
 func ConsumerConcurrency(count int) ConsumerOptionsFn {
-	return func(o *consumerOptions) error {
+	return func(o *Consumer) error {
 		if count > 0 {
 			o.concurrency = count
 			return nil
@@ -63,7 +63,7 @@ func ConsumerConcurrency(count int) ConsumerOptionsFn {
 
 // ConsumerLogLevel is a functional option method for configuring the consumer's log level.
 func ConsumerLogLevel(ll aws.LogLevelType) ConsumerOptionsFn {
-	return func(o *consumerOptions) error {
+	return func(o *Consumer) error {
 		o.logLevel = ll & 0xffff0000
 		return nil
 	}
@@ -71,7 +71,7 @@ func ConsumerLogLevel(ll aws.LogLevelType) ConsumerOptionsFn {
 
 // ConsumerStats is a functional option method for configuring the consumer's stats collector.
 func ConsumerStats(sc ConsumerStatsCollector) ConsumerOptionsFn {
-	return func(o *consumerOptions) error {
+	return func(o *Consumer) error {
 		o.Stats = sc
 		return nil
 	}
@@ -93,24 +93,25 @@ type Consumer struct {
 
 // NewConsumer creates a new Consumer object for retrieving and listening to message(s) on a StreamReader.
 func NewConsumer(c *aws.Config, stream string, shard string, optionFns ...ConsumerOptionsFn) (*Consumer, error) {
-	consumerOptions := defaultConsumerOptions()
+	consumer := &Consumer{consumerOptions: defaultConsumerOptions()}
 	for _, optionFn := range optionFns {
-		optionFn(consumerOptions)
+		optionFn(consumer)
 	}
-	if consumerOptions.reader == nil {
+
+	if consumer.reader == nil {
 		r, err := NewKinesisReader(c, stream, shard)
 		if err != nil {
 			return nil, err
 		}
-		consumerOptions.reader = r
+		consumer.reader = r
 	}
-	return &Consumer{
-		consumerOptions: consumerOptions,
-		LogHelper: &LogHelper{
-			LogLevel: consumerOptions.logLevel,
-			Logger:   c.Logger,
-		},
-	}, nil
+
+	consumer.LogHelper = &LogHelper{
+		LogLevel: consumer.logLevel,
+		Logger:   c.Logger,
+	}
+
+	return consumer, nil
 }
 
 // startConsuming will initialize the message channel and set consuming to true if there is not already another consume

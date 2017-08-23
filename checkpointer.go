@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// checkpointElement is the struct used to store checkpointing information.
+// checkpointElement is the struct used to store checkpointing information in the doubly linked list.
 type checkpointElement struct {
 	seqNum int
 	done   bool
@@ -46,7 +46,7 @@ func (c *checkpointList) insert(seqNum int) error {
 	return nil
 }
 
-// find is a method used to retreive the element in the doubly linked list for a given sequence number.  find is
+// find is a method used to retrieve the element in the doubly linked list for a given sequence number.  find is
 // optimized for searching oldest numbers first as it traverse the linked list starting from the beginning.
 func (c *checkpointList) find(seqNum int) (*list.Element, bool) {
 	for e := c.Front(); e != nil; e = e.Next() {
@@ -83,11 +83,11 @@ func defaultCheckpointOptions() *checkpointOptions {
 
 // checkpointOptionsFn is a function signature used to define function options for configuring all of the
 // configurable options of a checkpoint object.
-type checkpointOptionsFn func(*checkpointOptions) error
+type checkpointOptionsFn func(*checkpointer) error
 
 // checkpointAutoCheckpointCount is a functional option method for configuring the checkpoint's auto checkpoint count.
 func checkpointAutoCheckpointCount(count int) checkpointOptionsFn {
-	return func(o *checkpointOptions) error {
+	return func(o *checkpointer) error {
 		o.autoCheckpointCount = count
 		return nil
 	}
@@ -96,7 +96,7 @@ func checkpointAutoCheckpointCount(count int) checkpointOptionsFn {
 // checkpointAutoCheckpointFreq is a functional option method for configuring the checkpoint's auto checkpoint
 // frequency.
 func checkpointAutoCheckpointFreq(freq time.Duration) checkpointOptionsFn {
-	return func(o *checkpointOptions) error {
+	return func(o *checkpointer) error {
 		o.autoCheckpointFreq = freq
 		return nil
 	}
@@ -104,7 +104,7 @@ func checkpointAutoCheckpointFreq(freq time.Duration) checkpointOptionsFn {
 
 // checkpointCheckpointFn is a functional option method for configuring the checkpoint's checkpoint callback function.
 func checkpointCheckpointFn(fn func(string) error) checkpointOptionsFn {
-	return func(o *checkpointOptions) error {
+	return func(o *checkpointer) error {
 		o.checkpointFn = fn
 		return nil
 	}
@@ -112,7 +112,7 @@ func checkpointCheckpointFn(fn func(string) error) checkpointOptionsFn {
 
 // checkpointCountCheckFreq is a functional option method for configuring the checkpoint's count check frequency.
 func checkpointCountCheckFreq(freq time.Duration) checkpointOptionsFn {
-	return func(o *checkpointOptions) error {
+	return func(o *checkpointer) error {
 		o.countCheckFreq = freq
 		return nil
 	}
@@ -138,14 +138,15 @@ type checkpointer struct {
 // newCheckpoint instantiates a new checkpoint object with default configuration settings unless the function option
 // methods are provided to change the default values.
 func newCheckpointer(optionFns ...checkpointOptionsFn) *checkpointer {
-	checkpointOptions := defaultCheckpointOptions()
-	for _, optionFn := range optionFns {
-		optionFn(checkpointOptions)
-	}
-	return &checkpointer{
-		checkpointOptions: checkpointOptions,
+	checkpointer := &checkpointer{
+		checkpointOptions: defaultCheckpointOptions(),
 		list:              &checkpointList{list.New()},
 	}
+	for _, optionFn := range optionFns {
+		optionFn(checkpointer)
+	}
+
+	return checkpointer
 }
 
 // startup is a method used to enable automatic checkpointing.
@@ -231,7 +232,8 @@ func (c *checkpointer) insert(seqNumStr string) error {
 	return nil
 }
 
-// markDone safely marks the given sequence number as done.
+// markDone safely marks the given sequence number as done and attempts to remove it's previous element if the
+// previous element is also marked done or attempts to remove itself if it's next element is also marked done
 func (c *checkpointer) markDone(seqNumStr string) error {
 	c.listMu.Lock()
 	defer c.listMu.Unlock()

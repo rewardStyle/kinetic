@@ -38,12 +38,12 @@ func defaultKinesisReaderOptions() *kinesisReaderOptions {
 
 // KinesisReaderOptionsFn is a method signature for defining functional option methods for configuring
 // the KinesisReader.
-type KinesisReaderOptionsFn func(*kinesisReaderOptions) error
+type KinesisReaderOptionsFn func(*KinesisReader) error
 
 // KinesisReaderBatchSize is a functional option method for configuring the KinesisReader's
 // batch size.
 func KinesisReaderBatchSize(size int) KinesisReaderOptionsFn {
-	return func(o *kinesisReaderOptions) error {
+	return func(o *KinesisReader) error {
 		if size > 0 && size <= kinesisReaderMaxBatchSize {
 			o.batchSize = size
 			return nil
@@ -55,7 +55,7 @@ func KinesisReaderBatchSize(size int) KinesisReaderOptionsFn {
 // KinesisReaderShardIterator is a functional option method for configuring the KinesisReader's
 // shard iterator.
 func KinesisReaderShardIterator(shardIterator *ShardIterator) KinesisReaderOptionsFn {
-	return func(o *kinesisReaderOptions) error {
+	return func(o *KinesisReader) error {
 		o.shardIterator = shardIterator
 		return nil
 	}
@@ -64,7 +64,7 @@ func KinesisReaderShardIterator(shardIterator *ShardIterator) KinesisReaderOptio
 // KinesisReaderResponseReadTimeout is a functional option method for configuring the KinesisReader's
 // response read timeout.
 func KinesisReaderResponseReadTimeout(timeout time.Duration) KinesisReaderOptionsFn {
-	return func(o *kinesisReaderOptions) error {
+	return func(o *KinesisReader) error {
 		o.responseReadTimeout = timeout
 		return nil
 	}
@@ -72,7 +72,7 @@ func KinesisReaderResponseReadTimeout(timeout time.Duration) KinesisReaderOption
 
 // KinesisReaderLogLevel is a functional option method for configuring the KinesisReader's log level.
 func KinesisReaderLogLevel(ll aws.LogLevelType) KinesisReaderOptionsFn {
-	return func(o *kinesisReaderOptions) error {
+	return func(o *KinesisReader) error {
 		o.logLevel = ll & 0xffff0000
 		return nil
 	}
@@ -80,7 +80,7 @@ func KinesisReaderLogLevel(ll aws.LogLevelType) KinesisReaderOptionsFn {
 
 // KinesisReaderStats is a functional option method for configuring the KinesisReader's stats collector.
 func KinesisReaderStats(sc ConsumerStatsCollector) KinesisReaderOptionsFn {
-	return func(o *kinesisReaderOptions) error {
+	return func(o *KinesisReader) error {
 		o.Stats = sc
 		return nil
 	}
@@ -100,25 +100,28 @@ type KinesisReader struct {
 // NewKinesisReader creates a new KinesisReader object which implements the StreamReader interface to read records from
 // Kinesis.
 func NewKinesisReader(c *aws.Config, stream string, shard string, optionFns ...KinesisReaderOptionsFn) (*KinesisReader, error) {
-	kinesisReaderOptions := defaultKinesisReaderOptions()
-	for _, optionFn := range optionFns {
-		optionFn(kinesisReaderOptions)
-	}
 	sess, err := session.NewSession(c)
 	if err != nil {
 		return nil, err
 	}
-	return &KinesisReader{
-		kinesisReaderOptions: kinesisReaderOptions,
-		LogHelper: &LogHelper{
-			LogLevel: kinesisReaderOptions.logLevel,
-			Logger:   c.Logger,
-		},
-		stream:      stream,
-		shard:       shard,
-		throttleSem: make(chan empty, 5),
-		client:      kinesis.New(sess),
-	}, nil
+
+	kinesisReader := &KinesisReader{
+		kinesisReaderOptions: defaultKinesisReaderOptions(),
+		stream:               stream,
+		shard:                shard,
+		throttleSem:          make(chan empty, 5),
+		client:               kinesis.New(sess),
+	}
+	for _, optionFn := range optionFns {
+		optionFn(kinesisReader)
+	}
+
+	kinesisReader.LogHelper = &LogHelper{
+		LogLevel: kinesisReader.logLevel,
+		Logger:   c.Logger,
+	}
+
+	return kinesisReader, nil
 }
 
 // ensureShardIterator will lazily make sure that we have a valid ShardIterator, calling the GetShardIterator API with

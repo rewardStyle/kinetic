@@ -43,11 +43,11 @@ func defaultKclReaderOptions() *kclReaderOptions {
 }
 
 // KclReaderOptionsFn is a method signature for defining functional option methods for configuring the KclReader.
-type KclReaderOptionsFn func(*kclReaderOptions) error
+type KclReaderOptionsFn func(*KclReader) error
 
 // kclReaderBatchSize is a functional option method for configuring the KclReader's batch size
 func kclReaderBatchSize(size int) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		if size > 0 && size <= kclReaderMaxBatchSize {
 			o.batchSize = size
 			return nil
@@ -58,7 +58,7 @@ func kclReaderBatchSize(size int) KclReaderOptionsFn {
 
 // KclReaderAutoCheckpointCount is a functional option method for configuring the KclReader's checkpoint count
 func KclReaderAutoCheckpointCount(count int) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		o.autoCheckpointCount = count
 		return nil
 	}
@@ -66,7 +66,7 @@ func KclReaderAutoCheckpointCount(count int) KclReaderOptionsFn {
 
 // KclReaderAutoCheckpointFreq is a functional option method for configuring the KclReader's checkpoint frequency
 func KclReaderAutoCheckpointFreq(freq time.Duration) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		o.autoCheckpointFreq = freq
 		return nil
 	}
@@ -75,7 +75,7 @@ func KclReaderAutoCheckpointFreq(freq time.Duration) KclReaderOptionsFn {
 // KclReaderUpdateCheckpointSizeFreq is a functional option method for configuring the KclReader's
 // update checkpoint size stats frequency
 func KclReaderUpdateCheckpointSizeFreq(freq time.Duration) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		o.updateCheckpointSizeFreq = freq
 		return nil
 	}
@@ -84,7 +84,7 @@ func KclReaderUpdateCheckpointSizeFreq(freq time.Duration) KclReaderOptionsFn {
 // KclReaderOnInitCallbackFn is a functional option method for configuring the KclReader's
 // onInitCallbackFn.
 func KclReaderOnInitCallbackFn(fn func() error) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		o.onInitCallbackFn = fn
 		return nil
 	}
@@ -93,7 +93,7 @@ func KclReaderOnInitCallbackFn(fn func() error) KclReaderOptionsFn {
 // KclReaderOnCheckpointCallbackFn is a functional option method for configuring the KclReader's
 // onCheckpointCallbackFn.
 func KclReaderOnCheckpointCallbackFn(fn func(seqNum string, err string) error) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		o.onCheckpointCallbackFn = fn
 		return nil
 	}
@@ -102,7 +102,7 @@ func KclReaderOnCheckpointCallbackFn(fn func(seqNum string, err string) error) K
 // KclReaderOnShutdownCallbackFn is a functional option method for configuring the KclReader's
 // onShutdownCallbackFn.
 func KclReaderOnShutdownCallbackFn(fn func() error) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		o.onShutdownCallbackFn = fn
 		return nil
 	}
@@ -110,7 +110,7 @@ func KclReaderOnShutdownCallbackFn(fn func() error) KclReaderOptionsFn {
 
 // KclReaderLogLevel is a functional option method for configuring the KclReader's log level.
 func KclReaderLogLevel(ll aws.LogLevelType) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		o.logLevel = ll
 		return nil
 	}
@@ -118,7 +118,7 @@ func KclReaderLogLevel(ll aws.LogLevelType) KclReaderOptionsFn {
 
 // KclReaderStats is a functional option method for configuring the KclReader's stats collector.
 func KclReaderStats(sc ConsumerStatsCollector) KclReaderOptionsFn {
-	return func(o *kclReaderOptions) error {
+	return func(o *KclReader) error {
 		o.Stats = sc
 		return nil
 	}
@@ -140,17 +140,17 @@ type KclReader struct {
 
 // NewKclReader creates a new stream reader to read records from KCL
 func NewKclReader(c *aws.Config, optionFns ...KclReaderOptionsFn) (*KclReader, error) {
-	kclReaderOptions := defaultKclReaderOptions()
+	kclReader := &KclReader{kclReaderOptions: defaultKclReaderOptions()}
 	for _, optionFn := range optionFns {
-		optionFn(kclReaderOptions)
+		optionFn(kclReader)
 	}
-	return &KclReader{
-		kclReaderOptions: kclReaderOptions,
-		LogHelper: &LogHelper{
-			LogLevel: kclReaderOptions.logLevel,
-			Logger:   c.Logger,
-		},
-	}, nil
+
+	kclReader.LogHelper = &LogHelper{
+		LogLevel: kclReader.logLevel,
+		Logger:   c.Logger,
+	}
+
+	return kclReader, nil
 }
 
 func (r *KclReader) process(ctx context.Context) {
