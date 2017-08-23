@@ -15,11 +15,13 @@ import (
 
 const (
 	kinesisReaderMaxBatchSize = 10000
+	kinesisReaderDefaultConcurrency = 5
 )
 
 // kinesisReaderOptions a struct that holds all of the KinesisReader's configurable parameters.
 type kinesisReaderOptions struct {
 	batchSize           int                    // maximum records per GetRecordsRequest call
+	concurrency         int                    // maximum number of concurrent GetRecord or GetRecords calls allowed
 	shardIterator       *ShardIterator         // shard iterator for Kinesis stream
 	responseReadTimeout time.Duration          // response read time out for GetRecordsRequest API call
 	logLevel            aws.LogLevelType       // log level for configuring the LogHelper's log level
@@ -30,6 +32,7 @@ type kinesisReaderOptions struct {
 func defaultKinesisReaderOptions() *kinesisReaderOptions {
 	return &kinesisReaderOptions{
 		batchSize:           kinesisReaderMaxBatchSize,
+		concurrency:         kinesisReaderDefaultConcurrency,
 		shardIterator:       NewShardIterator(),
 		responseReadTimeout: time.Second,
 		Stats:               &NilConsumerStatsCollector{},
@@ -49,6 +52,18 @@ func KinesisReaderBatchSize(size int) KinesisReaderOptionsFn {
 			return nil
 		}
 		return ErrInvalidBatchSize
+	}
+}
+
+// KinesisReaderConcurrency is a functional option method for configuring the KinesisReader's
+// concurrency.
+func KinesisReaderConcurrency(count int) KinesisReaderOptionsFn {
+	return func(o *KinesisReader) error {
+		if count > 0 {
+			o.concurrency = count
+			return nil
+		}
+		return ErrInvalidConcurrency
 	}
 }
 
@@ -109,13 +124,13 @@ func NewKinesisReader(c *aws.Config, stream string, shard string, optionFns ...K
 		kinesisReaderOptions: defaultKinesisReaderOptions(),
 		stream:               stream,
 		shard:                shard,
-		throttleSem:          make(chan empty, 5),
 		client:               kinesis.New(sess),
 	}
 	for _, optionFn := range optionFns {
 		optionFn(kinesisReader)
 	}
 
+	kinesisReader.throttleSem = make(chan empty, kinesisReader.concurrency)
 	kinesisReader.LogHelper = &LogHelper{
 		LogLevel: kinesisReader.logLevel,
 		Logger:   c.Logger,
