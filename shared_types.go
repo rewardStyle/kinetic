@@ -16,9 +16,6 @@ type StreamWriter interface {
 type StreamReader interface {
 	GetRecord(context.Context, messageHandler) (count int, size int, err error)
 	GetRecords(context.Context, messageHandler) (count int, size int, err error)
-	Checkpoint() error                    // only applicable for KclReader
-	CheckpointInsert(seqNum string) error // only applicable for KclReader
-	CheckpointDone(seqNum string) error   // only applicable for KclReader
 }
 
 // MessageProcessor defines the signature of a (asynchronous) callback function used by Listen, RetrieveFn and
