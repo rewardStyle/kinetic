@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	kinesisReaderMaxBatchSize = 10000
+	kinesisReaderMaxBatchSize       = 10000
 	kinesisReaderDefaultConcurrency = 5
 )
 
