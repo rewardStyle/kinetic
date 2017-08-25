@@ -19,6 +19,7 @@ const (
 
 // firehoseWriterOptions is a struct that holds all of the FirehoseWriter's configurable parameters.
 type firehoseWriterOptions struct {
+	responseReadTimeout  time.Duration          // maximum time to wait for PutRecords API call before timing out
 	msgCountRateLimit    int                    // maximum number of records to be sent per second
 	msgSizeRateLimit     int                    // maximum (transmission) size of records to be sent per second
 	throughputMultiplier int                    // integer multiplier to increase firehose throughput rate limits
@@ -40,6 +41,15 @@ func defaultFirehoseWriterOptions() *firehoseWriterOptions {
 // FirehoseWriterOptionsFn is a method signature for defining functional option methods for configuring
 // the FirehoseWriter.
 type FirehoseWriterOptionsFn func(*FirehoseWriter) error
+
+// FirehoseWriterResponseReadTimeout is a functional option method for configuring the
+// FirehoseWriter's response read timeout
+func FirehoseWriterResponseReadTimeout(timeout time.Duration) KinesisWriterOptionsFn {
+	return func(o *KinesisWriter) error {
+		o.responseReadTimeout = timeout
+		return nil
+	}
+}
 
 // FirehoseWriterMsgCountRateLimit is a functional option method for configuring the FirehoseWriter's
 // message count rate limit.
@@ -141,6 +151,7 @@ func (w *FirehoseWriter) PutRecords(ctx context.Context, messages []*Message, fn
 		DeliveryStreamName: aws.String(w.stream),
 		Records:            records,
 	})
+	req.ApplyOptions(request.WithResponseReadTimeout(w.responseReadTimeout))
 
 	req.Handlers.Build.PushFront(func(r *request.Request) {
 		startBuildTime = time.Now()

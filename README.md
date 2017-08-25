@@ -5,7 +5,7 @@
 Kinetic is an MIT-licensed high-performance AWS Kinesis Client for Go
 
 Kinetic wraps [aws-sdk-go](https://github.com/aws/aws-sdk-go.git) to provide maximum throughput with built-in fault tolerance and retry logic for AWS Kinesis producers and consumers.
-The Kinetic producer can write to Kinesis or Firehose and the Kinetic listener can consume stream data from Kinesis using the aws-go-sdk or using the Kinesis client library (written in Java).  
+The Kinetic producer can write to Kinesis or Firehose and the Kinetic consumer can consume stream data from Kinesis using the aws-sdk-go or using the Kinesis client library (written in Java).  
 
 ### Getting Started
 Before using kinetic, you should make sure you have a created a Kinesis stream and your configuration file has the credentails necessary to read and write to the stream. Once this stream exists in AWS, kinetic will ensure it is in the "ACTIVE" state before running.
@@ -68,4 +68,5 @@ p.Send(&kinetic.Message{
 
 ```
 
-For more examples take a look at the tests or the test program in the `testexec` directory.  API documentation can be found [here](https://godoc.org/github.com/rewardStyle/kinetic).
+For more examples take a look at the tests or the test program in the `testexec` directory.  For 
+additional information see the kinetic package documentation [here](https://godoc.org/github.com/rewardStyle/kinetic).

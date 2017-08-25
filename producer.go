@@ -406,7 +406,7 @@ func (p *Producer) doWork() {
 
 	var retries []*Message
 	var dismissed bool
-	for ok := true; ok; ok = !dismissed || len(retries) != 0 {
+	for ok := true; ok; ok = !(dismissed && len(retries) == 0) {
 		// Check to see if there were any signals to dismiss workers (if eligible)
 		if !dismissed {
 			select {
@@ -445,7 +445,6 @@ func (p *Producer) doWork() {
 		if len(batch)+len(retries) > 0 {
 			retries = p.sendBatch(append(retries, batch...))
 		}
-
 	}
 }
 

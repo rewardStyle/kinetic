@@ -12,7 +12,6 @@ import (
 	"net/http"
 
 	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/service/firehose/firehoseiface"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 )
@@ -34,11 +33,11 @@ func defaultKineticOptions() *kineticOptions {
 	}
 }
 
-// OptionsFn is a method signature for defining functional option methods for configuring Kinetic.
-type OptionsFn func(*kineticOptions) error
+// AwsConfigOptionsFn is a method signature for defining functional option methods for configuring Kinetic.
+type AwsConfigOptionsFn func(*kineticOptions) error
 
 // AwsConfigCredentials is a functional option method for configuring Kinetic's AwsConfig credentials.
-func AwsConfigCredentials(accessKey, secretKey, sessionToken string) OptionsFn {
+func AwsConfigCredentials(accessKey, secretKey, sessionToken string) AwsConfigOptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithCredentials(credentials.NewStaticCredentials(accessKey, secretKey, sessionToken))
 		return nil
@@ -46,7 +45,7 @@ func AwsConfigCredentials(accessKey, secretKey, sessionToken string) OptionsFn {
 }
 
 // AwsConfigRegion is a functional option method for configuring Kinetic's AwsConfig region.
-func AwsConfigRegion(region string) OptionsFn {
+func AwsConfigRegion(region string) AwsConfigOptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithRegion(region)
 		return nil
@@ -54,7 +53,7 @@ func AwsConfigRegion(region string) OptionsFn {
 }
 
 // AwsConfigEndpoint is a functional option method for configuring Kinetic's AwsConfig endpoint.
-func AwsConfigEndpoint(endpoint string) OptionsFn {
+func AwsConfigEndpoint(endpoint string) AwsConfigOptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithEndpoint(endpoint)
 		return nil
@@ -62,7 +61,7 @@ func AwsConfigEndpoint(endpoint string) OptionsFn {
 }
 
 // AwsConfigLogger is a functional option method for configuring Kinetic's AwsConfig logger.
-func AwsConfigLogger(logger aws.Logger) OptionsFn {
+func AwsConfigLogger(logger aws.Logger) AwsConfigOptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithLogger(logger)
 		return nil
@@ -70,7 +69,7 @@ func AwsConfigLogger(logger aws.Logger) OptionsFn {
 }
 
 // AwsConfigLogLevel is a functional option method for configuring Kinetic's AwsConfig log level.
-func AwsConfigLogLevel(logLevel aws.LogLevelType) OptionsFn {
+func AwsConfigLogLevel(logLevel aws.LogLevelType) AwsConfigOptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithLogLevel(logLevel)
 		return nil
@@ -79,7 +78,7 @@ func AwsConfigLogLevel(logLevel aws.LogLevelType) OptionsFn {
 
 // AwsConfigHTTPClientTimeout is a functional option method for configuring Kinetic's
 // AwsConfig HTTP client timeout.
-func AwsConfigHTTPClientTimeout(timeout time.Duration) OptionsFn {
+func AwsConfigHTTPClientTimeout(timeout time.Duration) AwsConfigOptionsFn {
 	return func(o *kineticOptions) error {
 		o.awsConfig.WithHTTPClient(&http.Client{
 			Timeout: timeout,
@@ -89,26 +88,25 @@ func AwsConfigHTTPClientTimeout(timeout time.Duration) OptionsFn {
 }
 
 // LogLevel is a functional option method for configuring Kinetic's log level.
-func LogLevel(logLevel aws.LogLevelType) OptionsFn {
+func LogLevel(logLevel aws.LogLevelType) AwsConfigOptionsFn {
 	return func(o *kineticOptions) error {
 		o.logLevel = logLevel & 0xffff0000
 		return nil
 	}
 }
 
-// Kinetic represents a kinesis and firehose client and provides some utility
-// methods for interacting with the AWS services.
+// Kinetic provides access to a Kinesis client and provides some utility methods for interacting
+// with the AWS Kinesis service.
 type Kinetic struct {
 	*kineticOptions
 	*LogHelper
 	clientMu sync.Mutex
-	fclient  firehoseiface.FirehoseAPI
 	kclient  kinesisiface.KinesisAPI
 	Session  *session.Session
 }
 
 // NewKinetic creates a new instance of Kinetic.
-func NewKinetic(optionFns ...OptionsFn) (*Kinetic, error) {
+func NewKinetic(optionFns ...AwsConfigOptionsFn) (*Kinetic, error) {
 	kineticOptions := defaultKineticOptions()
 	for _, optionFn := range optionFns {
 		optionFn(kineticOptions)
