@@ -357,6 +357,7 @@ func TestCheckpointerAutoCheckpointing(t *testing.T) {
 			var checkpointFnCalled uint64
 			cp := newCheckpointer(
 				checkpointCountCheckFreq(time.Millisecond),
+				checkpointAutoCheckpointFreq(time.Minute),
 				checkpointAutoCheckpointCount(autoCheckpointCount),
 				checkpointCheckpointFn(func(seqNum string) error {
 					atomic.AddUint64(&checkpointFnCalled, 1)
@@ -383,8 +384,8 @@ func TestCheckpointerAutoCheckpointing(t *testing.T) {
 				}
 				So(failedCount, ShouldEqual, 0)
 
-				<-time.After(time.Millisecond)
-				Convey("confirming that checkpoint and trim was called", func() {
+				<-time.After(2*time.Millisecond)
+				Convey("confirming that checkpoint was called", func() {
 					So(atomic.LoadUint64(&checkpointFnCalled), ShouldBeGreaterThan, 0)
 				})
 			})
@@ -397,6 +398,7 @@ func TestCheckpointerAutoCheckpointing(t *testing.T) {
 			var checkpointFnCalled uint64
 			cp := newCheckpointer(
 				checkpointAutoCheckpointFreq(autoCheckpointFreq),
+				checkpointAutoCheckpointCount(1000),
 				checkpointCheckpointFn(func(seqNum string) error {
 					atomic.AddUint64(&checkpointFnCalled, 1)
 					return nil
@@ -423,7 +425,7 @@ func TestCheckpointerAutoCheckpointing(t *testing.T) {
 				So(failedCount, ShouldEqual, 0)
 
 				<-time.After(time.Duration(2) * autoCheckpointFreq)
-				Convey("confirming that checkpoint and trim was called", func() {
+				Convey("confirming that checkpoint was called", func() {
 					So(atomic.LoadUint64(&checkpointFnCalled), ShouldBeGreaterThan, 0)
 				})
 			})
