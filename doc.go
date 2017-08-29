@@ -183,11 +183,11 @@ To create a Producer with a FirehoseWriter, use the functional option methods li
 Consumer
 
 The Consumer object is used to stream data from an Amazon Kinesis stream in batches via the
-Retrieve or Listen functions.
-
-The Consumer achieves optimal throughput by implementing a dispatcher/worker model to pull
-messages off of a queue and send batches concurrently (within rate limits) based on the number
-active shards, which is automatically adjusted after a re-sharding operation occurs externally.
+Retrieve and Listen APIs which ultimately call the StreamReader's GetRecord / GetRecords functions.
+All records returned by the GetRecord / GetRecords calls are placed onto the Consumer's buffered
+message queue from which the Consumer's Retrieve and Listen functions pull and process
+concurrently.  The Consumer's concurrency setting can be adjusted  to modify the number of
+concurrent goroutines processing messages from the message queue.
 
 Usage:
 
@@ -202,6 +202,9 @@ To create a Consumer with custom parameters, pass in functional option methods l
 	csc := kinetic.NewDefaultConsumerStatsCollector(registry)
 	r, err := kinetic.NewKinesisReader(k.Session.Config, "some-stream-name", "some-shard-id",
 		kinetic.KinesisReaderBatchSize(10000),
+		kinetic.KinesisReaderConcurrency(5),
+		kinetic.KinesisReaderTransactionCountLimit(5),
+		kinetic.KinesisReaderTransmissionSizeLimit(2000000),
 		kinetic.KinesisReaderResponseReadTimeout(time.Second),
 		kinetic.KinesisReaderLogLevel(aws.LogOff),
 		kinetic.KinesisReaderStats(csc),
@@ -239,25 +242,30 @@ OR
 
 How it works:
 
-The Consumer is started by calling one of the Retrieve / Listen APIs which kicks off a goroutine
-that does two things in an infinite loop: 1) invokes a GetRecords call and 2) enqueues the batch
-of messages from the GetRecords call to a message queue.  The GetRecords calls are throttled by
-a rate limiter which utilizes a token bucket system for the number of GetRecords transactions per
-second and the transmission (memory) size of the batch per second.  Because the message queue is
-a buffered message channel, this goroutine becomes blocked once the message queue is full.
+The Retrieve APIs (Retrieve, RetrieveWithContext, RetrieveFn and RetrieveFnWithContext) work
+by starting the Consumer if not already started, which involves instantiating the necessary
+communications channels, and then indefinitely calling GetRecord until a single message is pulled
+off of the Consumer's message queue or the supplied context is cancelled.
 
-The Retrieve APIs (Retrieve, RetrieveWithContext, RetrieveFn and RetrieveFnWithContext) pull one
-message off of the message queue while the Listen APIs (Listen and ListenWithContext) pull
-messages off of the message queue concurrently based on the Consumer's concurrency setting.  The
-supplied callback function for the Listen APIs is run (asynchronously) on the messages as the are
-pulled off.
+The Listen APIs (Listen and ListenWithContext) work by starting the Consumer if not already
+started, which involves instantiating the necessary communications channels, and then
+indefinitely calling GetRecords and enqueueing the returned records onto the Consumer's message
+channel (indefinitely in a separate go routine until the supplied context is cancelled).  In the
+Listen function, the messages are pulled off of the message queue and the user-supplied callback
+function is applied to it.
+
+If the Retrieve/Listen function(s) are called concurrently with each other, the first call
+will block while the subsequent Retrieve/Listen calls will fail with an ErrAlreadyConsuming error.
 
 KinesisReader
 
 The KinesisReader is the default reader used by the Consumer to stream data.
 
 The KinesisReader implements the StreamReader interface using the kinesisiface API to make
-GetRecordsRequest, the results of which are enqueued to the Consumer's message queue.
+GetRecordsRequest, the results of which are enqueued to the Consumer's message queue. The
+GetRecords calls are throttled by a rate limiter which utilizes a token bucket system for the
+number of GetRecords transactions per second and the transmission (memory) size of the batch per
+second.
 
 To create a custom Consumer with a KinesisReader, see the example for Consumer (above).
 

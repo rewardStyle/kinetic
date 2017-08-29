@@ -282,6 +282,9 @@ func newKineticConsumer(k *kinetic.Kinetic, streamName string) *kinetic.Consumer
 	csc := kinetic.NewDefaultConsumerStatsCollector(registry)
 	r, err := kinetic.NewKinesisReader(k.Session.Config, streamName, shards[0],
 		kinetic.KinesisReaderBatchSize(10000),
+		kinetic.KinesisReaderConcurrency(5),
+		kinetic.KinesisReaderTransactionCountLimit(5),
+		kinetic.KinesisReaderTransmissionSizeLimit(2000000),
 		//kinetic.KinesisReaderShardIterator(),
 		kinetic.KinesisReaderResponseReadTimeout(time.Second),
 		kinetic.KinesisReaderLogLevel(aws.LogOff),

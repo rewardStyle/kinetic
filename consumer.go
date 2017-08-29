@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"golang.org/x/time/rate"
 )
 
 // consumerOptions is used to hold all of the configurable settings of a Consumer.
@@ -79,16 +78,14 @@ func ConsumerStats(sc ConsumerStatsCollector) ConsumerOptionsFn {
 
 // Consumer polls the StreamReader for messages.
 type Consumer struct {
-	*consumerOptions                  // contains all of the configuration settings for the Consumer
-	*LogHelper                        // object for help with logging
-	txnCountRateLimiter *rate.Limiter // rate limiter to limit the number of transactions per second
-	txSizeRateLimiter   *rate.Limiter // rate limiter to limit the transmission size per seccond
-	messages            chan *Message // channel for storing messages that have been retrieved from the stream
-	concurrencySem      chan empty    // channel for controlling the number of concurrent workers processing messages from the message channel
-	pipeOfDeath         chan empty    // channel for handling pipe of death
-	consuming           bool          // flag for indicating whether or not the consumer is consuming
-	consumingMu         sync.Mutex    // mutex for making the consuming flag thread safe
-	noCopy              noCopy        // prevents the Consumer from being copied
+	*consumerOptions               // contains all of the configuration settings for the Consumer
+	*LogHelper                     // object for help with logging
+	messages         chan *Message // channel for storing messages that have been retrieved from the stream
+	concurrencySem   chan empty    // channel for controlling the number of concurrent workers processing messages from the message channel
+	pipeOfDeath      chan empty    // channel for handling pipe of death
+	consuming        bool          // flag for indicating whether or not the consumer is consuming
+	consumingMu      sync.Mutex    // mutex for making the consuming flag thread safe
+	noCopy           noCopy        // prevents the Consumer from being copied
 }
 
 // NewConsumer creates a new Consumer object for retrieving and listening to message(s) on a StreamReader.
@@ -153,33 +150,33 @@ func (c *Consumer) stopConsuming() {
 }
 
 // enqueueSingle calls the readers's GetRecord method and enqueus a single message on the message channel.
-func (c *Consumer) enqueueSingle(ctx context.Context) (count int, size int) {
-	var err error
-	count, size, err = c.reader.GetRecord(ctx,
+func (c *Consumer) enqueueSingle(ctx context.Context) error {
+	err := c.reader.GetRecord(ctx,
 		func(msg *Message) error {
 			c.messages <- msg
 			return nil
 		})
 	if err != nil {
 		c.handleErrorLogging(err)
+		return err
 	}
 
-	return count, size
+	return nil
 }
 
 // enqueueBatch calls the reader's GetRecords method and enqueues a batch of messages on the message chanel.
-func (c *Consumer) enqueueBatch(ctx context.Context) (count, size int) {
-	var err error
-	count, size, err = c.reader.GetRecords(ctx,
+func (c *Consumer) enqueueBatch(ctx context.Context) error {
+	err := c.reader.GetRecords(ctx,
 		func(msg *Message) error {
 			c.messages <- msg
 			return nil
 		})
 	if err != nil {
 		c.handleErrorLogging(err)
+		return err
 	}
 
-	return count, size
+	return nil
 }
 
 // handleErrorLogging is a helper method for handling and logging errors from calling the reader's
@@ -224,10 +221,12 @@ func (c *Consumer) RetrieveWithContext(ctx context.Context) (*Message, error) {
 		if !ok {
 			return nil, err
 		}
-		n, _ := c.enqueueSingle(childCtx)
-		if n > 0 {
-			c.Stats.AddDelivered(n)
-			return <-c.messages, nil
+
+		c.enqueueSingle(childCtx)
+		select {
+		case msg := <-c.messages:
+			return msg, nil
+		default:
 		}
 	}
 }
@@ -245,10 +244,15 @@ func (c *Consumer) RetrieveFnWithContext(ctx context.Context, fn MessageProcesso
 		return err
 	}
 
-	start := time.Now()
-	fn(msg)
-	c.Stats.UpdateProcessedDuration(time.Since(start))
-	c.Stats.AddProcessed(1)
+	if fn != nil {
+		start := time.Now()
+		if err := fn(msg); err != nil {
+			return err
+		}
+		c.Stats.UpdateProcessedDuration(time.Since(start))
+		c.Stats.AddProcessed(1)
+
+	}
 	return nil
 }
 
@@ -269,10 +273,6 @@ func (c *Consumer) consume(ctx context.Context) {
 	go func() {
 		defer c.stopConsuming()
 
-		// TODO: make these parameters configurable also scale according to the shard count
-		c.txnCountRateLimiter = rate.NewLimiter(rate.Limit(5), 1)
-		c.txSizeRateLimiter = rate.NewLimiter(rate.Limit(2000000), 2000000)
-
 		childCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		for {
@@ -285,26 +285,7 @@ func (c *Consumer) consume(ctx context.Context) {
 				return
 			}
 
-			_, size := c.enqueueBatch(childCtx)
-
-			wg := sync.WaitGroup{}
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-
-				if err := c.txnCountRateLimiter.Wait(childCtx); err != nil {
-					c.LogError("Error occured waiting for transaction count tokens")
-				}
-			}()
-
-			wg.Add(1)
-			go func() {
-				defer wg.Done()
-				if err := c.txSizeRateLimiter.WaitN(childCtx, size); err != nil {
-					c.LogError("Error occured waiting for transmission size tokens")
-				}
-			}()
-			wg.Wait()
+			c.enqueueBatch(childCtx)
 		}
 	}()
 }

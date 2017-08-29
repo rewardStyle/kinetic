@@ -3,6 +3,7 @@ package kinetic
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -11,31 +12,38 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
+	"golang.org/x/time/rate"
 )
 
 const (
-	kinesisReaderMaxBatchSize       = 10000
-	kinesisReaderDefaultConcurrency = 5
+	kinesisReaderMaxBatchSize                 = 10000
+	kinesisReaderDefaultConcurrency           = 5
+	kinesisReaderDefaultTransactionCountLimit = 5
+	kinesisReaderDefaultTransmissionSizeLimit = 2000000
 )
 
 // kinesisReaderOptions a struct that holds all of the KinesisReader's configurable parameters.
 type kinesisReaderOptions struct {
-	batchSize           int                    // maximum records per GetRecordsRequest call
-	concurrency         int                    // maximum number of concurrent GetRecord or GetRecords calls allowed
-	shardIterator       *ShardIterator         // shard iterator for Kinesis stream
-	responseReadTimeout time.Duration          // response read time out for GetRecordsRequest API call
-	logLevel            aws.LogLevelType       // log level for configuring the LogHelper's log level
-	Stats               ConsumerStatsCollector // stats collection mechanism
+	batchSize             int                    // maximum records per GetRecordsRequest call
+	concurrency           int                    // maximum number of concurrent GetRecord or GetRecords calls allowed
+	transactionCountLimit int                    // maximum transactions per second for GetRecords calls
+	transmissionSizeLimit int                    // maximum transmission size per second for GetRecords calls
+	shardIterator         *ShardIterator         // shard iterator for Kinesis GetRecords API calls
+	responseReadTimeout   time.Duration          // response read time out for GetRecordsRequest API call
+	logLevel              aws.LogLevelType       // log level for configuring the LogHelper's log level
+	Stats                 ConsumerStatsCollector // stats collection mechanism
 }
 
 // defaultKinesisReaderOptions instantiates a kinesisReaderOptions with default values.
 func defaultKinesisReaderOptions() *kinesisReaderOptions {
 	return &kinesisReaderOptions{
-		batchSize:           kinesisReaderMaxBatchSize,
-		concurrency:         kinesisReaderDefaultConcurrency,
-		shardIterator:       NewShardIterator(),
-		responseReadTimeout: time.Second,
-		Stats:               &NilConsumerStatsCollector{},
+		batchSize:             kinesisReaderMaxBatchSize,
+		concurrency:           kinesisReaderDefaultConcurrency,
+		transactionCountLimit: kinesisReaderDefaultTransactionCountLimit,
+		transmissionSizeLimit: kinesisReaderDefaultTransmissionSizeLimit,
+		shardIterator:         NewShardIterator(),
+		responseReadTimeout:   time.Second,
+		Stats:                 &NilConsumerStatsCollector{},
 	}
 }
 
@@ -64,6 +72,30 @@ func KinesisReaderConcurrency(count int) KinesisReaderOptionsFn {
 			return nil
 		}
 		return ErrInvalidConcurrency
+	}
+}
+
+// KinesisReaderTransactionCountLimit is a functional option method for configuring the
+// KinesisReader's transaction count limit
+func KinesisReaderTransactionCountLimit(count int) KinesisReaderOptionsFn {
+	return func(o *KinesisReader) error {
+		if count > 0 {
+			o.transactionCountLimit = count
+			return nil
+		}
+		return ErrInvalidTransactionCountLimit
+	}
+}
+
+// KinesisReaderTransmissionSizeLimit is a functional option method for configuring the
+// KinesisReader's transmission size limit
+func KinesisReaderTransmissionSizeLimit(size int) KinesisReaderOptionsFn {
+	return func(o *KinesisReader) error {
+		if size > 0 {
+			o.transmissionSizeLimit = size
+			return nil
+		}
+		return ErrInvalidTransmissionSizeLimit
 	}
 }
 
@@ -105,11 +137,13 @@ func KinesisReaderStats(sc ConsumerStatsCollector) KinesisReaderOptionsFn {
 type KinesisReader struct {
 	*kinesisReaderOptions
 	*LogHelper
-	stream            string
-	shard             string
-	throttleSem       chan empty
-	nextShardIterator string
-	client            kinesisiface.KinesisAPI
+	stream              string                  // name of AWS Kinesis Stream to stream from
+	shard               string                  // shardID of AWS Kinesis Stream to stream from
+	throttleSem         chan empty              // channel used to throttle concurrent GetRecord calls
+	txnCountRateLimiter *rate.Limiter           // rate limiter to limit the number of transactions per second
+	txSizeRateLimiter   *rate.Limiter           // rate limiter to limit the transmission size per seccond
+	nextShardIterator   string                  // shardIterator to start with with GetRecord request
+	client              kinesisiface.KinesisAPI // client to Kinesis API
 }
 
 // NewKinesisReader creates a new KinesisReader object which implements the StreamReader interface to read records from
@@ -131,6 +165,8 @@ func NewKinesisReader(c *aws.Config, stream string, shard string, optionFns ...K
 	}
 
 	kinesisReader.throttleSem = make(chan empty, kinesisReader.concurrency)
+	kinesisReader.txnCountRateLimiter = rate.NewLimiter(rate.Limit(kinesisReader.transactionCountLimit), 1)
+	kinesisReader.txSizeRateLimiter = rate.NewLimiter(rate.Limit(kinesisReader.transmissionSizeLimit), kinesisReader.transmissionSizeLimit)
 	kinesisReader.LogHelper = &LogHelper{
 		LogLevel: kinesisReader.logLevel,
 		Logger:   c.Logger,
@@ -321,17 +357,37 @@ func (r *KinesisReader) getRecords(ctx context.Context, fn messageHandler, batch
 		// around.
 		r.setNextShardIterator(*resp.NextShardIterator)
 	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+
+		if err := r.txnCountRateLimiter.Wait(ctx); err != nil {
+			r.LogError("Error occured waiting for transaction count tokens")
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if err := r.txSizeRateLimiter.WaitN(ctx, size); err != nil {
+			r.LogError("Error occured waiting for transmission size tokens")
+		}
+	}()
+	wg.Wait()
+
 	return count, size, nil
 }
 
 // GetRecord calls getRecords and delivers one record into the messages channel.
-func (r *KinesisReader) GetRecord(ctx context.Context, fn messageHandler) (count int, size int, err error) {
-	count, size, err = r.getRecords(ctx, fn, 1)
-	return count, size, err
+func (r *KinesisReader) GetRecord(ctx context.Context, fn messageHandler) error {
+	_, _, err := r.getRecords(ctx, fn, 1)
+	return err
 }
 
 // GetRecords calls getRecords and delivers each record into the messages channel.
-func (r *KinesisReader) GetRecords(ctx context.Context, fn messageHandler) (count int, size int, err error) {
-	count, size, err = r.getRecords(ctx, fn, r.batchSize)
-	return count, size, err
+func (r *KinesisReader) GetRecords(ctx context.Context, fn messageHandler) error {
+	_, _, err := r.getRecords(ctx, fn, r.batchSize)
+	return err
 }

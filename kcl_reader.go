@@ -343,16 +343,16 @@ func (r *KclReader) processRecords(ctx context.Context, batchSize int, fn messag
 
 // GetRecord calls processRecords to attempt to put one message from message buffer to the consumer's message
 // channel
-func (r *KclReader) GetRecord(ctx context.Context, fn messageHandler) (count int, size int, err error) {
-	count, size, err = r.processRecords(ctx, 1, fn)
-	return count, size, err
+func (r *KclReader) GetRecord(ctx context.Context, fn messageHandler) error {
+	_, _, err := r.processRecords(ctx, 1, fn)
+	return err
 }
 
 // GetRecords calls processRecords to attempt to put all messages on the message buffer on the consumer's
 // message channel
-func (r *KclReader) GetRecords(ctx context.Context, fn messageHandler) (count int, size int, err error) {
-	count, size, err = r.processRecords(ctx, r.batchSize, fn)
-	return count, size, err
+func (r *KclReader) GetRecords(ctx context.Context, fn messageHandler) error {
+	_, _, err := r.processRecords(ctx, r.batchSize, fn)
+	return err
 }
 
 // Checkpoint sends a message to KCL if there is sequence number that can be checkpointed

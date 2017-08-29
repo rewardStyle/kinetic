@@ -384,7 +384,7 @@ func TestCheckpointerAutoCheckpointing(t *testing.T) {
 				}
 				So(failedCount, ShouldEqual, 0)
 
-				<-time.After(2*time.Millisecond)
+				<-time.After(2 * time.Millisecond)
 				Convey("confirming that checkpoint was called", func() {
 					So(atomic.LoadUint64(&checkpointFnCalled), ShouldBeGreaterThan, 0)
 				})

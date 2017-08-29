@@ -104,4 +104,10 @@ var (
 
 	// ErrInvalidConcurrency is returned when the concurrency value is configured incorrectly
 	ErrInvalidConcurrency = errors.New("Invalid concurrency")
+
+	// ErrInvalidTransactionCountLimit is returned when the transaction count limit is configured incorrectly
+	ErrInvalidTransactionCountLimit = errors.New("Invalid transaction count limit")
+
+	// ErrInvalidTransmissionSizeLimit is returned when the transmission size limit is configured incorrectly
+	ErrInvalidTransmissionSizeLimit = errors.New("Invalid transmission size limit")
 )

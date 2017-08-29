@@ -14,8 +14,8 @@ type StreamWriter interface {
 
 // StreamReader is an interface that abstracts out a stream reader.
 type StreamReader interface {
-	GetRecord(context.Context, messageHandler) (count int, size int, err error)
-	GetRecords(context.Context, messageHandler) (count int, size int, err error)
+	GetRecord(context.Context, messageHandler) error
+	GetRecords(context.Context, messageHandler) error
 }
 
 // MessageProcessor defines the signature of a (asynchronous) callback function used by Listen, RetrieveFn and
