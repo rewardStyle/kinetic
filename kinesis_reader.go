@@ -17,7 +17,6 @@ import (
 
 const (
 	kinesisReaderMaxBatchSize                 = 10000
-	kinesisReaderDefaultConcurrency           = 5
 	kinesisReaderDefaultTransactionCountLimit = 5
 	kinesisReaderDefaultTransmissionSizeLimit = 2000000
 )
@@ -25,7 +24,6 @@ const (
 // kinesisReaderOptions a struct that holds all of the KinesisReader's configurable parameters.
 type kinesisReaderOptions struct {
 	batchSize             int                    // maximum records per GetRecordsRequest call
-	concurrency           int                    // maximum number of concurrent GetRecord or GetRecords calls allowed
 	transactionCountLimit int                    // maximum transactions per second for GetRecords calls
 	transmissionSizeLimit int                    // maximum transmission size per second for GetRecords calls
 	shardIterator         *ShardIterator         // shard iterator for Kinesis GetRecords API calls
@@ -38,7 +36,6 @@ type kinesisReaderOptions struct {
 func defaultKinesisReaderOptions() *kinesisReaderOptions {
 	return &kinesisReaderOptions{
 		batchSize:             kinesisReaderMaxBatchSize,
-		concurrency:           kinesisReaderDefaultConcurrency,
 		transactionCountLimit: kinesisReaderDefaultTransactionCountLimit,
 		transmissionSizeLimit: kinesisReaderDefaultTransmissionSizeLimit,
 		shardIterator:         NewShardIterator(),
@@ -60,18 +57,6 @@ func KinesisReaderBatchSize(size int) KinesisReaderOptionsFn {
 			return nil
 		}
 		return ErrInvalidBatchSize
-	}
-}
-
-// KinesisReaderConcurrency is a functional option method for configuring the KinesisReader's
-// concurrency.
-func KinesisReaderConcurrency(count int) KinesisReaderOptionsFn {
-	return func(o *KinesisReader) error {
-		if count > 0 {
-			o.concurrency = count
-			return nil
-		}
-		return ErrInvalidConcurrency
 	}
 }
 
@@ -139,7 +124,6 @@ type KinesisReader struct {
 	*LogHelper
 	stream              string                  // name of AWS Kinesis Stream to stream from
 	shard               string                  // shardID of AWS Kinesis Stream to stream from
-	throttleSem         chan empty              // channel used to throttle concurrent GetRecord calls
 	txnCountRateLimiter *rate.Limiter           // rate limiter to limit the number of transactions per second
 	txSizeRateLimiter   *rate.Limiter           // rate limiter to limit the transmission size per seccond
 	nextShardIterator   string                  // shardIterator to start with with GetRecord request
@@ -164,7 +148,6 @@ func NewKinesisReader(c *aws.Config, stream string, shard string, optionFns ...K
 		optionFn(kinesisReader)
 	}
 
-	kinesisReader.throttleSem = make(chan empty, kinesisReader.concurrency)
 	kinesisReader.txnCountRateLimiter = rate.NewLimiter(rate.Limit(kinesisReader.transactionCountLimit), 1)
 	kinesisReader.txSizeRateLimiter = rate.NewLimiter(rate.Limit(kinesisReader.transmissionSizeLimit), kinesisReader.transmissionSizeLimit)
 	kinesisReader.LogHelper = &LogHelper{
@@ -232,22 +215,11 @@ func (r *KinesisReader) setSequenceNumber(sequenceNumber string) error {
 	return nil
 }
 
-// Kinesis allows five read ops per second per shard.
-// http://docs.aws.amazon.com/kinesis/latest/dev/service-sizes-and-limits.html
-func (r *KinesisReader) throttle(sem chan empty) {
-	sem <- empty{}
-	time.AfterFunc(1*time.Second, func() {
-		<-sem
-	})
-}
-
 func (r *KinesisReader) getRecords(ctx context.Context, fn messageHandler, batchSize int) (count int, size int, err error) {
 	if err = r.ensureShardIterator(); err != nil {
 		r.LogError("Error calling ensureShardIterator(): ", err)
 		return count, size, err
 	}
-
-	r.throttle(r.throttleSem)
 
 	// We use the GetRecordsRequest method of creating requests to allow for registering custom handlers for better
 	// control over the API request.
