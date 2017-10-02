@@ -500,17 +500,9 @@ func (p *Producer) sendToDataSpill(msg *Message) {
 	}
 }
 
-// CloseWithContext initiates the graceful shutdown of the produce function, waiting for all outstanding messages and to
-// flush.  Cancellation is supported through contexts.
-func (p *Producer) CloseWithContext(ctx context.Context) {
-	p.shutdown()
-	<-ctx.Done()
-	close(p.pipeOfDeath)
-}
-
 // Close initiates the graceful shutdown of the produce function, waiting for all outstanding messages and to flush.
 func (p *Producer) Close() {
-	p.CloseWithContext(context.TODO())
+	p.shutdown()
 }
 
 // SendWithContext sends a message to the stream.  Cancellation supported through contexts.
