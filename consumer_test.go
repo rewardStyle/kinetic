@@ -201,15 +201,15 @@ func TestConsumer(t *testing.T) {
 		Convey("check that listen and retrieve can not be called concurrently", func(c C) {
 			var wg sync.WaitGroup
 			wg.Add(1)
+			ctx, cancel := context.WithTimeout(context.TODO(), 1000*time.Millisecond)
 			go func() {
-				ctx, cancel := context.WithTimeout(context.TODO(), 1000*time.Millisecond)
-				defer cancel()
 				l.ListenWithContext(ctx, func(msg *Message) error {
 					return nil
 				})
 				wg.Done()
 			}()
 			<-time.After(10 * time.Millisecond)
+			cancel()
 			_, err := l.Retrieve()
 			So(err, ShouldEqual, ErrAlreadyConsuming)
 			wg.Wait()
@@ -252,9 +252,11 @@ func TestConsumer(t *testing.T) {
 			var count int64
 			var wg sync.WaitGroup
 			wg.Add(1)
+
+			ctx, cancel := context.WithCancel(context.TODO())
 			go func() {
 				defer wg.Done()
-				l.Listen(func(msg *Message) error {
+				l.ListenWithContext(ctx, func(msg *Message) error {
 					atomic.AddInt64(&count, 1)
 
 					return nil
@@ -285,7 +287,7 @@ func TestConsumer(t *testing.T) {
 			}
 			// FIXME: probably a race condition here as consume may
 			// not have grabbed all data from the channel yet.
-			close(l.pipeOfDeath)
+			cancel()
 			wg.Wait()
 			So(atomic.LoadInt64(&count), ShouldEqual, len(planets))
 		})

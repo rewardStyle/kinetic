@@ -150,7 +150,6 @@ type Producer struct {
 	status           chan *statusReport // channel for workers to communicate their current status
 	dismiss          chan empty         // channel for handling the decommissioning of a surplus of workers
 	stop             chan empty         // channel for handling shutdown
-	pipeOfDeath      chan empty         // channel for handling pipe of death
 	startupOnce      sync.Once          // used to ensure that the startup function is called once
 	shutdownOnce     sync.Once          // used to ensure that the shutdown function is called once
 	resizeMu         sync.Mutex         // used to prevent resizeWorkerPool from being called synchronously with itself
@@ -197,7 +196,6 @@ func (p *Producer) produce() {
 		p.status = make(chan *statusReport)
 		p.dismiss = make(chan empty)
 		p.stop = make(chan empty)
-		p.pipeOfDeath = make(chan empty)
 
 		// Run a separate go routine to check the shard size (throughput multiplier) and resize the worker pool
 		// periodically if needed
@@ -239,8 +237,6 @@ func (p *Producer) produce() {
 
 			for {
 				select {
-				case <-p.pipeOfDeath:
-					return
 				case <-p.stop:
 					return
 				case status := <-p.status:
@@ -367,11 +363,6 @@ func (p *Producer) shutdown() {
 		if p.stop != nil {
 			p.stop <- empty{}
 			close(p.stop)
-		}
-
-		// Close the pipeOfDeath channel
-		if p.pipeOfDeath != nil {
-			close(p.pipeOfDeath)
 		}
 	})
 }

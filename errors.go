@@ -13,9 +13,6 @@ var (
 	// DescribeStream request returns a response with a nil
 	// StreamDescription
 	ErrNilStreamDescription = errors.New("DescribeStream returned a nil StreamDescription")
-
-	// ErrPipeOfDeath returns when the pipe of death is closed.
-	ErrPipeOfDeath = errors.New("Received pipe of death")
 )
 
 var (

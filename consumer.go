@@ -82,7 +82,6 @@ type Consumer struct {
 	*LogHelper                     // object for help with logging
 	messages         chan *Message // channel for storing messages that have been retrieved from the stream
 	concurrencySem   chan empty    // channel for controlling the number of concurrent workers processing messages from the message channel
-	pipeOfDeath      chan empty    // channel for handling pipe of death
 	consuming        bool          // flag for indicating whether or not the consumer is consuming
 	consumingMu      sync.Mutex    // mutex for making the consuming flag thread safe
 	noCopy           noCopy        // prevents the Consumer from being copied
@@ -120,7 +119,6 @@ func (c *Consumer) startConsuming() bool {
 		c.consuming = true
 		c.messages = make(chan *Message, c.queueDepth)
 		c.concurrencySem = make(chan empty, c.concurrency)
-		c.pipeOfDeath = make(chan empty)
 		return true
 	}
 	return false
@@ -130,8 +128,6 @@ func (c *Consumer) startConsuming() bool {
 // cancellation or a pipe of death.
 func (c *Consumer) shouldConsume(ctx context.Context) (bool, error) {
 	select {
-	case <-c.pipeOfDeath:
-		return false, ErrPipeOfDeath
 	case <-ctx.Done():
 		return false, ctx.Err()
 	default:
@@ -299,6 +295,8 @@ func (c *Consumer) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case msg, ok := <-c.messages:
 			if !ok {
 				return
@@ -318,9 +316,6 @@ func (c *Consumer) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 				c.Stats.AddProcessed(1)
 				wg.Done()
 			}(msg)
-		case <-c.pipeOfDeath:
-			c.LogInfo("ListenWithContext received pipe of death")
-			return
 		}
 	}
 }
