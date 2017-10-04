@@ -145,6 +145,8 @@ func NewKclReader(c *aws.Config, optionFns ...KclReaderOptionsFn) (*KclReader, e
 		optionFn(kclReader)
 	}
 
+	kclReader.reader = bufio.NewReader(os.Stdin)
+
 	kclReader.LogHelper = &LogHelper{
 		LogLevel: kclReader.logLevel,
 		Logger:   c.Logger,

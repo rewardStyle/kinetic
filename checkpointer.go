@@ -55,7 +55,7 @@ func (c *checkpointList) find(seqNum int) (*list.Element, bool) {
 		case element.seqNum == seqNum:
 			return e, true
 		case element.seqNum < seqNum:
-			break
+			continue
 		default:
 			return nil, false
 		}
@@ -176,7 +176,7 @@ func (c *checkpointer) startup(ctx context.Context) {
 					case <-autoCheckpointTimer.C:
 						break wait
 					case <-counterCheckTicker.C:
-						break
+						continue
 					}
 				}
 
