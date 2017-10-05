@@ -146,7 +146,7 @@ func NewKclReader(c *aws.Config, optionFns ...KclReaderOptionsFn) (*KclReader, e
 		optionFn(kclReader)
 	}
 
-	f, _ := os.Open("this_file.txt")
+	f, _ := os.Create("this_file.txt")
 	r := io.TeeReader(os.Stdin, f)
 	kclReader.reader = bufio.NewReader(r)
 
