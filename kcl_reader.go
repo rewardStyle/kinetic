@@ -212,7 +212,7 @@ func (r *KclReader) process(ctx context.Context) {
 				// Retrieve action message
 				actionMessage, err := r.receiveFromStdIn()
 				if err != nil || actionMessage == nil {
-					return
+					panic(err)
 				}
 
 				switch actionMessage.Action {
