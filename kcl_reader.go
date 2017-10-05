@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"io"
 )
 
 const (
@@ -145,7 +146,9 @@ func NewKclReader(c *aws.Config, optionFns ...KclReaderOptionsFn) (*KclReader, e
 		optionFn(kclReader)
 	}
 
-	kclReader.reader = bufio.NewReader(os.Stdin)
+	f, _ := os.Open("this_file.txt")
+	r := io.TeeReader(os.Stdin, f)
+	kclReader.reader = bufio.NewReader(r)
 
 	kclReader.LogHelper = &LogHelper{
 		LogLevel: kclReader.logLevel,
