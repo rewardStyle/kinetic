@@ -13,7 +13,6 @@ type kclActionType string
 const (
 	kclActionTypeInitialize     kclActionType = "initialize"
 	kclActionTypeProcessRecords kclActionType = "processRecords"
-	kclActionTypeRecord         kclActionType = "record"
 	kclActionTypeCheckpoint     kclActionType = "checkpoint"
 	kcActionTypeShutdown        kclActionType = "shutdown"
 	KclActionTypeStatus         kclActionType = "status"

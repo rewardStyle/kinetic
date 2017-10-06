@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"io"
 )
 
 const (
@@ -46,8 +45,8 @@ func defaultKclReaderOptions() *kclReaderOptions {
 // KclReaderOptionsFn is a method signature for defining functional option methods for configuring the KclReader.
 type KclReaderOptionsFn func(*KclReader) error
 
-// kclReaderBatchSize is a functional option method for configuring the KclReader's batch size
-func kclReaderBatchSize(size int) KclReaderOptionsFn {
+// KclReaderBatchSize is a functional option method for configuring the KclReader's batch size
+func KclReaderBatchSize(size int) KclReaderOptionsFn {
 	return func(o *KclReader) error {
 		if size > 0 && size <= kclReaderMaxBatchSize {
 			o.batchSize = size
@@ -146,12 +145,7 @@ func NewKclReader(c *aws.Config, optionFns ...KclReaderOptionsFn) (*KclReader, e
 		optionFn(kclReader)
 	}
 
-	f, err := os.Create("this_file.txt")
-	if err != nil {
-		panic(err)
-	}
-	r := io.TeeReader(os.Stdin, f)
-	kclReader.reader = bufio.NewReader(r)
+	kclReader.reader = bufio.NewReader(os.Stdin)
 
 	kclReader.LogHelper = &LogHelper{
 		LogLevel: kclReader.logLevel,

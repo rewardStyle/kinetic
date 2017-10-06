@@ -84,7 +84,7 @@ type Consumer struct {
 	concurrencySem   chan empty    // channel for controlling the number of concurrent workers processing messages from the message channel
 	consuming        bool          // flag for indicating whether or not the consumer is consuming
 	consumingMu      sync.Mutex    // mutex for making the consuming flag thread safe
-	noCopy           noCopy        // prevents the Consumer from being copied
+	_                noCopy        // prevents the Consumer from being copied
 }
 
 // NewConsumer creates a new Consumer object for retrieving and listening to message(s) on a StreamReader.

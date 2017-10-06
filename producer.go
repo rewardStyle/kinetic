@@ -153,7 +153,7 @@ type Producer struct {
 	startupOnce      sync.Once          // used to ensure that the startup function is called once
 	shutdownOnce     sync.Once          // used to ensure that the shutdown function is called once
 	resizeMu         sync.Mutex         // used to prevent resizeWorkerPool from being called synchronously with itself
-	noCopy           noCopy             // prevents the Producer from being copied
+	_                noCopy             // prevents the Producer from being copied
 }
 
 // NewProducer creates a new producer for writing records to a Kinesis or Firehose stream.
