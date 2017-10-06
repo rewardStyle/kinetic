@@ -294,29 +294,25 @@ func (c *Consumer) ListenWithContext(ctx context.Context, fn MessageProcessor) {
 	defer wg.Wait()
 
 	for {
-		select {
-		case <-ctx.Done():
+		msg, ok := <-c.messages
+		if !ok {
 			return
-		case msg, ok := <-c.messages:
-			if !ok {
-				return
-			}
-			c.Stats.AddDelivered(1)
-			// For simplicity, did not do the pipe of death here. If POD is received, we may deliver a
-			// couple more messages (especially since select is random in which channel is read from).
-			c.concurrencySem <- empty{}
-			wg.Add(1)
-			go func(msg *Message) {
-				defer func() {
-					<-c.concurrencySem
-				}()
-				start := time.Now()
-				fn(msg)
-				c.Stats.UpdateProcessedDuration(time.Since(start))
-				c.Stats.AddProcessed(1)
-				wg.Done()
-			}(msg)
 		}
+		c.Stats.AddDelivered(1)
+		// For simplicity, did not do the pipe of death here. If POD is received, we may deliver a
+		// couple more messages (especially since select is random in which channel is read from).
+		c.concurrencySem <- empty{}
+		wg.Add(1)
+		go func(msg *Message) {
+			defer func() {
+				<-c.concurrencySem
+			}()
+			start := time.Now()
+			fn(msg)
+			c.Stats.UpdateProcessedDuration(time.Since(start))
+			c.Stats.AddProcessed(1)
+			wg.Done()
+		}(msg)
 	}
 }
 
