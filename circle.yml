@@ -10,8 +10,8 @@ dependencies:
   pre:
     - bash < <(curl -s -S -L https://raw.githubusercontent.com/moovweb/gvm/1.0.22/binscripts/gvm-installer)
     - source "$HOME/.gvm/scripts/gvm" && gvm install go$GO_VERSION -B --name=stable && gvm use stable --default
-#    - go get honnef.co/go/tools/cmd/staticcheck
-#    - go get honnef.co/go/tools/cmd/gosimple
+    - go get honnef.co/go/tools/cmd/staticcheck
+    - go get honnef.co/go/tools/cmd/gosimple
     - go get -u github.com/golang/lint/golint
     - docker run -d -t -p 4567:4567 dlsniper/kinesalite:1.8.0
   override:
@@ -25,7 +25,7 @@ test:
   pre:
     - cd "$GOPATH/src/$IMPORT_PATH" && go vet $(glide nv)
     - cd "$GOPATH/src/$IMPORT_PATH" && golint -set_exit_status $(glide nv)
-#    - cd "$GOPATH/src/$IMPORT_PATH" && gosimple $(glide nv)
+    - cd "$GOPATH/src/$IMPORT_PATH" && gosimple $(glide nv)
 
   override:
     - cd $GOPATH/src/$IMPORT_PATH && go test -v -race -cover $(glide nv)
