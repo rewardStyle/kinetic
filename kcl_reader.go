@@ -37,6 +37,9 @@ func defaultKclReaderOptions() *kclReaderOptions {
 		autoCheckpointCount:      10000,
 		autoCheckpointFreq:       time.Minute,
 		updateCheckpointSizeFreq: time.Minute,
+		onInitCallbackFn:         func() error { return nil },
+		onCheckpointCallbackFn:   func(a, b string) error { return nil },
+		onShutdownCallbackFn:     func() error { return nil },
 		logLevel:                 aws.LogOff,
 		Stats:                    &NilConsumerStatsCollector{},
 	}
