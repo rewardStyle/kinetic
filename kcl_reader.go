@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -19,7 +20,9 @@ const (
 
 // kclReaderOptions is a struct that holds all of the KclReader's configurable parameters.
 type kclReaderOptions struct {
-	batchSize                int
+	batchSize                int                        // maximum records per GetRecords call
+	reader                   io.Reader                  // reader for reading from KCL
+	writer                   io.Writer                  // writer for writing to KCL
 	autoCheckpointCount      int                        // maximum number of messages pulled off the message queue before triggering an auto checkpoint
 	autoCheckpointFreq       time.Duration              // frequency with which to auto checkpoint
 	updateCheckpointSizeFreq time.Duration              // frequency with which to update the CheckpointSize stats
@@ -34,6 +37,8 @@ type kclReaderOptions struct {
 func defaultKclReaderOptions() *kclReaderOptions {
 	return &kclReaderOptions{
 		batchSize:                kclReaderMaxBatchSize,
+		reader:                   os.Stdin,
+		writer:                   os.Stdout,
 		autoCheckpointCount:      10000,
 		autoCheckpointFreq:       time.Minute,
 		updateCheckpointSizeFreq: time.Minute,
@@ -56,6 +61,22 @@ func KclReaderBatchSize(size int) KclReaderOptionsFn {
 			return nil
 		}
 		return ErrInvalidBatchSize
+	}
+}
+
+// KclReaderReader is a functional option method for configuring the KclReader's reader (defaults to os.Stdin).
+func KclReaderReader(reader io.Reader) KclReaderOptionsFn {
+	return func(o *KclReader) error {
+		o.reader = reader
+		return nil
+	}
+}
+
+// KclReaderWriter is a functional option method for configuring the KclReader's writer (defaults to os.Stdout).
+func KclReaderWriter(writer io.Writer) KclReaderOptionsFn {
+	return func(o *KclReader) error {
+		o.writer = writer
+		return nil
 	}
 }
 
@@ -131,8 +152,8 @@ func KclReaderStats(sc ConsumerStatsCollector) KclReaderOptionsFn {
 type KclReader struct {
 	*kclReaderOptions                // contains all of the configuration settings for the KclReader
 	*LogHelper                       // object for help with logging
-	reader       *bufio.Reader       // buffered reader to read messages from KCL
-	writer       *bufio.Writer       // buffered writer to write messages to KCL
+	bufReader    *bufio.Reader       // buffered reader to read messages from KCL
+	burWriter    *bufio.Writer       // buffered writer to write messages to KCL
 	checkpointer *checkpointer       // data structure used to manage checkpointing
 	ticker       *time.Ticker        // a ticker with which to update the CheckpointSize stats
 	tickerDone   chan empty          // a channel used to communicate when to stop updating the CheckpointSize stats
@@ -150,8 +171,8 @@ func NewKclReader(c *aws.Config, optionFns ...KclReaderOptionsFn) (*KclReader, e
 	}
 
 	// Setup a buffered reader/writer from the io reader/writer for communicating via the Multilang Daemon Protocol
-	kclReader.reader = bufio.NewReader(os.Stdin)
-	kclReader.writer = bufio.NewWriter(os.Stdout)
+	kclReader.bufReader = bufio.NewReader(kclReader.reader)
+	kclReader.burWriter = bufio.NewWriter(kclReader.writer)
 
 	kclReader.LogHelper = &LogHelper{
 		LogLevel: kclReader.logLevel,
@@ -290,7 +311,7 @@ func (r *KclReader) shutdown() {
 func (r *KclReader) receiveFromStdIn() (*actionMessage, error) {
 	buffer := &bytes.Buffer{}
 	for {
-		line, isPrefix, err := r.reader.ReadLine()
+		line, isPrefix, err := r.bufReader.ReadLine()
 		if err != nil {
 			r.LogError("Unable to read line from stdin ", err)
 			return nil, err
@@ -318,9 +339,9 @@ func (r *KclReader) sendToStdOut(msg interface{}) error {
 		return err
 	}
 
-	r.writer.Write(b)
-	fmt.Println(r.writer, string(b))
-	r.writer.Flush()
+	r.burWriter.Write(b)
+	fmt.Println(r.burWriter, string(b))
+	r.burWriter.Flush()
 
 	return nil
 }
