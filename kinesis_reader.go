@@ -23,7 +23,7 @@ const (
 
 // kinesisReaderOptions a struct that holds all of the KinesisReader's configurable parameters.
 type kinesisReaderOptions struct {
-	batchSize             int                    // maximum records per GetRecordsRequest call
+	batchSize             int                    // maximum records per GetRecords call
 	transactionCountLimit int                    // maximum transactions per second for GetRecords calls
 	transmissionSizeLimit int                    // maximum transmission size per second for GetRecords calls
 	shardIterator         *ShardIterator         // shard iterator for Kinesis GetRecords API calls

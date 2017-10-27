@@ -129,16 +129,17 @@ func KclReaderStats(sc ConsumerStatsCollector) KclReaderOptionsFn {
 
 // KclReader handles the KCL Multilang Protocol to read records from KCL
 type KclReader struct {
-	*kclReaderOptions                     // contains all of the configuration settings for the KclReader
-	*LogHelper                            // object for help with logging
-	reader            *bufio.Reader       // io reader to read from STDIN
-	checkpointer      *checkpointer       // data structure used to manage checkpointing
-	ticker            *time.Ticker        // a ticker with which to update the CheckpointSize stats
-	tickerDone        chan empty          // a channel used to communicate when to stop updating the CheckpointSize stats
-	messages          chan *Message       // unbuffered message channel used to throttle the record processing from KCL
-	actions           chan *actionMessage // unbuffered action message channel used internally to coordinate sending action messages to KCL
-	startupOnce       sync.Once           // used to ensure that the startup function is called once
-	shutdownOnce      sync.Once           // used to ensure that the shutdown function is called once
+	*kclReaderOptions                // contains all of the configuration settings for the KclReader
+	*LogHelper                       // object for help with logging
+	reader       *bufio.Reader       // buffered reader to read messages from KCL
+	writer       *bufio.Writer       // buffered writer to write messages to KCL
+	checkpointer *checkpointer       // data structure used to manage checkpointing
+	ticker       *time.Ticker        // a ticker with which to update the CheckpointSize stats
+	tickerDone   chan empty          // a channel used to communicate when to stop updating the CheckpointSize stats
+	messages     chan *Message       // unbuffered message channel used to throttle the record processing from KCL
+	actions      chan *actionMessage // unbuffered action message channel used internally to coordinate sending action messages to KCL
+	startupOnce  sync.Once           // used to ensure that the startup function is called once
+	shutdownOnce sync.Once           // used to ensure that the shutdown function is called once
 }
 
 // NewKclReader creates a new stream reader to read records from KCL
@@ -148,7 +149,9 @@ func NewKclReader(c *aws.Config, optionFns ...KclReaderOptionsFn) (*KclReader, e
 		optionFn(kclReader)
 	}
 
+	// Setup a buffered reader/writer from the io reader/writer for communicating via the Multilang Daemon Protocol
 	kclReader.reader = bufio.NewReader(os.Stdin)
+	kclReader.writer = bufio.NewWriter(os.Stdout)
 
 	kclReader.LogHelper = &LogHelper{
 		LogLevel: kclReader.logLevel,
@@ -315,7 +318,9 @@ func (r *KclReader) sendToStdOut(msg interface{}) error {
 		return err
 	}
 
-	fmt.Fprintln(os.Stdout, string(b))
+	r.writer.Write(b)
+	fmt.Println(r.writer, string(b))
+	r.writer.Flush()
 
 	return nil
 }
