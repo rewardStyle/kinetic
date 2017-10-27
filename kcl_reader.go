@@ -340,7 +340,7 @@ func (r *KclReader) sendToStdOut(msg interface{}) error {
 	}
 
 	r.bufWriter.Write(b)
-	fmt.Fprintln(r.bufWriter, string(b))
+	r.bufWriter.WriteByte('\n')
 	r.bufWriter.Flush()
 
 	return nil
