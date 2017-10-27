@@ -153,7 +153,7 @@ type KclReader struct {
 	*kclReaderOptions                // contains all of the configuration settings for the KclReader
 	*LogHelper                       // object for help with logging
 	bufReader    *bufio.Reader       // buffered reader to read messages from KCL
-	burWriter    *bufio.Writer       // buffered writer to write messages to KCL
+	bufWriter    *bufio.Writer       // buffered writer to write messages to KCL
 	checkpointer *checkpointer       // data structure used to manage checkpointing
 	ticker       *time.Ticker        // a ticker with which to update the CheckpointSize stats
 	tickerDone   chan empty          // a channel used to communicate when to stop updating the CheckpointSize stats
@@ -172,7 +172,7 @@ func NewKclReader(c *aws.Config, optionFns ...KclReaderOptionsFn) (*KclReader, e
 
 	// Setup a buffered reader/writer from the io reader/writer for communicating via the Multilang Daemon Protocol
 	kclReader.bufReader = bufio.NewReader(kclReader.reader)
-	kclReader.burWriter = bufio.NewWriter(kclReader.writer)
+	kclReader.bufWriter = bufio.NewWriter(kclReader.writer)
 
 	kclReader.LogHelper = &LogHelper{
 		LogLevel: kclReader.logLevel,
@@ -339,9 +339,9 @@ func (r *KclReader) sendToStdOut(msg interface{}) error {
 		return err
 	}
 
-	r.burWriter.Write(b)
-	fmt.Println(r.burWriter, string(b))
-	r.burWriter.Flush()
+	r.bufWriter.Write(b)
+	fmt.Fprintln(r.bufWriter, string(b))
+	r.bufWriter.Flush()
 
 	return nil
 }
