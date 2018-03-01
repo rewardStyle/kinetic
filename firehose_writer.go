@@ -44,8 +44,8 @@ type FirehoseWriterOptionsFn func(*FirehoseWriter) error
 
 // FirehoseWriterResponseReadTimeout is a functional option method for configuring the
 // FirehoseWriter's response read timeout
-func FirehoseWriterResponseReadTimeout(timeout time.Duration) KinesisWriterOptionsFn {
-	return func(o *KinesisWriter) error {
+func FirehoseWriterResponseReadTimeout(timeout time.Duration) FirehoseWriterOptionsFn {
+	return func(o *FirehoseWriter) error {
 		o.responseReadTimeout = timeout
 		return nil
 	}
