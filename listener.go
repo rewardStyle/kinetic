@@ -20,6 +20,7 @@ var (
 	ErrNullStream = errors.New("A stream must be specified")
 	// ErrNotActive represents an error where the stream is not ready for processing
 	ErrNotActive = errors.New("The Stream is not yet active")
+	ErrKeyEmpty  = errors.New("Could not find iterator key")
 )
 
 // Listener represents a kinesis listener
@@ -44,9 +45,12 @@ type Listener struct {
 	errors     chan error
 	messages   chan *Message
 	interrupts chan os.Signal
+
+	messageCount int
+	maxIterAge   int
 }
 
-func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
+func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, maxIterAge int) (*Listener, error) {
 	var err error
 	if concurrency < 1 {
 		return nil, ErrBadConcurrency
@@ -80,6 +84,13 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 			return l, err
 		}
 		return l, ErrNotActive
+	}
+
+	// Grab the last checkpoint
+	l.maxIterAge = maxIterAge
+	iter, err := l.getLastCheckpoint()
+	if err == nil {
+		l.kinesis.setSequenceNumber(iter)
 	}
 
 	// Start feeder consumer
@@ -250,6 +261,11 @@ func (l *Listener) consume() {
 
 		if response != nil && response.NextShardIterator != nil {
 			l.setShardIterator(*response.NextShardIterator)
+			l.messageCount++
+
+			if l.messageCount%l.maxIterAge == 0 {
+				l.saveCheckpoint(*response.NextShardIterator)
+			}
 
 			if len(response.Records) > 0 {
 				for _, record := range response.Records {
@@ -401,4 +417,14 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 		// Wait for the remainder of the second - timer and counter will be reset on next pass
 		time.Sleep(1*time.Second - time.Since(*timer))
 	}
+}
+
+func (l *Listener) saveCheckpoint(iter string) {
+	//TODO: Add checkpointing... maybe DynamoDB?
+	// We could set a key like this: <stream_name>_<shard_id>
+	l.messageCount = 0
+}
+
+func (l *Listener) getLastCheckpoint() (string, error) {
+	return "", nil
 }
