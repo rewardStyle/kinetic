@@ -36,6 +36,7 @@ type Producer interface {
 	ReInit()
 	IsProducing() bool
 	Send(msg *Message)
+	SendSync(msg *Message)
 	TryToSend(msg *Message) error
 	Close() error
 	CloseSync() error
@@ -150,7 +151,6 @@ func (p *KinesisProducer) ReInit() {
 	if !p.IsProducing() {
 		go p.produce()
 	}
-	return
 }
 
 // Each shard can support up to 1,000 records per second for writes, up to a maximum total
@@ -260,6 +260,15 @@ func (p *KinesisProducer) Send(msg *Message) {
 		p.messages <- msg
 		p.wg.Done()
 	}()
+}
+
+// SendSync - blocking send.
+// TODO: we might want a version of this that can be fed a timeout value
+// and listen for cancellation channels. This version is for simplicity.
+func (p *KinesisProducer) SendSync(msg *Message) {
+	p.wg.Add(1)
+	p.messages <- msg
+	p.wg.Done()
 }
 
 // TryToSend tries to send the message, but if the channel is full it drops the message, and returns an error.

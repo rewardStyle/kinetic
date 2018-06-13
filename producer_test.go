@@ -112,6 +112,36 @@ func TestProducerMessage(t *testing.T) {
 	producer.Close()
 }
 
+func TestProducerSendSyncMessage(t *testing.T) {
+	listener, _ := new(Listener).InitC("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1", 4)
+	producer, _ := new(KinesisProducer).InitC("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1", 4)
+
+	listener.NewEndpoint(testEndpoint, "your-stream")
+	producer.NewEndpoint(testEndpoint, "your-stream")
+
+	CreateAndWaitForStream(producer.(*KinesisProducer).client, "your-stream")
+	listener.ReInit()
+	producer.ReInit()
+
+	for _, c := range cases {
+		Convey("Given a valid message", t, func() {
+			producer.SendSync(new(Message).Init(c.message, "test"))
+
+			Convey("It should be passed on the queue without error", func() {
+				msg, err := listener.Retrieve()
+				if err != nil {
+					t.Fatalf(err.Error())
+				}
+
+				So(string(msg.Value()), ShouldResemble, string(c.message))
+			})
+		})
+	}
+
+	listener.Close()
+	producer.Close()
+}
+
 func TestProducerTryToSend(t *testing.T) {
 	producer, _ := new(KinesisProducer).InitC("your-stream", "0", "LATEST", "accesskey", "secretkey", "us-east-1", 4)
 	producer.NewEndpoint(testEndpoint, "your-stream")

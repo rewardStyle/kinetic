@@ -153,6 +153,16 @@ func (p *Firehose) Send(msg *Message) {
 	}()
 }
 
+// SendSync - blocking send.
+// TODO: we might want a version of this that can be fed a timeout value
+// and listen for cancellation channels. This version is for simplicity.
+func (p *Firehose) SendSync(msg *Message) {
+	msg.SetValue(append(msg.Value(), truncatedRecordTerminator...))
+	p.wg.Add(1)
+	p.messages <- msg
+	p.wg.Done()
+}
+
 // TryToSend tries to send the message, but if the channel is full it drops the message, and returns an error.
 func (p *Firehose) TryToSend(msg *Message) error {
 	msg.SetValue(append(msg.Value(), truncatedRecordTerminator...))

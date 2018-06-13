@@ -29,6 +29,22 @@ func TestFireHose(t *testing.T) {
 	})
 }
 
+func TestFireHoseSendSync(t *testing.T) {
+	producer, _ := new(Firehose).InitC("your-stream", "", "", "accesskey", "secretkey", "us-east-1", 4)
+	producer.NewEndpoint("localhost", "your-stream")
+	producer.(*Firehose).client = new(fakefirehose)
+	producer.ReInit()
+	Convey("Given a running firehose producer", t, func() {
+		Convey("it should send data to the firehose stream", func() {
+			producer.Send(new(Message).Init([]byte("this is a message"), ""))
+			runtime.Gosched()
+			time.Sleep(1 * time.Second)
+			So(atomic.LoadInt64(&(producer.(*Firehose).client.(*fakefirehose).count)), ShouldEqual, 1)
+			So(producer.(*Firehose).getMsgCount(), ShouldEqual, 1)
+		})
+	})
+}
+
 // Mocks for aws Firehose.
 // This implements github.com/aws/aws-sdk-go/service/firehose/firehoseiface.FirehoseAPI
 type fakefirehose struct {
