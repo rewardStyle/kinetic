@@ -88,7 +88,7 @@ type kinesis struct {
 	errCount int64
 }
 
-func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
+func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string, endpoint string) (*kinesis, error) {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			Dial: (&net.Dialer{
@@ -102,9 +102,13 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 	if conf.Debug.Verbose {
 		awsConf = awsConf.WithLogLevel(aws.LogDebugWithRequestRetries | aws.LogDebugWithRequestErrors)
 	}
+
 	if k.endPoint != "" {
 		awsConf = awsConf.WithEndpoint(k.endPoint)
+	} else if endpoint != "" {
+		awsConf = awsConf.WithEndpoint(endpoint)
 	}
+
 	client := awsKinesis.New(sess, awsConf)
 
 	k = &kinesis{

@@ -47,7 +47,7 @@ type Listener struct {
 	interrupts chan os.Signal
 }
 
-func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
+func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, endpoint string) (*Listener, error) {
 	var err error
 	if concurrency < 1 {
 		return nil, ErrBadConcurrency
@@ -69,7 +69,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	l.interrupts = make(chan os.Signal, 1)
 	signal.Notify(l.interrupts, os.Interrupt)
 
-	l.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region)
+	l.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region, endpoint)
 	if err != nil {
 		return l, err
 	}
@@ -91,12 +91,17 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 
 // Init initializes a listener with the params specified in the configuration file
 func (l *Listener) Init() (*Listener, error) {
-	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Listener)
+	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Listener, "")
 }
 
 // InitC initialize a listener with the supplied params
 func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
-	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
+	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, "")
+}
+
+// InitC initialize a listener with the supplied params
+func (l *Listener) InitCWithEndpoint(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, endpoint string) (*Listener, error) {
+	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, endpoint)
 }
 
 // NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
