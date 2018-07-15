@@ -10,8 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
 	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
 	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 )
@@ -88,7 +86,7 @@ type kinesis struct {
 	errCount int64
 }
 
-func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string) (*kinesis, error) {
+func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region, endpoint string) (*kinesis, error) {
 	httpClient := &http.Client{
 		Transport: &http.Transport{
 			Dial: (&net.Dialer{
@@ -102,8 +100,8 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 	if conf.Debug.Verbose {
 		awsConf = awsConf.WithLogLevel(aws.LogDebugWithRequestRetries | aws.LogDebugWithRequestErrors)
 	}
-	if k.endPoint != "" {
-		awsConf = awsConf.WithEndpoint(k.endPoint)
+	if endpoint != "" {
+		awsConf = awsConf.WithEndpoint(endpoint)
 	}
 	client := awsKinesis.New(sess, awsConf)
 
@@ -177,18 +175,6 @@ func (k *kinesis) checkActive() (bool, error) {
 		return true, nil
 	}
 	return false, nil
-}
-
-func (k *kinesis) newClient(endpoint, stream string) (*awsKinesis.Kinesis, error) {
-	k.endPoint = endpoint
-	conf := &aws.Config{}
-	conf = conf.WithCredentials(
-		credentials.NewStaticCredentials("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"),
-	).WithEndpoint(endpoint).WithRegion("us-east-1").WithDisableSSL(true).WithMaxRetries(3)
-
-	// fake region
-	sess, err := session.NewSessionWithOptions(session.Options{Config: *conf})
-	return awsKinesis.New(sess, conf), err
 }
 
 func (k *kinesis) refreshClient(accessKey, secretKey, region string) error {

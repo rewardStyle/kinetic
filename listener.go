@@ -46,7 +46,7 @@ type Listener struct {
 	interrupts chan os.Signal
 }
 
-func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
+func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region, endpoint string, concurrency int) (*Listener, error) {
 	var err error
 	if concurrency < 1 {
 		return nil, ErrBadConcurrency
@@ -68,7 +68,7 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	l.interrupts = make(chan os.Signal, 1)
 	signal.Notify(l.interrupts, os.Interrupt)
 
-	l.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region)
+	l.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region, endpoint)
 	if err != nil {
 		return l, err
 	}
@@ -88,20 +88,9 @@ func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, regi
 	return l, err
 }
 
-// Init initializes a listener with the params specified in the configuration file
-func (l *Listener) Init() (*Listener, error) {
-	return l.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Listener)
-}
-
 // InitC initialize a listener with the supplied params
-func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
-	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
-}
-
-// NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
-func (l *Listener) NewEndpoint(endpoint, stream string) (err error) {
-	l.kinesis.client, err = l.kinesis.newClient(endpoint, stream)
-	return
+func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region, endpoint string, concurrency int) (*Listener, error) {
+	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, endpoint, concurrency)
 }
 
 // ReInit re-initializes the shard iterator.  Used with conjucntion with NewEndpoint
