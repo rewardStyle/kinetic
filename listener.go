@@ -13,6 +13,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	awsKinesis "github.com/aws/aws-sdk-go/service/kinesis"
+	"github.com/aws/aws-sdk-go/service/kinesis/kinesisiface"
 )
 
 var (
@@ -401,4 +402,8 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 		// Wait for the remainder of the second - timer and counter will be reset on next pass
 		time.Sleep(1*time.Second - time.Since(*timer))
 	}
+}
+
+func (l *Listener) GetClient() (*kinesisiface.KinesisAPI) {
+	return &l.client
 }
