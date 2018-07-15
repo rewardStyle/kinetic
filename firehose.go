@@ -13,8 +13,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
 	awsFirehose "github.com/aws/aws-sdk-go/service/firehose"
 	awsFirehoseIface "github.com/aws/aws-sdk-go/service/firehose/firehoseiface"
 )
@@ -175,27 +173,8 @@ func (p *Firehose) TryToSend(msg *Message) error {
 	}
 }
 
-// Init initalizes a firehose producer with the config file defaults
-func (p *Firehose) Init() (Producer, error) {
-	if conf.Concurrency.Producer < 1 {
-		return nil, ErrBadConcurrency
-	}
-	p.setConcurrency(conf.Concurrency.Producer)
-	p.initChannels()
-	sess, err := authenticate(conf.AWS.AccessKey, conf.AWS.SecretKey)
-	p.stream = conf.Firehose.Stream
-	p.client = awsFirehose.New(sess)
-	//gokinesis.NewWithEndpoint(auth, conf.AWS.Region, fmt.Sprintf(firehoseURL, conf.AWS.Region)),
-
-	if err != nil {
-		return p, err
-	}
-
-	return p.activate()
-}
-
 // InitC initializes a producer for Kinesis Firehose with the specified params
-func (p *Firehose) InitC(stream, _, _, accessKey, secretKey, region string, concurrency int) (Producer, error) {
+func (p *Firehose) InitC(stream, _, _, accessKey, secretKey, region, endpoint string, concurrency int) (Producer, error) {
 	if concurrency < 1 {
 		return nil, ErrBadConcurrency
 	}
@@ -207,6 +186,9 @@ func (p *Firehose) InitC(stream, _, _, accessKey, secretKey, region string, conc
 	p.initChannels()
 	sess, err := authenticate(accessKey, secretKey)
 	conf := &aws.Config{Region: aws.String(region)}
+	if endpoint != "" {
+		conf = conf.WithEndpoint(endpoint)
+	}
 	p.stream = stream
 	p.client = awsFirehose.New(sess, conf)
 	if err != nil {
@@ -228,17 +210,6 @@ func (p *Firehose) setProducing(producing bool) {
 	p.producingMu.Lock()
 	p.producing = producing
 	p.producingMu.Unlock()
-}
-
-// NewEndpoint switches the endpoint of the firehose stream.  This is useful for testing.
-func (p *Firehose) NewEndpoint(endpoint, stream string) (err error) {
-	conf := &aws.Config{}
-	conf = conf.WithCredentials(
-		credentials.NewStaticCredentials("BAD_ACCESS_KEY", "BAD_SECRET_KEY", "BAD_TOKEN"),
-	).WithEndpoint(endpoint).WithRegion("us-east-1")
-	sess, err := session.NewSessionWithOptions(session.Options{Config: *conf})
-	p.client = awsFirehose.New(sess)
-	return err
 }
 
 // Messages gets the current message channel from the producer
