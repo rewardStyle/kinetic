@@ -216,6 +216,31 @@ func (p *Firehose) InitC(stream, _, _, accessKey, secretKey, region string, conc
 	return p.activate()
 }
 
+// InitC initializes a producer for Kinesis Firehose with the specified params
+func (p *Firehose) InitCWithEndpoint(stream, _, _, accessKey, secretKey, region string, concurrency int, endpoint string) (Producer, error) {
+	if concurrency < 1 {
+		return nil, ErrBadConcurrency
+	}
+	if stream == "" {
+		return nil, ErrNullStream
+	}
+
+	p.setConcurrency(concurrency)
+	p.initChannels()
+	sess, err := authenticate(accessKey, secretKey)
+	conf := &aws.Config{Region: aws.String(region)}
+	if endpoint != "" {
+		conf = conf.WithEndpoint(endpoint)
+	}
+	p.stream = stream
+	p.client = awsFirehose.New(sess, conf)
+	if err != nil {
+		return p, err
+	}
+
+	return p.activate()
+}
+
 // IsProducing returns true if Firehose is producing otherwise false
 func (p *Firehose) IsProducing() (isProducing bool) {
 	p.producingMu.Lock()

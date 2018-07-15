@@ -65,7 +65,7 @@ type KinesisProducer struct {
 	interrupts chan os.Signal
 }
 
-func (p *KinesisProducer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (Producer, error) {
+func (p *KinesisProducer) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, endpoint string) (Producer, error) {
 	var err error
 	if concurrency < 1 {
 		return nil, ErrBadConcurrency
@@ -78,7 +78,7 @@ func (p *KinesisProducer) init(stream, shard, shardIterType, accessKey, secretKe
 
 	p.initChannels()
 
-	p.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region)
+	p.kinesis, err = new(kinesis).init(stream, shard, shardIterType, accessKey, secretKey, region, endpoint)
 	if err != nil {
 		return p, err
 	}
@@ -131,12 +131,17 @@ func (p *KinesisProducer) activate() (Producer, error) {
 
 // Init initializes a producer with the params specified in the configuration file
 func (p *KinesisProducer) Init() (Producer, error) {
-	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Producer)
+	return p.init(conf.Kinesis.Stream, conf.Kinesis.Shard, ShardIterTypes[conf.Kinesis.ShardIteratorType], conf.AWS.AccessKey, conf.AWS.SecretKey, conf.AWS.Region, conf.Concurrency.Producer, "")
 }
 
 // InitC initializes a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
 func (p *KinesisProducer) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (Producer, error) {
-	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency)
+	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, "")
+}
+
+// InitC initializes a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
+func (p *KinesisProducer) InitCWithEndpoint(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, endpoint string) (Producer, error) {
+	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, endpoint)
 }
 
 // NewEndpoint re-initializes kinesis client with new endpoint. Used for testing with kinesalite
