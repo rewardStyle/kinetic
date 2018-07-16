@@ -141,12 +141,12 @@ func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, reg
 	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, "")
 }
 
-// InitBookmark initializes a listener with bookmarking
+// InitWithStartTime initializes a listener with start time
 func (l *Listener) InitWithStartTime(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, startTime *time.Time) (*Listener, error) {
 	return l.initWithStartTime(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, "", startTime)
 }
 
-// InitC initialize a listener with the supplied params
+// InitCWithEndpoint initialize a listener with the supplied params
 func (l *Listener) InitCWithEndpoint(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, endpoint string) (*Listener, error) {
 	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, endpoint)
 }
@@ -456,6 +456,7 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 	}
 }
 
+// GetClient returns the client
 func (l *Listener) GetClient() *kinesisiface.KinesisAPI {
 	return &l.client
 }

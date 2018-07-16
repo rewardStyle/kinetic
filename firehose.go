@@ -216,7 +216,7 @@ func (p *Firehose) InitC(stream, _, _, accessKey, secretKey, region string, conc
 	return p.activate()
 }
 
-// InitC initializes a producer for Kinesis Firehose with the specified params
+// InitCWithEndpoint initializes a producer for Kinesis Firehose with the specified params
 func (p *Firehose) InitCWithEndpoint(stream, _, _, accessKey, secretKey, region string, concurrency int, endpoint string) (Producer, error) {
 	if concurrency < 1 {
 		return nil, ErrBadConcurrency

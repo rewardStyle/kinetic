@@ -139,7 +139,7 @@ func (p *KinesisProducer) InitC(stream, shard, shardIterType, accessKey, secretK
 	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, "")
 }
 
-// InitC initializes a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
+// InitCWithEndpoint initializes a producer with the specified configuration: stream, shard, shard-iter-type, access-key, secret-key, and region
 func (p *KinesisProducer) InitCWithEndpoint(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, endpoint string) (Producer, error) {
 	return p.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, endpoint)
 }
