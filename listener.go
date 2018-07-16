@@ -47,6 +47,48 @@ type Listener struct {
 	interrupts chan os.Signal
 }
 
+func (l *Listener) initWithStartTime(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, endpoint string, startTime *time.Time) (*Listener, error) {
+	var err error
+	if concurrency < 1 {
+		return nil, ErrBadConcurrency
+	}
+	if stream == "" {
+		return nil, ErrNullStream
+	}
+
+	l.setConcurrency(concurrency)
+
+	l.accessKey = accessKey
+	l.secretKey = secretKey
+	l.region = region
+
+	l.sem = make(chan Empty, l.getConcurrency())
+	l.errors = make(chan error, l.getConcurrency())
+	l.messages = make(chan *Message, l.msgBufSize())
+
+	l.interrupts = make(chan os.Signal, 1)
+	signal.Notify(l.interrupts, os.Interrupt)
+
+	l.kinesis, err = new(kinesis).initWithStartTime(stream, shard, shardIterType, accessKey, secretKey, region, endpoint, startTime)
+	if err != nil {
+		return l, err
+	}
+
+	// Is the stream ready?
+	active, err := l.checkActive()
+	if err != nil || !active {
+		if err != nil {
+			return l, err
+		}
+		return l, ErrNotActive
+	}
+
+	// Start feeder consumer
+	go l.consume()
+
+	return l, err
+}
+
 func (l *Listener) init(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, endpoint string) (*Listener, error) {
 	var err error
 	if concurrency < 1 {
@@ -97,6 +139,11 @@ func (l *Listener) Init() (*Listener, error) {
 // InitC initialize a listener with the supplied params
 func (l *Listener) InitC(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int) (*Listener, error) {
 	return l.init(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, "")
+}
+
+// InitBookmark initializes a listener with bookmarking
+func (l *Listener) InitWithStartTime(stream, shard, shardIterType, accessKey, secretKey, region string, concurrency int, startTime *time.Time) (*Listener, error) {
+	return l.initWithStartTime(stream, shard, shardIterType, accessKey, secretKey, region, concurrency, "", startTime)
 }
 
 // InitC initialize a listener with the supplied params
@@ -409,6 +456,6 @@ func (l *Listener) throttle(counter *int, timer *time.Time) {
 	}
 }
 
-func (l *Listener) GetClient() (*kinesisiface.KinesisAPI) {
+func (l *Listener) GetClient() *kinesisiface.KinesisAPI {
 	return &l.client
 }

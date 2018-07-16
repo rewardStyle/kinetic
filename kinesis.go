@@ -86,6 +86,14 @@ type kinesis struct {
 
 	msgCount int64
 	errCount int64
+
+	startTime *time.Time
+}
+
+func (k *kinesis) initWithStartTime(stream, shard, shardIteratorType, accessKey, secretKey, region string, endpoint string, startTime *time.Time) (*kinesis, error) {
+	k.startTime = startTime
+
+	return k.init(stream, shard, shardIteratorType, accessKey, secretKey, region, endpoint)
 }
 
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string, endpoint string) (*kinesis, error) {
@@ -127,16 +135,32 @@ func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, r
 
 func (k *kinesis) initShardIterator() error {
 	var awsSeqNumber *string
-	if k.sequenceNumber != "" {
-		awsSeqNumber = aws.String(k.sequenceNumber)
+	var err error
+	var resp *awsKinesis.GetShardIteratorOutput
+
+	if k.shardIteratorType == "AT_TIMESTAMP" && k.sequenceNumber == "" {
+		resp, err = k.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
+			ShardId:           aws.String(k.shard),
+			ShardIteratorType: &k.shardIteratorType,
+			StreamName:        aws.String(k.stream),
+			Timestamp:         k.startTime,
+		})
+
 		k.shardIteratorType = ShardIterTypes[atSequenceNumber]
+	} else {
+		if k.sequenceNumber != "" {
+			awsSeqNumber = aws.String(k.sequenceNumber)
+			k.shardIteratorType = ShardIterTypes[atSequenceNumber]
+		}
+
+		resp, err = k.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
+			ShardId:                aws.String(k.shard),             // Required
+			ShardIteratorType:      aws.String(k.shardIteratorType), // Required
+			StreamName:             aws.String(k.stream),            // Required
+			StartingSequenceNumber: awsSeqNumber,
+		})
 	}
-	resp, err := k.client.GetShardIterator(&awsKinesis.GetShardIteratorInput{
-		ShardId:                aws.String(k.shard),             // Required
-		ShardIteratorType:      aws.String(k.shardIteratorType), // Required
-		StreamName:             aws.String(k.stream),            // Required
-		StartingSequenceNumber: awsSeqNumber,
-	})
+
 	if err != nil {
 		return err
 	}
