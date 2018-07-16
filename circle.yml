@@ -1,6 +1,6 @@
 machine:
   environment:
-    GO_VERSION: "1.8"
+    GO_VERSION: "1.10.2"
     IMPORT_PATH: "github.com/$CIRCLE_PROJECT_USERNAME/$CIRCLE_PROJECT_REPONAME"
     GOPATH: "$HOME/.gvm/pkgsets/stable/global"
   services:
