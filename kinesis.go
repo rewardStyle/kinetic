@@ -92,9 +92,8 @@ type kinesis struct {
 
 func (k *kinesis) initWithStartTime(stream, shard, shardIteratorType, accessKey, secretKey, region string, endpoint string, startTime *time.Time) (*kinesis, error) {
 	k.startTime = startTime
-	k.shardIteratorType = "AT_TIMESTAMP"
 
-	return k.init(stream, shard, shardIteratorType, accessKey, secretKey, region, endpoint)
+	return k.init(stream, shard, "AT_TIMESTAMP", accessKey, secretKey, region, endpoint)
 }
 
 func (k *kinesis) init(stream, shard, shardIteratorType, accessKey, secretKey, region string, endpoint string) (*kinesis, error) {
